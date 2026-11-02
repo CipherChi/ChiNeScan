@@ -833,6 +833,26 @@ def test_first_funder_skips_traced_seed_but_keeps_distinct_funder() -> None:
     }
 
 
+def test_finding_locations_use_wallet_for_heuristics_and_exact_hash_for_tx_leads() -> None:
+    seed = "0x" + "a" * 40
+    edges = [_edge(f"tx-{index}", seed, f"wallet-{index}") for index in range(3)]
+    fan_out = next(lead for lead in detect(edges, {}, seed=seed) if lead.rule_id == "fan_out")
+    params = TraceParams(chain="ethereum", seed=seed)
+    wallet_finding = finding_for_lead(params, fan_out)
+    assert wallet_finding.location == f"chain:ethereum:{seed}"
+    assert len(wallet_finding.location.rsplit(":", 1)[1]) == 42
+
+    empty_wallet_lead = Lead("fan_out", "", ("0x" + "b" * 64,), "fan-out threshold >= 3")
+    assert finding_for_lead(params, empty_wallet_lead).location == f"chain:ethereum:{seed}"
+
+    tx_hash = "0x" + "c" * 64
+    tx_finding = finding_for_lead(
+        params, Lead("transaction_level", "", (tx_hash,), "Transaction-level reference")
+    )
+    assert tx_finding.location == tx_hash
+    assert len(tx_finding.location) == 66
+
+
 def test_heuristic_description_caps_supporting_hashes_at_ten() -> None:
     transactions = tuple(f"tx-{index}" for index in range(12))
     finding = finding_for_lead(

@@ -21,6 +21,16 @@ from chinescan.core.models.investigation import (
 from chinescan.core.storage.repository import Repository
 from chinescan.core.verdict import compute_verdict
 
+_WALLET_LEVEL_RULES = {
+    "fan_out",
+    "fan_in",
+    "first_funder",
+    "peel_chain",
+    "rapid_pass_through",
+    "address_poisoning",
+    "drainer_pattern",
+}
+
 
 class ChainTraceService:
     def __init__(
@@ -195,8 +205,12 @@ def finding_for_lead(params: TraceParams, lead: Lead) -> Finding:
         ),
         scanner="chain_trace",
         rule_id=lead.rule_id,
-        location=f"chain:{params.chain}:{lead.address}"
-        if lead.address
-        else (txs[0] if txs else None),
+        location=(
+            f"chain:{params.chain}:{lead.address or params.seed}"
+            if lead.rule_id in _WALLET_LEVEL_RULES
+            else f"chain:{params.chain}:{lead.address}"
+            if lead.address
+            else (txs[0] if txs else None)
+        ),
         tags=["heuristic", "chain_trace"],
     )
