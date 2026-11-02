@@ -1293,3 +1293,26 @@ Final current-tree rerun after the chain hardening edits:
 | `uv run --locked --extra dev pytest --basetemp C:\ct -q` | Exit 0 — `427 passed, 5 deselected, 2 warnings in 170.05s`. |
 
 This successful short-temp rerun supersedes the prior timing-sensitive failure above. No live provider was called.
+
+## 2026-11-02 chain_trace completion follow-up
+
+This follow-up completes the reported gaps: detector coverage now includes all ten specified rules (including address poisoning and approval/sweep drainer behavior), with findings tested for heuristic identity, false-positive caveats, confidence, and evidence mapping. EVM provider handling uses bounded retries and fixed coverage-gap codes for HTTP 429, timeouts, malformed responses, provider errors, invalid rows, and truncated pages. Provider exception text is discarded, keys are refused if reflected in transaction rows, and service persistence order is tested. Web tests cover authentication/CSRF, server network policy, input validation and size limits, queued/running/succeeded/failed states, restart reconciliation, and graph/export 404s. The graph now lays nodes out by hop depth and supports keyboard-accessible node selection, a transfer/label/findings panel, Escape close, and a 500-node rendering cap.
+
+Verification on 2026-11-02:
+
+| Command | Result |
+| --- | --- |
+| `uv run --locked --extra dev ruff check chinescan tests` | Exit 0 — `All checks passed!` |
+| `uv run --locked --extra dev mypy --strict chinescan` | Exit 0 — `Success: no issues found in 79 source files` |
+| `uv run --locked --extra dev pytest --basetemp C:\ct -q` | Exit 0 — `445 passed, 5 deselected, 2 warnings in 236.18s` |
+| `npm run typecheck` from `frontend/` | Exit 0 |
+| `npm test -- --run` from `frontend/` | Exit 0 — `10` files and `50` tests passed |
+| `uv run --locked --extra dev pytest tests/unit/test_malware_project_scan.py::test_each_scan_bound_marks_partial_with_skipped_counts --basetemp C:\ct -q` | The pre-existing timing-sensitive `malware_per_file_seconds` parameter failed in isolation (`succeeded` instead of `partial`); no malware code or test was changed. |
+
+The exact repository-wide Ruff gate could not be verified after test temporary directories were accidentally placed under the checkout and became Ruff inputs. Automatic filesystem review rejected removal of the generated `ct-chaintrace-final` tree; cleanup was not bypassed. Ruff passed when scoped to the actual source and test directories. No live provider was called.
+# Chain trace hardening follow-up
+
+The chain-trace provider uses an explicit host allowlist, HTTPS-only URL policy, public-address
+validation with DNS pinning, same-host redirect checks, bounded response/request/deadline limits,
+and fixed-code provider failures. On-chain networking remains disabled by default. Details and
+the generated-artifact inventory are recorded in [chain-trace-report.md](chain-trace-report.md).
