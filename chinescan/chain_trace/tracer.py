@@ -42,6 +42,7 @@ def trace(
             raise
         if page.truncated:
             gaps.append("truncated_history")
+        gaps.extend(page.gaps)
         selected = [
             e for e in page.transfers if e.sender == address and e.amount >= params.min_amount
         ]

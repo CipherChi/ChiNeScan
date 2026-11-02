@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     github_import_enabled: bool = False
     chain_network_enabled: bool = False
     chain_labels_path: Path | None = None
+    chain_trace_deadline_seconds: int = Field(default=120, ge=1, le=600)
+    chain_trace_max_requests: int = Field(default=100, ge=1, le=10_000)
+    chain_trace_max_addresses: int = Field(default=500, ge=1, le=5000)
     github_import_timeout_seconds: int = Field(default=120, ge=1, le=600)
     github_import_max_bytes: int = Field(default=524_288_000, ge=1, le=10_737_418_240)
     github_import_max_files: int = Field(default=50_000, ge=1, le=1_000_000)

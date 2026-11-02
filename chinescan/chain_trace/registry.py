@@ -14,10 +14,19 @@ class Chain:
     native_asset: str
     explorer_api: str = ""
     api_key_env: str = ""
+    host_allowlist: tuple[str, ...] = ()
+    allow_nonstandard_port: bool = False
 
 
 CHAINS: dict[str, Chain] = {
-    name: Chain(name, "evm", asset, "https://api.etherscan.io/api", "CHINESCAN_ETHERSCAN_KEY")
+    name: Chain(
+        name,
+        "evm",
+        asset,
+        "https://api.etherscan.io/api",
+        "CHINESCAN_ETHERSCAN_KEY",
+        ("api.etherscan.io",),
+    )
     for name, asset in {
         "ethereum": "ETH",
         "bsc": "BNB",
@@ -55,6 +64,8 @@ def load_registry(path: Path | None = None) -> dict[str, Chain]:
                 values["native_asset"],
                 values.get("explorer_api", ""),
                 values.get("api_key_env", ""),
+                tuple(values.get("host_allowlist", ())),
+                bool(values.get("allow_nonstandard_port", False)),
             )
     return chains
 

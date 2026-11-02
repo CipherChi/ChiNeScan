@@ -11,6 +11,7 @@ class Page:
     transfers: tuple[Transfer, ...]
     truncated: bool = False
     next_cursor: str | None = None
+    gaps: tuple[str, ...] = ()
 
 
 class ChainProvider(Protocol):
