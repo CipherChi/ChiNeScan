@@ -20,6 +20,7 @@ htmlcov/
 /g.graphml
 *.log
 .playwright-browsers/
+.vscode/
 playwright-report/
 test-results/
 frontend/playwright-report/
