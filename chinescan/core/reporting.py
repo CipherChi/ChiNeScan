@@ -726,6 +726,18 @@ def _share_summary(scan: Scan, findings: list[Finding], caveat: str | None) -> s
     ]
     for finding in findings[:10]:
         title = share_text(finding.title)
+        location = relative_location(finding.location)
+        if "chain" in scan.project_types or scan.scanner == "chain_trace":
+            title = re.sub(
+                r"(?i)0x[a-f0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}",
+                lambda m: m.group(0)[:6] + "..." + m.group(0)[-4:],
+                title,
+            )
+            location = re.sub(
+                r"(?i)(0x[a-f0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})",
+                lambda m: m.group(0)[:6] + "..." + m.group(0)[-4:],
+                location,
+            )
         if any(
             indicator_id in title
             for indicator_id in (item for item in finding.tags if item.startswith("indicator:"))
@@ -733,7 +745,7 @@ def _share_summary(scan: Scan, findings: list[Finding], caveat: str | None) -> s
             title = "Indicator reference"
         lines.append(
             f"- {title} — {finding.evidence.value if finding.evidence else 'unspecified'} — "
-            f"{relative_location(finding.location)}"
+            f"{location}"
         )
     if not findings:
         lines.append("- No leads recorded.")

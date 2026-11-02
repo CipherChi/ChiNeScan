@@ -5,6 +5,7 @@ from pathlib import Path
 import typer
 
 from chinescan.cli import commands
+from chinescan.cli.chain_commands import app as chain_app
 
 app = typer.Typer(help="Authorization-first security investigation platform.")
 
@@ -70,6 +71,7 @@ def malware_detonate_stub(
 app.add_typer(malware_app, name="malware")
 
 app.command("domain")(commands.domain_assess)
+app.add_typer(chain_app, name="chain")
 app.add_typer(commands.web_app, name="web")
 
 

@@ -1270,3 +1270,26 @@ tests remained deselected because scanner binaries/signature data were unavailab
 execution or malware upload was performed.
 
 This report-only change creates a new SHA; its Actions runs must also complete before final delivery.
+
+## 2026-11-02 chain_trace implementation verification addendum
+
+The chain_trace feature work used the repository's locked development environment. Commands and exact results:
+
+| Command | Result |
+| --- | --- |
+| `uv run --locked --extra dev ruff check .` | Exit 0 — `All checks passed!` |
+| `uv run --locked --extra dev mypy --strict chinescan` | Exit 0 — `Success: no issues found in 79 source files` |
+| `uv run --locked --extra dev pytest tests/unit/test_chain_trace.py -q` | Exit 0 — `4 passed` |
+| `npm run typecheck` (from `frontend/`) | Exit 0 |
+| `npm test -- --run` (from `frontend/`) | Exit 0 — `9` files and `48` tests passed |
+| `uv run --locked --extra dev pytest --basetemp C:\ct -q` | Exit 1 — `426 passed, 1 failed, 5 deselected`; pre-existing timing-sensitive `test_each_scan_bound_marks_partial_with_skipped_counts[malware_per_file_seconds-files3]` returned `succeeded` instead of `partial`. The malware path was not changed. |
+
+No live provider was called during verification. An earlier pytest run also exposed a Windows `path_too_long` failure in the existing GitHub import test with pytest's deeply nested default temporary directory; the short `C:\ct` rerun cleared that failure.
+
+Final current-tree rerun after the chain hardening edits:
+
+| Command | Result |
+| --- | --- |
+| `uv run --locked --extra dev pytest --basetemp C:\ct -q` | Exit 0 — `427 passed, 5 deselected, 2 warnings in 170.05s`. |
+
+This successful short-temp rerun supersedes the prior timing-sensitive failure above. No live provider was called.

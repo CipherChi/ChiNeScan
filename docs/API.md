@@ -198,6 +198,10 @@ relationships.
 
 ## Session and transport limits
 
+## On-chain tracing API
+
+Authenticated operators can list `/api/chain/chains`, submit `/api/chain/jobs` with CSRF protection, poll `/api/chain/jobs` and `/api/chain/jobs/{job_id}`, and read `/api/chain/traces/{scan_id}/graph`. Graph exports are available as `graph-json`, `graphml`, `transfers-csv`, and `indicators`. Requests are offline-first; `allow_network=true` is accepted only when `CHINESCAN_CHAIN_NETWORK_ENABLED=true`. Local import text is capped at 2 MB. API keys are never returned. Findings describe leads, not proof.
+
 Sessions expire after 30 minutes and are held only in process memory. Logout revokes the current
 session; a process restart discards all sessions. Run one application worker. The included server
 uses plain HTTP with `Secure` cookies disabled. Setting `Secure` on an HTTP cookie would prevent
