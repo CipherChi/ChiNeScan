@@ -818,6 +818,21 @@ def test_labeled_counterparty_downgrades_fan_out_and_notes_why() -> None:
     assert "reduced weight" in labeled_finding.description
 
 
+def test_first_funder_skips_traced_seed_but_keeps_distinct_funder() -> None:
+    seed_fanout = [_edge("seed-1", "seed", "wallet-1"), _edge("seed-2", "seed", "wallet-2")]
+    assert "first_funder" not in {
+        lead.rule_id for lead in detect(seed_fanout, {}, seed="seed")
+    }
+
+    external_funding = [
+        _edge("external-1", "upstream", "wallet-1"),
+        _edge("external-2", "upstream", "wallet-2"),
+    ]
+    assert "first_funder" in {
+        lead.rule_id for lead in detect(external_funding, {}, seed="seed")
+    }
+
+
 def test_heuristic_description_caps_supporting_hashes_at_ten() -> None:
     transactions = tuple(f"tx-{index}" for index in range(12))
     finding = finding_for_lead(
@@ -855,6 +870,42 @@ def test_chain_share_summary_truncates_addresses_and_omits_tx_hashes() -> None:
     assert "0xaaaa...aaaa" in summary
     assert tx_hash not in summary
     assert "transaction reference omitted" in summary
+
+
+def test_full_chain_reports_keep_identifiers_but_redact_sentinel_key() -> None:
+    from datetime import UTC, datetime
+
+    from chinescan.core.models.investigation import Scan
+
+    address = "0x" + "a" * 40
+    tx_hash = "0x" + "b" * 64
+    sentinel = "REPORT_SECRET_SENTINEL"
+    finding = finding_for_lead(
+        TraceParams(chain="ethereum", seed=address),
+        Lead("fan_out", address, (tx_hash,), f"3 counterparties from {address} (threshold >= 3)"),
+    )
+    finding = finding.model_copy(
+        update={"description": finding.description + f" Diagnostic api_key={sentinel}."}
+    )
+    scan = Scan(
+        scan_id="chain-full-report-test",
+        target_id="chain-full-report-target",
+        scanner="chain_trace",
+        started_at=datetime.now(UTC),
+        project_types=["chain", "ethereum"],
+    )
+
+    for output_format in ("json", "markdown", "html", "csv"):
+        report = render_report(scan, [finding], output_format)
+        assert address in report
+        assert tx_hash in report
+        assert sentinel not in report
+
+    summary = render_report(scan, [finding], "share-summary")
+    assert address not in summary
+    assert tx_hash not in summary
+    assert sentinel not in summary
+    assert "0xaaaa...aaaa" in summary
 
 
 def test_service_persists_audit_and_running_scan_before_provider_call(repository, caplog) -> None:

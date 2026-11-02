@@ -49,7 +49,9 @@ def _lead(
     return Lead(rule_id, address, transactions, detail, _context(labels, chain, counterparties))
 
 
-def detect(edges: list[Transfer], labels: dict[tuple[str, str], Label]) -> list[Lead]:
+def detect(
+    edges: list[Transfer], labels: dict[tuple[str, str], Label], *, seed: str | None = None
+) -> list[Lead]:
     leads: list[Lead] = []
     outgoing: dict[str, list[Transfer]] = defaultdict(list)
     incoming: dict[str, list[Transfer]] = defaultdict(list)
@@ -112,7 +114,7 @@ def detect(edges: list[Transfer], labels: dict[tuple[str, str], Label]) -> list[
             funder_wallets[edge.sender].append(edge)
     for funder, transfers in funder_wallets.items():
         wallets = list(dict.fromkeys(edge.receiver for edge in transfers))
-        if len(wallets) >= 2:
+        if len(wallets) >= 2 and funder.lower() != (seed or "").lower():
             leads.append(
                 _lead(
                     "first_funder",

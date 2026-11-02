@@ -63,7 +63,10 @@ class ChainTraceService:
         except Exception:
             nodes, edges, gap_codes = [params.seed], [], ["provider_failure"]
         findings = []
-        findings = [finding_for_lead(params, lead) for lead in detect(edges, self.labels)]
+        findings = [
+            finding_for_lead(params, lead)
+            for lead in detect(edges, self.labels, seed=params.seed)
+        ]
         gap_reasons: dict[str, list[str]] = defaultdict(list)
         for gap in gap_codes:
             code, separator, detail = gap.partition(":")

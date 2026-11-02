@@ -7,7 +7,7 @@ import io
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from chinescan import __version__
 from chinescan.core.cases import CaseWorkflow
@@ -22,6 +22,50 @@ from chinescan.malware_analysis.managed import safe_display_name
 
 class ReportingError(ValueError):
     """Requested scan data is missing or malformed."""
+
+
+_CHAIN_HEX_IDENTIFIER = re.compile(
+    r"(?i)(?<![A-Za-z0-9])0x(?:[0-9a-f]{40}|[0-9a-f]{64})(?![A-Za-z0-9])"
+)
+
+
+def _redact_finding(finding: Finding, *, chain_scan: bool) -> dict[str, Any]:
+    payload = finding.model_dump(mode="json")
+    if not chain_scan:
+        return cast(dict[str, Any], redact(payload))
+
+    protected: dict[str, str] = {}
+    marker_prefix = "CHAINHEXPLACEHOLDER"
+
+    def shield(value: Any) -> Any:
+        if isinstance(value, str):
+            def replace(match: re.Match[str]) -> str:
+                marker = f"{marker_prefix}{len(protected)}"
+                protected[marker] = match.group(0)
+                return marker
+
+            return _CHAIN_HEX_IDENTIFIER.sub(replace, value)
+        if isinstance(value, list):
+            return [shield(item) for item in value]
+        if isinstance(value, dict):
+            return {key: shield(item) for key, item in value.items()}
+        return value
+
+    safe = redact(shield(payload))
+
+    def restore(value: Any) -> Any:
+        if isinstance(value, str):
+            for marker, identifier in protected.items():
+                value = value.replace(marker, identifier)
+            return value
+        if isinstance(value, list):
+            return [restore(item) for item in value]
+        if isinstance(value, dict):
+            return {key: restore(item) for key, item in value.items()}
+        return value
+
+    restored = restore(safe)
+    return cast(dict[str, Any], restored) if isinstance(restored, dict) else {}
 
 
 def scan_data(repository: Repository, scan_id: str) -> tuple[Scan, list[Finding]]:
@@ -45,7 +89,8 @@ def render_report(scan: Scan, findings: list[Finding], output_format: str) -> st
     """Render one scan using JSON, Markdown, HTML, CSV, or SARIF 2.1.0."""
     if output_format not in {"json", "markdown", "html", "csv", "sarif", "share-summary"}:
         raise ReportingError("Unsupported report format.")
-    safe_findings = [redact(item.model_dump(mode="json")) for item in findings]
+    chain_scan = "chain" in scan.project_types or scan.scanner == "chain_trace"
+    safe_findings = [_redact_finding(item, chain_scan=chain_scan) for item in findings]
     caveat = VERDICT_CAVEAT.get(scan.verdict) if scan.verdict is not None else None
     if output_format == "share-summary":
         return _share_summary(scan, findings, caveat)
