@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import ipaddress
+import queue
 import socket
+import threading
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import SplitResult, urlsplit
@@ -18,6 +20,30 @@ class EndpointPolicyError(ValueError):
 
 
 Resolver = Callable[..., Any]
+_DNS_SLOTS = threading.BoundedSemaphore(4)
+
+
+def _resolve_with_timeout(resolver: Resolver, host: str, port: int, timeout_seconds: float) -> Any:
+    if not _DNS_SLOTS.acquire(timeout=timeout_seconds):
+        raise EndpointPolicyError("endpoint_dns_timeout")
+    result_queue: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
+
+    def resolve() -> None:
+        try:
+            result_queue.put((True, resolver(host, port, type=socket.SOCK_STREAM)))
+        except BaseException as exc:
+            result_queue.put((False, exc))
+        finally:
+            _DNS_SLOTS.release()
+
+    threading.Thread(target=resolve, daemon=True, name="chinescan-chain-dns").start()
+    try:
+        succeeded, result = result_queue.get(timeout=timeout_seconds)
+    except queue.Empty as exc:
+        raise EndpointPolicyError("endpoint_dns_timeout") from exc
+    if not succeeded:
+        raise result
+    return result
 
 
 def resolve_endpoint(
@@ -27,6 +53,7 @@ def resolve_endpoint(
     allow_nonstandard_port: bool = False,
     expected_host: str | None = None,
     resolver: Resolver = socket.getaddrinfo,
+    resolve_timeout_seconds: float = 2.0,
 ) -> tuple[SplitResult, tuple[str, ...]]:
     """Validate HTTPS, host policy, and every DNS answer before opening a socket."""
     try:
@@ -48,7 +75,7 @@ def resolve_endpoint(
         try:
             addresses = [ipaddress.ip_address(host)]
         except ValueError:
-            rows = resolver(host, port, type=socket.SOCK_STREAM)
+            rows = _resolve_with_timeout(resolver, host, port, resolve_timeout_seconds)
             addresses = [ipaddress.ip_address(str(row[4][0])) for row in rows]
         if not addresses or any(
             not address.is_global
@@ -71,6 +98,7 @@ def validate_endpoint(
     allow_nonstandard_port: bool = False,
     expected_host: str | None = None,
     resolver: Resolver = socket.getaddrinfo,
+    resolve_timeout_seconds: float = 2.0,
 ) -> SplitResult:
     return resolve_endpoint(
         endpoint,
@@ -78,4 +106,5 @@ def validate_endpoint(
         allow_nonstandard_port=allow_nonstandard_port,
         expected_host=expected_host,
         resolver=resolver,
+        resolve_timeout_seconds=resolve_timeout_seconds,
     )[0]

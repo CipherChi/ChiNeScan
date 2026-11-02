@@ -39,6 +39,13 @@ def _mapped_resolver(_host, _port, *, type):
     return [(AF_INET, type, 6, "", ("::ffff:8.8.8.8", 443))]
 
 
+def _slow_resolver(_host, _port, *, type):
+    import time
+
+    time.sleep(0.1)
+    return _public_resolver(_host, _port, type=type)
+
+
 def test_offline_csv_import_and_bad_row_gap() -> None:
     provider = OfflineProvider(
         "hash,from,to,value\ntx1,0xabc,0xdef,1\ntx2,0xabc,0xghi,NaN", "ethereum"
@@ -217,6 +224,12 @@ def test_endpoint_policy_rechecks_public_dns_and_allowlist() -> None:
         ).hostname
         == "api.etherscan.io"
     )
+    with pytest.raises(EndpointPolicyError, match="endpoint_dns_timeout"):
+        validate_endpoint(
+            "https://provider.example/api",
+            resolver=_slow_resolver,
+            resolve_timeout_seconds=0.01,
+        )
 
 
 def test_evm_provider_redirect_policy_and_secrets_stay_inside_request_layer() -> None:

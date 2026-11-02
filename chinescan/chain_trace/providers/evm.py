@@ -77,11 +77,13 @@ class _ValidatedHTTPSHandler(HTTPSHandler):
         allowed_hosts: tuple[str, ...],
         allow_nonstandard_port: bool,
         resolver: Resolver = socket.getaddrinfo,
+        resolve_timeout_seconds: float = 2,
     ) -> None:
         super().__init__()
         self.allowed_hosts = allowed_hosts
         self.allow_nonstandard_port = allow_nonstandard_port
         self.resolver = resolver
+        self.resolve_timeout_seconds = resolve_timeout_seconds
 
     def https_open(self, req: Request) -> Any:
         _parsed, addresses = resolve_endpoint(
@@ -89,6 +91,7 @@ class _ValidatedHTTPSHandler(HTTPSHandler):
             allowed_hosts=self.allowed_hosts,
             allow_nonstandard_port=self.allow_nonstandard_port,
             resolver=self.resolver,
+            resolve_timeout_seconds=self.resolve_timeout_seconds,
         )
 
         def connection(host: str, **kwargs: Any) -> HTTPSConnection:
@@ -104,6 +107,7 @@ class _SameHostHTTPSRedirectHandler(HTTPRedirectHandler):
         *,
         allow_nonstandard_port: bool,
         resolver: Resolver = socket.getaddrinfo,
+        resolve_timeout_seconds: float = 2,
     ) -> None:
         super().__init__()
         parsed = urlsplit(endpoint)
@@ -112,6 +116,7 @@ class _SameHostHTTPSRedirectHandler(HTTPRedirectHandler):
         self.allow_nonstandard_port = allow_nonstandard_port
         self.redirect_count = 0
         self.resolver = resolver
+        self.resolve_timeout_seconds = resolve_timeout_seconds
 
     def redirect_request(
         self,
@@ -129,6 +134,7 @@ class _SameHostHTTPSRedirectHandler(HTTPRedirectHandler):
             allow_nonstandard_port=self.allow_nonstandard_port,
             expected_host=self.host,
             resolver=self.resolver,
+            resolve_timeout_seconds=self.resolve_timeout_seconds,
         )
         if (parsed.port or 443) != self.port:
             raise EndpointPolicyError("redirect_rejected")
@@ -163,6 +169,7 @@ def stdlib_http_get(
         allowed_hosts=allowed_hosts,
         allow_nonstandard_port=allow_nonstandard_port,
         resolver=resolver,
+        resolve_timeout_seconds=min(2, timeout_seconds),
     )
     if not allowed_hosts:
         raise EndpointPolicyError("endpoint_host_not_allowed")
@@ -172,7 +179,10 @@ def stdlib_http_get(
     query = "&".join(part for part in (parsed.query, urlencode(request_params)) if part)
     request_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, query, parsed.fragment))
     redirect_handler = _SameHostHTTPSRedirectHandler(
-        request_url, allow_nonstandard_port=allow_nonstandard_port
+        request_url,
+        allow_nonstandard_port=allow_nonstandard_port,
+        resolver=resolver,
+        resolve_timeout_seconds=min(2, timeout_seconds),
     )
     request = Request(request_url, headers={"Accept": "application/json"})
     opener = build_opener(
@@ -181,6 +191,7 @@ def stdlib_http_get(
             allowed_hosts=allowed_hosts,
             allow_nonstandard_port=allow_nonstandard_port,
             resolver=resolver,
+            resolve_timeout_seconds=min(2, timeout_seconds),
         ),
         redirect_handler,
     )
