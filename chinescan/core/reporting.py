@@ -6,8 +6,9 @@ import html
 import io
 import json
 import re
+import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from chinescan import __version__
 from chinescan.core.cases import CaseWorkflow
@@ -22,6 +23,56 @@ from chinescan.malware_analysis.managed import safe_display_name
 
 class ReportingError(ValueError):
     """Requested scan data is missing or malformed."""
+
+
+_CHAIN_HEX_IDENTIFIER = re.compile(
+    r"(?i)(?<![A-Za-z0-9])0x(?:[0-9a-f]{40}|[0-9a-f]{64})(?![A-Za-z0-9])"
+)
+
+
+def _redact_finding(finding: Finding, *, chain_scan: bool) -> dict[str, Any]:
+    payload = finding.model_dump(mode="json")
+    if not chain_scan:
+        return cast(dict[str, Any], redact(payload))
+
+    protected: dict[str, str] = {}
+    marker_prefix = f"<CHAINHEX:{uuid.uuid4().hex}:"
+    while marker_prefix in str(payload):
+        marker_prefix = f"<CHAINHEX:{uuid.uuid4().hex}:"
+
+    def shield(value: Any) -> Any:
+        if isinstance(value, str):
+
+            def replace(match: re.Match[str]) -> str:
+                marker = f"{marker_prefix}{len(protected):08d}>"
+                protected[marker] = match.group(0)
+                return marker
+
+            return _CHAIN_HEX_IDENTIFIER.sub(replace, value)
+        if isinstance(value, list):
+            return [shield(item) for item in value]
+        if isinstance(value, dict):
+            return {key: shield(item) for key, item in value.items()}
+        return value
+
+    safe = redact(shield(payload))
+
+    marker_pattern = re.compile(re.escape(marker_prefix) + r"(\d{8})>")
+
+    def restore(value: Any) -> Any:
+        if isinstance(value, str):
+            return marker_pattern.sub(
+                lambda match: protected.get(f"{marker_prefix}{match.group(1)}>", match.group(0)),
+                value,
+            )
+        if isinstance(value, list):
+            return [restore(item) for item in value]
+        if isinstance(value, dict):
+            return {key: restore(item) for key, item in value.items()}
+        return value
+
+    restored = restore(safe)
+    return cast(dict[str, Any], restored) if isinstance(restored, dict) else {}
 
 
 def scan_data(repository: Repository, scan_id: str) -> tuple[Scan, list[Finding]]:
@@ -45,7 +96,8 @@ def render_report(scan: Scan, findings: list[Finding], output_format: str) -> st
     """Render one scan using JSON, Markdown, HTML, CSV, or SARIF 2.1.0."""
     if output_format not in {"json", "markdown", "html", "csv", "sarif", "share-summary"}:
         raise ReportingError("Unsupported report format.")
-    safe_findings = [redact(item.model_dump(mode="json")) for item in findings]
+    chain_scan = "chain" in scan.project_types or scan.scanner == "chain_trace"
+    safe_findings = [_redact_finding(item, chain_scan=chain_scan) for item in findings]
     caveat = VERDICT_CAVEAT.get(scan.verdict) if scan.verdict is not None else None
     if output_format == "share-summary":
         return _share_summary(scan, findings, caveat)
@@ -726,6 +778,24 @@ def _share_summary(scan: Scan, findings: list[Finding], caveat: str | None) -> s
     ]
     for finding in findings[:10]:
         title = share_text(finding.title)
+        location = relative_location(finding.location)
+        if "chain" in scan.project_types or scan.scanner == "chain_trace":
+            title = re.sub(
+                r"(?i)0x[a-f0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}",
+                lambda m: m.group(0)[:6] + "..." + m.group(0)[-4:],
+                finding.title,
+            )
+            title = re.sub(r"(?i)0x[a-f0-9]{64}", "transaction hash omitted", title)
+            title = share_text(title)
+            if not (finding.location or "").startswith("chain:"):
+                location = "transaction reference omitted"
+            else:
+                raw_location = re.sub(
+                    r"(?i)(0x[a-f0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})",
+                    lambda m: m.group(0)[:6] + "..." + m.group(0)[-4:],
+                    finding.location or "",
+                )
+                location = relative_location(raw_location)
         if any(
             indicator_id in title
             for indicator_id in (item for item in finding.tags if item.startswith("indicator:"))
@@ -733,7 +803,7 @@ def _share_summary(scan: Scan, findings: list[Finding], caveat: str | None) -> s
             title = "Indicator reference"
         lines.append(
             f"- {title} — {finding.evidence.value if finding.evidence else 'unspecified'} — "
-            f"{relative_location(finding.location)}"
+            f"{location}"
         )
     if not findings:
         lines.append("- No leads recorded.")

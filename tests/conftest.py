@@ -22,6 +22,14 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    basetemp = config.option.basetemp
+    if basetemp is not None:
+        repository_root = Path(__file__).resolve().parents[1]
+        resolved_basetemp = Path(basetemp).resolve()
+        if resolved_basetemp == repository_root or repository_root in resolved_basetemp.parents:
+            raise pytest.UsageError(
+                "--basetemp must resolve outside the repository; use the OS temp directory"
+            )
     config.addinivalue_line(
         "markers", "real_scanner: opt-in integration tests that execute real scanner binaries"
     )

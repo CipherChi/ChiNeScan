@@ -18,6 +18,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from chinescan import __version__
+from chinescan.chain_trace.registry import CHAINS
 from chinescan.core.accounts import operator_status
 from chinescan.core.config.io import load_settings
 from chinescan.core.config.settings import Settings, default_config_path
@@ -437,6 +438,25 @@ def build_report(
             else "",
         )
     )
+    chain_key_env = next(
+        (chain.api_key_env for chain in CHAINS.values() if chain.family == "evm"), ""
+    )
+    chain_key_configured = bool(chain_key_env and os.getenv(chain_key_env))
+    chain_warn = loaded.chain_network_enabled and not chain_key_configured
+    checks.append(
+        _check(
+            "chain-trace",
+            "On-chain tracing",
+            "WARN" if chain_warn else "PASS",
+            "enabled="
+            + str(loaded.chain_network_enabled).lower()
+            + "; provider_key_configured="
+            + str(chain_key_configured).lower(),
+            "Set the configured provider key environment variable to enable network traces."
+            if chain_warn
+            else "",
+        )
+    )
     report: dict[str, Any] = {
         "status": "ok",
         "app_name": "ChineScan",
@@ -455,6 +475,8 @@ def build_report(
         "deny_list_tiers": deny_counts,
         "storage_size_bucket": size_bucket,
         "github_import_enabled": loaded.github_import_enabled,
+        "chain_network_enabled": loaded.chain_network_enabled,
+        "chain_provider_key_configured": chain_key_configured,
         "github_import_git_available": git_available,
         "github_import_path_budget": "at-risk" if github_path_at_risk else "ok",
         "scan_bounds": {
@@ -467,7 +489,12 @@ def build_report(
         "counts": counts,
         "recent_errors": _safe_error_summaries(errors or []),
         "checks": checks,
-        "optional_network_features": ["pip-audit", "npm audit", "domain posture checks"],
+        "optional_network_features": [
+            "pip-audit",
+            "npm audit",
+            "domain posture checks",
+            "on-chain tracing",
+        ],
     }
     states = {item["state"] for item in checks}
     report["status"] = "failed" if "FAIL" in states else "degraded" if "WARN" in states else "ok"

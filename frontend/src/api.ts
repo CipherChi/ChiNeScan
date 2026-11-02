@@ -1,4 +1,4 @@
-import type { CaseData, CaseSummary, CodeJob, CodeProject, Finding, Overview, Page, Scan, LogSource, LogSourceRegistryStatus, LogJob, LogAlert, LogEvent, LogTimeline, MalwareAnalysis, MalwareCapability, MalwareJob, MalwareSample, ProjectDetail, ProjectSummary, ProjectLogLocation, ProjectLogSuggestion, ProjectLogJob, ProjectMalwareJob, MalwareHostHint, FsDirectory, FsPage, GitHubImportCapabilities, GitHubImportPreview, GitHubImportJob } from './types';
+import type { CaseData, CaseSummary, CodeJob, CodeProject, Finding, Overview, Page, Scan, LogSource, LogSourceRegistryStatus, LogJob, LogAlert, LogEvent, LogTimeline, MalwareAnalysis, MalwareCapability, MalwareJob, MalwareSample, ProjectDetail, ProjectSummary, ProjectLogLocation, ProjectLogSuggestion, ProjectLogJob, ProjectMalwareJob, MalwareHostHint, FsDirectory, FsPage, GitHubImportCapabilities, GitHubImportPreview, GitHubImportJob, ChainInfo, ChainJob, ChainGraph } from './types';
 
 let csrfToken = '';
 export function setCsrfToken(token: string) { csrfToken = token; }
@@ -29,6 +29,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export class UnauthorizedError extends Error {}
 export class ApiError extends Error { constructor(message: string, readonly code?: string) { super(message); } }
 export const api = {
+  chainChains: () => request<ChainInfo[]>('/api/chain/chains'),
+  chainStart: (body: { address: string; chain: string; depth: number; min_amount: string; allow_network: boolean; import_text?: string; import_format?: 'csv'|'json' }) => request<ChainJob>('/api/chain/jobs', { method: 'POST', body: JSON.stringify(body) }),
+  chainJobs: () => request<Page<ChainJob>>('/api/chain/jobs?limit=50&offset=0'),
+  chainJob: (id: string) => request<ChainJob>(`/api/chain/jobs/${encodeURIComponent(id)}`),
+  chainGraph: (id: string) => request<ChainGraph>(`/api/chain/traces/${encodeURIComponent(id)}/graph`),
+  chainExportUrl: (id: string, fmt: string) => `/api/chain/traces/${encodeURIComponent(id)}/export/${encodeURIComponent(fmt)}`,
   session: () => request<{ authenticated: boolean; email_masked: string | null; signup_available: boolean }>('/api/auth/session'),
   csrf: () => request<{ csrf_token: string }>('/api/auth/csrf'),
   login: (email: string, password: string) => request<{ email: string; csrf_token: string }>('/api/auth/login', {

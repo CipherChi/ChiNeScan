@@ -11,6 +11,7 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
@@ -23,6 +24,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.middleware.base import RequestResponseEndpoint
 
+from chinescan.chain_trace.export import export_graph
+from chinescan.chain_trace.registry import load_registry, normalize_address
 from chinescan.core.cases import (
     CaseNotFoundError,
     CaseRecordNotFoundError,
@@ -73,6 +76,7 @@ from chinescan.web.auth import (
     reset_operator_password,
     verify_operator,
 )
+from chinescan.web.chain_trace_jobs import ChainTraceJobManager
 from chinescan.web.code_jobs import CodeJobManager, ProjectConfigurationError, ProjectRegistry
 from chinescan.web.log_jobs import LogJobManager, LogSourceError, LogSourceRegistry
 from chinescan.web.malware_jobs import MalwareDashboardManager
@@ -561,6 +565,7 @@ def create_app(
             job_deadline_seconds=active_settings.job_deadline_seconds,
         ),
     )
+    chain_jobs = ChainTraceJobManager(repository, active_settings)
     project_throttle = LoginThrottle(limit=20, window_seconds=60)
     fs_browse_throttle = LoginThrottle(limit=60, window_seconds=60)
     malware_config = (
@@ -595,6 +600,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_application: FastAPI) -> AsyncIterator[None]:
         jobs.start()
+        chain_jobs.start()
         log_jobs.start()
         project_malware_jobs.start()
         github_imports.start_worker()
@@ -609,6 +615,7 @@ def create_app(
             project_malware_jobs.stop()
             github_imports.stop_worker()
             jobs.stop()
+            chain_jobs.stop()
         repository.close()
 
     application = FastAPI(
@@ -616,6 +623,7 @@ def create_app(
     )
     application.state.repository = repository
     application.state.project_registry = registry
+    application.state.chain_job_manager = chain_jobs
     application.state.project_service = project_service
     application.state.log_location_service = log_location_service
     application.state.log_source_registry = log_registry
@@ -698,7 +706,8 @@ def create_app(
         content_length = request.headers.get("content-length")
         if content_length:
             try:
-                if int(content_length) > 8192:
+                maximum_body = 2_100_000 if request.url.path == "/api/chain/jobs" else 8192
+                if int(content_length) > maximum_body:
                     result = Response("Request body is too large.", status_code=413)
                     result.headers["X-Request-ID"] = request_id
                     return result
@@ -2096,9 +2105,172 @@ def create_app(
         def reset_password_page() -> FileResponse:
             return FileResponse(FRONTEND_DIST / "index.html")
 
+    @application.post("/api/chain/jobs", status_code=202)
+    async def start_chain_job(
+        request: Request,
+        _session: Session = Depends(require_csrf),  # noqa: B008
+    ) -> dict[str, Any]:  # noqa: B008
+        try:
+            body = await request.json()
+            if len(json.dumps(body).encode()) > 2_000_000:
+                raise HTTPException(
+                    413, detail={"code": "import_too_large", "message": "Import text exceeds 2 MB."}
+                )
+            chain = str(body["chain"]).lower()
+            selected_chain = load_registry().get(chain)
+            if selected_chain is None:
+                raise HTTPException(
+                    422, detail={"code": "unknown_chain", "message": "Unknown chain."}
+                )
+            try:
+                normalize_address(selected_chain, str(body["address"]))
+            except ValueError:
+                raise HTTPException(
+                    422,
+                    detail={
+                        "code": "invalid_address",
+                        "message": "Wallet address is invalid for the selected chain.",
+                    },
+                ) from None
+            try:
+                depth = int(body.get("depth", 3))
+                if not 1 <= depth <= 6:
+                    raise ValueError
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    422,
+                    detail={"code": "invalid_depth", "message": "Depth must be between 1 and 6."},
+                ) from None
+            try:
+                minimum = Decimal(str(body.get("min_amount", "0")))
+                if not minimum.is_finite() or minimum < 0:
+                    raise ValueError
+            except (InvalidOperation, TypeError, ValueError):
+                raise HTTPException(
+                    422,
+                    detail={
+                        "code": "invalid_min_amount",
+                        "message": "Minimum amount must be a non-negative decimal.",
+                    },
+                ) from None
+            if body.get("allow_network") and not active_settings.chain_network_enabled:
+                raise HTTPException(
+                    403,
+                    detail={
+                        "code": "chain_network_disabled",
+                        "message": "Network chain lookups are disabled by server settings.",
+                    },
+                )
+            if not body.get("import_text") and not body.get("allow_network"):
+                raise HTTPException(
+                    422,
+                    detail={
+                        "code": "offline_import_required",
+                        "message": "Provide an explorer export or explicitly allow network lookup.",
+                    },
+                )
+            job = chain_jobs.submit(
+                {
+                    "address": str(body["address"]),
+                    "chain": chain,
+                    "depth": depth,
+                    "min_amount": str(minimum),
+                    "allow_network": bool(body.get("allow_network")),
+                    "import_text": body.get("import_text"),
+                    "import_format": body.get("import_format", "csv"),
+                }
+            )
+            return _safe_chain_job(job)
+        except HTTPException:
+            raise
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(
+                422,
+                detail={"code": "invalid_chain_request", "message": "Invalid chain job request."},
+            ) from None
+        except OverflowError:
+            raise HTTPException(
+                429, detail={"code": "chain_queue_full", "message": "Chain job queue is full."}
+            ) from None
+
+    @application.get("/api/chain/jobs")
+    def list_chain_jobs(
+        limit: int = 50,
+        offset: int = 0,
+        _session: Session = Depends(current_session),  # noqa: B008
+    ) -> dict[str, Any]:  # noqa: B008
+        items, total = chain_jobs.list(max(1, min(100, limit)), max(0, offset))
+        return {
+            "items": [_safe_chain_job(item) for item in items],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    @application.get("/api/chain/jobs/{job_id}")
+    def get_chain_job(
+        job_id: str,
+        _session: Session = Depends(current_session),  # noqa: B008
+    ) -> dict[str, Any]:
+        item = chain_jobs.get(job_id)
+        if item is None:
+            raise HTTPException(404, detail="Chain job not found.")
+        return _safe_chain_job(item)
+
+    @application.get("/api/chain/chains")
+    def list_chains(
+        _session: Session = Depends(current_session),  # noqa: B008
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": item.name,
+                "family": item.family,
+                "native_asset": item.native_asset,
+                "credential_configured": bool(
+                    item.api_key_env and __import__("os").getenv(item.api_key_env)
+                ),
+            }
+            for item in load_registry().values()
+        ]
+
+    @application.get("/api/chain/traces/{scan_id}/graph")
+    def chain_graph(
+        scan_id: str,
+        _session: Session = Depends(current_session),  # noqa: B008
+    ) -> dict[str, Any]:
+        graph = repository.get("chain_graph", scan_id)
+        if graph is None:
+            raise HTTPException(404, detail="Chain graph not found.")
+        return graph
+
+    @application.get("/api/chain/traces/{scan_id}/export/{fmt}")
+    def chain_export(
+        scan_id: str,
+        fmt: str,
+        _session: Session = Depends(current_session),  # noqa: B008
+    ) -> Response:  # noqa: B008
+        graph = repository.get("chain_graph", scan_id)
+        if graph is None:
+            raise HTTPException(404, detail="Chain graph not found.")
+        if fmt not in {"graph-json", "graphml", "transfers-csv", "indicators"}:
+            raise HTTPException(404, detail="Unknown export format.")
+        media = (
+            "application/json"
+            if fmt in {"graph-json", "indicators"}
+            else "text/csv"
+            if fmt == "transfers-csv"
+            else "application/graphml+xml"
+        )
+        return Response(export_graph(graph, fmt), media_type=media)
+
+    if serve_frontend and FRONTEND_DIST.is_dir():
         application.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
 
     return application
+
+
+def _safe_chain_job(raw: dict[str, Any]) -> dict[str, Any]:
+    return {key: raw.get(key) for key in ("job_id", "status", "created_at", "scan_id", "error")}
 
 
 def _safe_project_malware_job(raw: dict[str, Any]) -> dict[str, Any]:

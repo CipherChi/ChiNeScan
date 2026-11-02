@@ -167,6 +167,10 @@ Use ChineScan only on assets and data you own or are explicitly authorized to as
 
 Malware analysis is static triage: samples are not executed or uploaded. It is not an OS sandbox. The dashboard is local and authenticated; do not expose it publicly. Matches are leads, not proof; no matches do not prove safety. Coverage gaps and scanner failures limit what a scan can say. ChineScan does not provide protection, threat removal, or complete detection coverage.
 
+## On-chain tracing
+
+Wallet tracing is offline-first and accepts local explorer CSV/JSON exports. Network lookups require explicit per-run opt-in and, in the dashboard, server-side enablement. Behavioral patterns and address labels are leads for investigation, not proof of ownership or identity. No private keys or signing operations are used.
+
 ## Development and tests
 
 Install development dependencies and run the local checks:
