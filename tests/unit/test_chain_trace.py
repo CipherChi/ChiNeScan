@@ -2,7 +2,10 @@ import json
 import ssl
 from decimal import Decimal
 from http.client import HTTPMessage
+from io import BytesIO
 from socket import AF_INET
+from urllib.error import HTTPError
+from urllib.parse import parse_qs
 from urllib.request import Request
 
 import pytest
@@ -412,7 +415,6 @@ def test_stdlib_adapter_caps_body_and_rejects_non_json(monkeypatch) -> None:
             allowed_hosts=("provider.example",),
             resolver=_public_resolver,
         )
-
     monkeypatch.setattr(
         evm_module,
         "build_opener",
@@ -425,6 +427,160 @@ def test_stdlib_adapter_caps_body_and_rejects_non_json(monkeypatch) -> None:
             allowed_hosts=("provider.example",),
             resolver=_public_resolver,
         )
+
+
+def test_stdlib_adapter_keeps_api_key_out_of_request_url(monkeypatch) -> None:
+    import chinescan.chain_trace.providers.evm as evm_module
+
+    class Headers(dict):
+        def get_content_type(self):
+            return self.get("Content-Type", "").split(";", 1)[0]
+
+    class Response:
+        status = 200
+        headers = Headers({"Content-Type": "application/json"})
+        fp = None
+
+        def __init__(self) -> None:
+            self.consumed = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read1(self, _size: int) -> bytes:
+            if self.consumed:
+                return b""
+            self.consumed = True
+            return b"{}"
+
+        read = read1
+
+    class Opener:
+        def open(self, request, timeout):
+            assert timeout > 0
+            assert request.get_method() == "POST"
+            assert "SECRET_CANARY" not in request.full_url
+            assert request.full_url == "https://provider.example/api"
+            body = parse_qs(request.data.decode("ascii"))
+            assert body["apikey"] == ["SECRET_CANARY"]
+            assert body["module"] == ["account"]
+            return Response()
+
+    monkeypatch.setattr(evm_module, "build_opener", lambda *_handlers: Opener())
+    response = evm_module.stdlib_http_get(
+        "https://provider.example/api",
+        params={"module": "account", "action": "txlist"},
+        api_key="SECRET_CANARY",
+        allowed_hosts=("provider.example",),
+        resolver=_public_resolver,
+    )
+
+    assert response.json() == {}
+
+
+def _stub_https_responses(monkeypatch, responses: list[bytes]):
+    import chinescan.chain_trace.providers.evm as evm_module
+
+    requests: list[bytes] = []
+    connections: list[object] = []
+
+    class FakeSocket:
+        def __init__(self, response: bytes) -> None:
+            self.response = response
+
+        def sendall(self, data: bytes) -> None:
+            requests.append(data)
+
+        def makefile(self, *_args, **_kwargs):
+            return BytesIO(self.response)
+
+        def settimeout(self, _timeout: float) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
+    def connect(connection) -> None:
+        index = len(connections)
+        connections.append(object())
+        connection.sock = FakeSocket(responses[index])
+
+    monkeypatch.setattr(evm_module._PinnedHTTPSConnection, "connect", connect)
+    return requests, connections
+
+
+def test_stdlib_adapter_refuses_cross_host_redirect_without_key_leak(monkeypatch) -> None:
+    import chinescan.chain_trace.providers.evm as evm_module
+
+    requests, connections = _stub_https_responses(
+        monkeypatch,
+        [
+            b"HTTP/1.1 307 Temporary Redirect\r\n"
+            b"Location: https://attacker.example/collect\r\n"
+            b"Content-Length: 0\r\nConnection: close\r\n\r\n"
+        ],
+    )
+    canary = "REDIRECT_SECRET_CANARY"
+    with pytest.raises(EndpointPolicyError) as exc_info:
+        evm_module.stdlib_http_get(
+            "https://api.etherscan.io/api",
+            params={"module": "account"},
+            api_key=canary,
+            allowed_hosts=("api.etherscan.io",),
+            resolver=_public_resolver,
+        )
+
+    assert exc_info.value.code == "redirect_rejected"
+    assert canary not in str(exc_info.value)
+    assert canary not in repr(exc_info.value)
+    assert len(connections) == 1
+    request_lines = [
+        request.split(b"\r\n", 1)[0]
+        for request in requests
+        if request.startswith((b"POST ", b"GET "))
+    ]
+    assert len(request_lines) == 1  # no connection was made for the redirect host
+    assert b"attacker.example" not in b"\r\n".join(request_lines)
+    assert all(canary.encode() not in line for line in request_lines)
+
+
+def test_stdlib_adapter_same_host_redirect_keeps_key_out_of_urls(monkeypatch) -> None:
+    import chinescan.chain_trace.providers.evm as evm_module
+
+    requests, connections = _stub_https_responses(
+        monkeypatch,
+        [
+            b"HTTP/1.1 307 Temporary Redirect\r\n"
+            b"Location: https://api.etherscan.io/v2/api\r\n"
+            b"Content-Length: 0\r\nConnection: close\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+            b"Content-Length: 2\r\nConnection: close\r\n\r\n{}",
+        ],
+    )
+    canary = "SAME_HOST_SECRET_CANARY"
+    with pytest.raises(HTTPError) as exc_info:
+        evm_module.stdlib_http_get(
+            "https://api.etherscan.io/api",
+            params={"module": "account"},
+            api_key=canary,
+            allowed_hosts=("api.etherscan.io",),
+            resolver=_public_resolver,
+        )
+
+    assert exc_info.value.code == 307
+    assert canary not in str(exc_info.value)
+    assert canary not in repr(exc_info.value)
+    assert len(connections) == 1
+    request_lines = [
+        request.split(b"\r\n", 1)[0]
+        for request in requests
+        if request.startswith((b"POST ", b"GET "))
+    ]
+    assert len(request_lines) == 1  # urllib refuses a 307 redirect for POST
+    assert all(canary.encode() not in line for line in request_lines)
 
 
 def test_tracer_non_evm_provider_gap() -> None:

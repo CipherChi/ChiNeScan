@@ -9,7 +9,7 @@ from decimal import Decimal, InvalidOperation
 from http.client import HTTPMessage, HTTPSConnection
 from typing import Any
 from urllib.error import HTTPError
-from urllib.parse import quote, quote_plus, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, quote_plus, urlencode, urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, ProxyHandler, Request, build_opener
 
 from chinescan.chain_trace.endpoint_policy import (
@@ -176,16 +176,26 @@ def stdlib_http_get(
         raise EndpointPolicyError("endpoint_host_not_allowed")
     request_params = dict(params)
     if api_key:
+        request_params.update(parse_qsl(parsed.query, keep_blank_values=True))
         request_params["apikey"] = api_key
-    query = "&".join(part for part in (parsed.query, urlencode(request_params)) if part)
-    request_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, query, parsed.fragment))
+        request_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+        request = Request(
+            request_url,
+            data=urlencode(request_params).encode("ascii"),
+            headers={"Accept": "application/json"},
+        )
+    else:
+        query = "&".join(part for part in (parsed.query, urlencode(request_params)) if part)
+        request_url = urlunsplit(
+            (parsed.scheme, parsed.netloc, parsed.path, query, parsed.fragment)
+        )
+        request = Request(request_url, headers={"Accept": "application/json"})
     redirect_handler = _SameHostHTTPSRedirectHandler(
         request_url,
         allow_nonstandard_port=allow_nonstandard_port,
         resolver=resolver,
         resolve_timeout_seconds=min(2, timeout_seconds),
     )
-    request = Request(request_url, headers={"Accept": "application/json"})
     opener = build_opener(
         ProxyHandler({}),
         _ValidatedHTTPSHandler(
