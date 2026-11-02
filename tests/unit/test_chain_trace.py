@@ -424,6 +424,13 @@ def test_endpoint_resolver_timeout_keeps_worker_count_bounded() -> None:
         release.wait(timeout=2)
         return _public_resolver(_host, _port, type=type)
 
+    startup_deadline = time.monotonic() + 2
+    while time.monotonic() < startup_deadline and any(
+        thread.name == "chinescan-chain-dns" for thread in threading.enumerate()
+    ):
+        time.sleep(0.01)
+    assert not any(thread.name == "chinescan-chain-dns" for thread in threading.enumerate())
+
     try:
         for _ in range(4):
             with pytest.raises(EndpointPolicyError, match="endpoint_dns_timeout"):
