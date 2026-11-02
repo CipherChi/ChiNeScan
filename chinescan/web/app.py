@@ -11,6 +11,7 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
@@ -24,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.middleware.base import RequestResponseEndpoint
 
 from chinescan.chain_trace.export import export_graph
-from chinescan.chain_trace.registry import load_registry
+from chinescan.chain_trace.registry import load_registry, normalize_address
 from chinescan.core.cases import (
     CaseNotFoundError,
     CaseRecordNotFoundError,
@@ -2116,10 +2117,42 @@ def create_app(
                     413, detail={"code": "import_too_large", "message": "Import text exceeds 2 MB."}
                 )
             chain = str(body["chain"]).lower()
-            if chain not in load_registry():
+            selected_chain = load_registry().get(chain)
+            if selected_chain is None:
                 raise HTTPException(
                     422, detail={"code": "unknown_chain", "message": "Unknown chain."}
                 )
+            try:
+                normalize_address(selected_chain, str(body["address"]))
+            except ValueError:
+                raise HTTPException(
+                    422,
+                    detail={
+                        "code": "invalid_address",
+                        "message": "Wallet address is invalid for the selected chain.",
+                    },
+                ) from None
+            try:
+                depth = int(body.get("depth", 3))
+                if not 1 <= depth <= 6:
+                    raise ValueError
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    422,
+                    detail={"code": "invalid_depth", "message": "Depth must be between 1 and 6."},
+                ) from None
+            try:
+                minimum = Decimal(str(body.get("min_amount", "0")))
+                if not minimum.is_finite() or minimum < 0:
+                    raise ValueError
+            except (InvalidOperation, TypeError, ValueError):
+                raise HTTPException(
+                    422,
+                    detail={
+                        "code": "invalid_min_amount",
+                        "message": "Minimum amount must be a non-negative decimal.",
+                    },
+                ) from None
             if body.get("allow_network") and not active_settings.chain_network_enabled:
                 raise HTTPException(
                     403,
@@ -2140,8 +2173,8 @@ def create_app(
                 {
                     "address": str(body["address"]),
                     "chain": chain,
-                    "depth": max(1, min(6, int(body.get("depth", 3)))),
-                    "min_amount": str(body.get("min_amount", "0")),
+                    "depth": depth,
+                    "min_amount": str(minimum),
                     "allow_network": bool(body.get("allow_network")),
                     "import_text": body.get("import_text"),
                     "import_format": body.get("import_format", "csv"),

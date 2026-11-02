@@ -77,7 +77,7 @@ class ChainTraceJobManager:
                     return
                 job_id = self.queue.popleft()
             job = self.get(job_id)
-            if job is None:
+            if job is None or job.get("status") != "queued":
                 continue
             try:
                 job["status"] = "running"
@@ -93,6 +93,10 @@ class ChainTraceJobManager:
                         os.getenv(chain.api_key_env, ""),
                         stdlib_http_get,
                         chain.name,
+                        allowed_hosts=chain.host_allowlist,
+                        allow_nonstandard_port=chain.allow_nonstandard_port,
+                        deadline_seconds=self.settings.chain_trace_deadline_seconds,
+                        max_requests=self.settings.chain_trace_max_requests,
                     )
                 else:
                     provider = _UnsupportedProvider()
@@ -108,10 +112,21 @@ class ChainTraceJobManager:
                         seed=address,
                         depth=job["depth"],
                         min_amount=job["min_amount"],
+                        node_limit=self.settings.chain_trace_max_addresses,
                     ),
                     authorization=job["allow_network"],
                 )
-                job.update(status="succeeded", scan_id=scan.scan_id)
+                provider_failed = bool(
+                    scan.coverage
+                    and any(gap.code == "provider_failure" for gap in scan.coverage.gaps)
+                )
+                job.update(
+                    status="failed" if provider_failed else "succeeded",
+                    scan_id=scan.scan_id,
+                    error="The chain provider failed; see scan coverage."
+                    if provider_failed
+                    else None,
+                )
             except Exception:
                 job.update(
                     status="failed",
