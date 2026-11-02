@@ -2,9 +2,10 @@ export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
 export type Verdict = 'leads_found' | 'no_matches_with_gaps' | 'no_matches_in_scope' | 'scan_failed';
 export type EvidenceKind = 'confirmed_artifact' | 'pattern_match' | 'reference_only' | 'context_only';
 export type ChainJob = { job_id: string; status: 'queued'|'running'|'succeeded'|'failed'|'interrupted'; created_at: string; scan_id: string|null; error: string|null };
-export type ChainNode = { address: string; depth: number; category?: string };
+export type ChainLabel = { address: string; chain: string; category: string; name: string; source: string; date: string };
+export type ChainNode = { address: string; depth: number; category?: string; label?: ChainLabel };
 export type ChainEdge = { chain: string; tx_hash: string; block_time: number; sender: string|null; receiver: string; asset: string; amount: string; kind: string };
-export type ChainGraph = { scan_id: string; chain: string; nodes: ChainNode[]; edges: ChainEdge[] };
+export type ChainGraph = { scan_id: string; chain: string; nodes: ChainNode[]; edges: ChainEdge[]; findings?: Array<{ finding_id: string; title: string; rule_id: string; location: string|null; evidence: EvidenceKind|null; confidence: string }> };
 export type ChainInfo = { name: string; family: string; native_asset: string; credential_configured: boolean };
 export type Scan = {
   scan_id: string;

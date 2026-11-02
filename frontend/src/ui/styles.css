@@ -16,3 +16,10 @@
 
 .chain-graph { width: 100%; max-height: 70vh; overflow: auto; font: 12px monospace; }
 .chain-graph text { fill: currentColor; }
+.chain-graph-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 360px); gap: 1rem; align-items: start; }
+.chain-graph-scroll { overflow: auto; max-height: 70vh; }
+.chain-node-panel { border: 1px solid var(--border, #344); border-radius: 10px; padding: 1rem; max-height: 70vh; overflow: auto; background: var(--panel, #151b25); }
+.chain-node-panel:focus { outline: 2px solid var(--accent, #51a58b); outline-offset: 2px; }
+.chain-node-panel ul { padding-left: 1.2rem; }
+.chain-node-panel li { margin: .5rem 0; overflow-wrap: anywhere; }
+@media (max-width: 900px) { .chain-graph-layout { grid-template-columns: 1fr; } }
