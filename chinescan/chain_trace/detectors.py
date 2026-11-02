@@ -21,8 +21,7 @@ def _context(labels: dict[tuple[str, str], Label], chain: str, addresses: list[s
     for address in dict.fromkeys(addresses):
         label = labels.get((chain, address.lower()))
         if label and (
-            label.category in {"exchange", "bridge", "router"}
-            or "router" in label.name.casefold()
+            label.category in {"exchange", "bridge", "router"} or "router" in label.name.casefold()
         ):
             notes.append(
                 f"{label.category} label '{label.name}' from {label.source} dated {label.date}"

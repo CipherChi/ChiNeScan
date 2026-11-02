@@ -32,6 +32,8 @@ from chinescan.core.logging.redaction import redact
 
 MAX_RESPONSE_BYTES = 2_000_000
 REQUEST_TIMEOUT_SECONDS = 15
+
+
 def _api_key_variants(api_key: str) -> set[str]:
     if not api_key:
         return set()
@@ -46,7 +48,7 @@ def _api_key_variants(api_key: str) -> set[str]:
         }
         if not expanded:
             break
-        expanded = set(sorted(expanded, key=len, reverse=True)[:256 - len(variants)])
+        expanded = set(sorted(expanded, key=len, reverse=True)[: 256 - len(variants)])
         if not expanded:
             break
         variants.update(expanded)
@@ -331,10 +333,7 @@ class EvmProvider:
                         continue
                     return None, "provider_unavailable"
                 content_type = str(getattr(response, "content_type", "")).casefold()
-                if (
-                    content_type != "application/json"
-                    and not content_type.endswith("+json")
-                ):
+                if content_type != "application/json" and not content_type.endswith("+json"):
                     return None, "unexpected_content_type"
                 try:
                     body = response.json()

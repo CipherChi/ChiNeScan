@@ -82,8 +82,7 @@ class ChainTraceService:
         gap_codes.extend(self.label_gaps)
         findings = []
         findings = [
-            finding_for_lead(params, lead)
-            for lead in detect(edges, self.labels, seed=params.seed)
+            finding_for_lead(params, lead) for lead in detect(edges, self.labels, seed=params.seed)
         ]
         gap_reasons: dict[str, list[str]] = defaultdict(list)
         for gap in gap_codes:
@@ -188,8 +187,7 @@ def finding_for_lead(params: TraceParams, lead: Lead) -> Finding:
         )
     severity = (
         Severity.LOW
-        if lead.rule_id
-        in {"fan_out", "fan_in", "first_funder", "peel_chain", "rapid_pass_through"}
+        if lead.rule_id in {"fan_out", "fan_in", "first_funder", "peel_chain", "rapid_pass_through"}
         else Severity.HIGH
         if lead.rule_id == "sanctioned_exposure"
         else Severity.MEDIUM

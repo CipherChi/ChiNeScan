@@ -137,7 +137,8 @@ def resolve_endpoint(
             or address.is_multicast
             or address.is_unspecified
             or address.is_reserved
-            or isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None
+            or isinstance(address, ipaddress.IPv6Address)
+            and address.ipv4_mapped is not None
             for address in addresses
         ):
             raise EndpointPolicyError("endpoint_non_public_address")

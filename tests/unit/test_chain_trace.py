@@ -321,7 +321,9 @@ def test_endpoint_policy_rejects_unsafe_urls(endpoint: str) -> None:
 )
 def test_endpoint_policy_rejects_non_public_literal_addresses(literal: str) -> None:
     with pytest.raises(EndpointPolicyError, match="endpoint_non_public_address"):
-        validate_endpoint(f"https://[{literal}]/api" if ":" in literal else f"https://{literal}/api")
+        validate_endpoint(
+            f"https://[{literal}]/api" if ":" in literal else f"https://{literal}/api"
+        )
 
 
 def test_endpoint_policy_rechecks_public_dns_and_allowlist() -> None:
@@ -431,9 +433,7 @@ def test_endpoint_resolver_timeout_keeps_worker_count_bounded() -> None:
                     resolve_timeout_seconds=0.01,
                 )
         workers = [
-            thread
-            for thread in threading.enumerate()
-            if thread.name == "chinescan-chain-dns"
+            thread for thread in threading.enumerate() if thread.name == "chinescan-chain-dns"
         ]
         assert entered == 4
         assert len(workers) <= 4
@@ -1006,17 +1006,13 @@ def test_labeled_counterparty_downgrades_fan_out_and_notes_why() -> None:
 
 def test_first_funder_skips_traced_seed_but_keeps_distinct_funder() -> None:
     seed_fanout = [_edge("seed-1", "seed", "wallet-1"), _edge("seed-2", "seed", "wallet-2")]
-    assert "first_funder" not in {
-        lead.rule_id for lead in detect(seed_fanout, {}, seed="seed")
-    }
+    assert "first_funder" not in {lead.rule_id for lead in detect(seed_fanout, {}, seed="seed")}
 
     external_funding = [
         _edge("external-1", "upstream", "wallet-1"),
         _edge("external-2", "upstream", "wallet-2"),
     ]
-    assert "first_funder" in {
-        lead.rule_id for lead in detect(external_funding, {}, seed="seed")
-    }
+    assert "first_funder" in {lead.rule_id for lead in detect(external_funding, {}, seed="seed")}
 
 
 def test_finding_locations_use_wallet_for_heuristics_and_exact_hash_for_tx_leads() -> None:
@@ -1397,6 +1393,7 @@ def test_chain_cli_label_file_loads_provenance_and_downgrades_only_labeled_lead(
 
     from chinescan.chain_trace.labels import load_labels
     from chinescan.cli.app import app as cli_app
+
     seed = "0x" + "a" * 40
     exchange = "0x" + "b" * 40
     other_one = "0x" + "c" * 40
@@ -1511,9 +1508,7 @@ def test_chain_cli_label_file_loads_provenance_and_downgrades_only_labeled_lead(
     assert label_gaps == ["label_row_invalid"] * 3
     invalid_scan, _ = run("invalid-labels", invalid_file)
     assert invalid_scan["status"] == "partial"
-    assert any(
-        gap["code"] == "label_row_invalid" for gap in invalid_scan["coverage"]["gaps"]
-    )
+    assert any(gap["code"] == "label_row_invalid" for gap in invalid_scan["coverage"]["gaps"])
 
 
 def test_chain_web_fake_provider_job_graph_and_exports(tmp_path, monkeypatch) -> None:

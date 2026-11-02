@@ -68,9 +68,7 @@ def trace_command(
     repository = SQLiteRepository(settings.database_path)
     try:
         try:
-            scan, findings = ChainTraceService(
-                provider, labels, repository, label_gaps
-            ).trace(
+            scan, findings = ChainTraceService(provider, labels, repository, label_gaps).trace(
                 TraceParams(
                     chain=selected.name,
                     seed=address,
