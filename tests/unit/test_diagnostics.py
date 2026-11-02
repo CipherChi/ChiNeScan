@@ -376,6 +376,49 @@ def test_doctor_warns_when_enabled_github_import_path_budget_is_at_risk(
     assert str(tmp_path) not in json.dumps(report)
 
 
+def test_chain_trace_diagnostics_report_only_key_presence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(diagnostics.socket, "create_connection", _port_is_free)
+    monkeypatch.setattr(diagnostics, "_tool_version", lambda *_args: "fixture-version")
+    monkeypatch.setattr(diagnostics, "_npm_dependency_issues", lambda *_args: [])
+    monkeypatch.delenv("CHINESCAN_ETHERSCAN_KEY", raising=False)
+    settings = Settings(
+        _env_file=None,
+        database_path=tmp_path / "records.sqlite3",
+        chain_network_enabled=False,
+    )
+    offline = build_report(
+        settings=settings,
+        credential_path=tmp_path / "operator.json",
+        frontend_dist=tmp_path / "frontend-dist",
+    )
+    offline_check = next(item for item in offline["checks"] if item["id"] == "chain-trace")
+    assert offline["chain_network_enabled"] is False
+    assert offline["chain_provider_key_configured"] is False
+    assert offline_check["state"] == "PASS"
+    assert offline_check["detail"] == "enabled=false; provider_key_configured=false"
+    monkeypatch.setenv("CHINESCAN_ETHERSCAN_KEY", "DIAGNOSTIC_KEY_CANARY")
+    enabled = build_report(
+        settings=settings.model_copy(update={"chain_network_enabled": True}),
+        credential_path=tmp_path / "operator.json",
+        frontend_dist=tmp_path / "frontend-dist",
+    )
+    enabled_check = next(item for item in enabled["checks"] if item["id"] == "chain-trace")
+    assert enabled["chain_network_enabled"] is True
+    assert enabled["chain_provider_key_configured"] is True
+    assert enabled_check["state"] == "PASS"
+    assert "DIAGNOSTIC_KEY_CANARY" not in json.dumps(enabled)
+    monkeypatch.delenv("CHINESCAN_ETHERSCAN_KEY")
+    warning = build_report(
+        settings=settings.model_copy(update={"chain_network_enabled": True}),
+        credential_path=tmp_path / "operator.json",
+        frontend_dist=tmp_path / "frontend-dist",
+    )
+    warning_check = next(item for item in warning["checks"] if item["id"] == "chain-trace")
+    assert warning_check["state"] == "WARN"
+
+
 def test_ready_degraded_for_invalid_allowed_root_and_missing_optional_storage(
     tmp_path: Path, monkeypatch
 ) -> None:
