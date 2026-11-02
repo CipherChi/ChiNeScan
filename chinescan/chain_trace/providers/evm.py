@@ -9,7 +9,15 @@ from decimal import Decimal, InvalidOperation
 from http.client import HTTPMessage, HTTPSConnection
 from typing import Any
 from urllib.error import HTTPError
-from urllib.parse import parse_qsl, quote, quote_plus, urlencode, urlsplit, urlunsplit
+from urllib.parse import (
+    parse_qsl,
+    quote,
+    quote_plus,
+    unquote,
+    unquote_plus,
+    urlencode,
+    urlunsplit,
+)
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, ProxyHandler, Request, build_opener
 
 from chinescan.chain_trace.endpoint_policy import (
@@ -24,26 +32,40 @@ from chinescan.core.logging.redaction import redact
 
 MAX_RESPONSE_BYTES = 2_000_000
 REQUEST_TIMEOUT_SECONDS = 15
-MAX_REDIRECTS = 2
+def _api_key_variants(api_key: str) -> set[str]:
+    if not api_key:
+        return set()
+    variants = {api_key}
+    frontier = {api_key}
+    for _ in range(4):
+        expanded = {
+            candidate
+            for value in frontier
+            for candidate in (quote(value), quote_plus(value), unquote(value), unquote_plus(value))
+            if candidate and candidate not in variants
+        }
+        if not expanded:
+            break
+        expanded = set(sorted(expanded, key=len, reverse=True)[:256 - len(variants)])
+        if not expanded:
+            break
+        variants.update(expanded)
+        frontier = expanded
+    return variants
 
 
 def _contains_api_key(value: object, api_key: str) -> bool:
     if not api_key:
         return False
     text = str(value)
-    return any(
-        candidate in text
-        for candidate in {api_key, quote(api_key), quote_plus(api_key)}
-        if candidate
-    )
+    return any(candidate in text for candidate in _api_key_variants(api_key))
 
 
 def _safe_provider_reason(value: object, api_key: str) -> str:
     reason = str(redact(str(value)))
     if api_key:
-        for candidate in {api_key, quote(api_key), quote_plus(api_key)}:
-            if candidate:
-                reason = reason.replace(candidate, "[REDACTED]")
+        for candidate in sorted(_api_key_variants(api_key), key=len, reverse=True):
+            reason = reason.replace(candidate, "[REDACTED]")
     return " ".join(reason.split())[:120] or "Provider returned an error."
 
 
@@ -121,13 +143,9 @@ class _SameHostHTTPSRedirectHandler(HTTPRedirectHandler):
         resolve_timeout_seconds: float = 2,
     ) -> None:
         super().__init__()
-        parsed = urlsplit(endpoint)
-        self.host = (parsed.hostname or "").lower().rstrip(".")
-        self.port = parsed.port or 443
-        self.allow_nonstandard_port = allow_nonstandard_port
-        self.redirect_count = 0
-        self.resolver = resolver
-        self.resolve_timeout_seconds = resolve_timeout_seconds
+        # Keep the former constructor parameters to avoid breaking injected clients;
+        # redirects are refused without resolving or disclosing their destination.
+        del endpoint, allow_nonstandard_port, resolver, resolve_timeout_seconds
 
     def redirect_request(
         self,
@@ -138,19 +156,9 @@ class _SameHostHTTPSRedirectHandler(HTTPRedirectHandler):
         headers: HTTPMessage,
         newurl: str,
     ) -> Request | None:
-        if self.redirect_count >= MAX_REDIRECTS:
-            raise EndpointPolicyError("redirect_limit")
-        parsed = validate_endpoint(
-            newurl,
-            allow_nonstandard_port=self.allow_nonstandard_port,
-            expected_host=self.host,
-            resolver=self.resolver,
-            resolve_timeout_seconds=self.resolve_timeout_seconds,
-        )
-        if (parsed.port or 443) != self.port:
-            raise EndpointPolicyError("redirect_rejected")
-        self.redirect_count += 1
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        # Refuse every redirect: even a same-host 307/308 can forward the API-key
+        # POST body to an unintended path on the provider host.
+        raise EndpointPolicyError("redirect_rejected")
 
 
 class _JsonResponse:
@@ -175,6 +183,7 @@ def stdlib_http_get(
     resolver: Resolver = socket.getaddrinfo,
 ) -> _JsonResponse:
     """Minimal live HTTP adapter; called only after explicit network authorization."""
+    timeout_seconds = min(REQUEST_TIMEOUT_SECONDS, max(0.1, timeout_seconds))
     parsed = validate_endpoint(
         url,
         allowed_hosts=allowed_hosts,
@@ -271,12 +280,12 @@ class EvmProvider:
         self.chain = chain
         self.chain_id = chain_id
         self.retries = max(0, min(5, retries))
-        self.throttle_seconds = max(0.0, throttle_seconds)
+        self.throttle_seconds = min(5.0, max(0.0, throttle_seconds))
         self.sleep = sleep
         self.allowed_hosts = allowed_hosts
         self.allow_nonstandard_port = allow_nonstandard_port
-        self.deadline_seconds = max(0.0, deadline_seconds)
-        self.max_requests = max(1, max_requests)
+        self.deadline_seconds = min(600.0, max(0.0, deadline_seconds))
+        self.max_requests = min(10_000, max(1, max_requests))
         self.clock = clock
         self.started_at = clock()
         self.requests_made = 0
@@ -323,8 +332,7 @@ class EvmProvider:
                     return None, "provider_unavailable"
                 content_type = str(getattr(response, "content_type", "")).casefold()
                 if (
-                    content_type
-                    and content_type != "application/json"
+                    content_type != "application/json"
                     and not content_type.endswith("+json")
                 ):
                     return None, "unexpected_content_type"

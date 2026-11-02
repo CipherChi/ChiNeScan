@@ -22,6 +22,8 @@ def load_labels(paths: list[Path]) -> tuple[dict[tuple[str, str], Label], list[s
             for row in rows:
                 try:
                     label = Label(**row)
+                    if not label.source.strip() or not label.date.strip():
+                        raise ValueError("label provenance is required")
                     labels[(label.chain, label.address.lower())] = label
                 except Exception:
                     gaps.append("label_row_invalid")

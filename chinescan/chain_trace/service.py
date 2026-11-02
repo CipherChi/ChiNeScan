@@ -36,9 +36,14 @@ _EVM_ADDRESS = re.compile(r"0x[a-fA-F0-9]{40}\Z")
 
 class ChainTraceService:
     def __init__(
-        self, provider: ChainProvider, labels: dict[tuple[str, str], Label], repository: Repository
+        self,
+        provider: ChainProvider,
+        labels: dict[tuple[str, str], Label],
+        repository: Repository,
+        label_gaps: tuple[str, ...] | list[str] = (),
     ) -> None:
         self.provider, self.labels, self.repository = provider, labels, repository
+        self.label_gaps = tuple(label_gaps)
 
     def trace(self, params: TraceParams, authorization: bool) -> tuple[Scan, list[Finding]]:
         is_offline = bool(getattr(self.provider, "offline", False))
@@ -74,6 +79,7 @@ class ChainTraceService:
             nodes, edges, gap_codes = trace(self.provider, params, self.labels)
         except Exception:
             nodes, edges, gap_codes = [params.seed], [], ["provider_failure"]
+        gap_codes.extend(self.label_gaps)
         findings = []
         findings = [
             finding_for_lead(params, lead)

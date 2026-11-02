@@ -6,6 +6,7 @@ import html
 import io
 import json
 import re
+import uuid
 from pathlib import Path
 from typing import Any, cast
 
@@ -35,12 +36,14 @@ def _redact_finding(finding: Finding, *, chain_scan: bool) -> dict[str, Any]:
         return cast(dict[str, Any], redact(payload))
 
     protected: dict[str, str] = {}
-    marker_prefix = "CHAINHEXPLACEHOLDER"
+    marker_prefix = f"<CHAINHEX:{uuid.uuid4().hex}:"
+    while marker_prefix in str(payload):
+        marker_prefix = f"<CHAINHEX:{uuid.uuid4().hex}:"
 
     def shield(value: Any) -> Any:
         if isinstance(value, str):
             def replace(match: re.Match[str]) -> str:
-                marker = f"{marker_prefix}{len(protected):08d}END"
+                marker = f"{marker_prefix}{len(protected):08d}>"
                 protected[marker] = match.group(0)
                 return marker
 
@@ -53,11 +56,14 @@ def _redact_finding(finding: Finding, *, chain_scan: bool) -> dict[str, Any]:
 
     safe = redact(shield(payload))
 
+    marker_pattern = re.compile(re.escape(marker_prefix) + r"(\d{8})>")
+
     def restore(value: Any) -> Any:
         if isinstance(value, str):
-            for marker, identifier in protected.items():
-                value = value.replace(marker, identifier)
-            return value
+            return marker_pattern.sub(
+                lambda match: protected.get(f"{marker_prefix}{match.group(1)}>", match.group(0)),
+                value,
+            )
         if isinstance(value, list):
             return [restore(item) for item in value]
         if isinstance(value, dict):

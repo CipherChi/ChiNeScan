@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import ipaddress
+import json
+import os
 import queue
 import socket
+import subprocess
+import sys
 import threading
 from collections.abc import Callable
 from typing import Any
@@ -21,9 +25,49 @@ class EndpointPolicyError(ValueError):
 
 Resolver = Callable[..., Any]
 _DNS_SLOTS = threading.BoundedSemaphore(4)
+_DNS_SCRIPT = (
+    "import json, socket, sys; "
+    "print(json.dumps(sorted({str(row[4][0]) for row in "
+    "socket.getaddrinfo(sys.argv[1], int(sys.argv[2]), type=socket.SOCK_STREAM)})))"
+)
 
 
-def _resolve_with_timeout(resolver: Resolver, host: str, port: int, timeout_seconds: float) -> Any:
+def _resolve_with_timeout(
+    resolver: Resolver, host: str, port: int, timeout_seconds: float
+) -> list[str]:
+    if resolver is socket.getaddrinfo:
+        if not _DNS_SLOTS.acquire(timeout=timeout_seconds):
+            raise EndpointPolicyError("endpoint_dns_timeout")
+        safe_env = {
+            key: os.environ[key]
+            for key in ("PATH", "SystemRoot", "WINDIR", "TEMP", "TMP")
+            if key in os.environ
+        }
+        try:
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-c", _DNS_SCRIPT, host, str(port)],
+                    capture_output=True,
+                    check=False,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    env=safe_env,
+                    text=True,
+                    timeout=timeout_seconds,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise EndpointPolicyError("endpoint_dns_timeout") from exc
+        finally:
+            _DNS_SLOTS.release()
+        if result.returncode != 0:
+            raise EndpointPolicyError("endpoint_dns_failed")
+        try:
+            addresses = json.loads(result.stdout)
+        except ValueError as exc:
+            raise EndpointPolicyError("endpoint_dns_failed") from exc
+        if not isinstance(addresses, list) or any(not isinstance(item, str) for item in addresses):
+            raise EndpointPolicyError("endpoint_dns_failed")
+        return addresses
+
     if not _DNS_SLOTS.acquire(timeout=timeout_seconds):
         raise EndpointPolicyError("endpoint_dns_timeout")
     result_queue: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
@@ -43,7 +87,10 @@ def _resolve_with_timeout(resolver: Resolver, host: str, port: int, timeout_seco
         raise EndpointPolicyError("endpoint_dns_timeout") from exc
     if not succeeded:
         raise result
-    return result
+    try:
+        return [str(row[4][0]) for row in result]
+    except (IndexError, TypeError) as exc:
+        raise EndpointPolicyError("endpoint_dns_failed") from exc
 
 
 def resolve_endpoint(
@@ -62,7 +109,12 @@ def resolve_endpoint(
         port = parsed.port or 443
     except ValueError as exc:
         raise EndpointPolicyError("endpoint_invalid") from exc
-    if parsed.scheme.lower() != "https" or not host or parsed.username or parsed.password:
+    if (
+        parsed.scheme.lower() != "https"
+        or not host
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
         raise EndpointPolicyError("endpoint_invalid")
     host = host.rstrip(".").lower()
     if port != 443 and not allow_nonstandard_port:
@@ -75,12 +127,17 @@ def resolve_endpoint(
         try:
             addresses = [ipaddress.ip_address(host)]
         except ValueError:
-            rows = _resolve_with_timeout(resolver, host, port, resolve_timeout_seconds)
-            addresses = [ipaddress.ip_address(str(row[4][0])) for row in rows]
+            resolved = _resolve_with_timeout(resolver, host, port, resolve_timeout_seconds)
+            addresses = [ipaddress.ip_address(item) for item in resolved]
         if not addresses or any(
             not address.is_global
-            or isinstance(address, ipaddress.IPv6Address)
-            and address.ipv4_mapped is not None
+            or address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_multicast
+            or address.is_unspecified
+            or address.is_reserved
+            or isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None
             for address in addresses
         ):
             raise EndpointPolicyError("endpoint_non_public_address")

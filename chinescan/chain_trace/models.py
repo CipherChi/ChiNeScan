@@ -28,8 +28,8 @@ class Label(FrozenModel):
     chain: str
     category: Literal["exchange", "mixer", "bridge", "router", "sanctioned", "scam", "other"]
     name: str
-    source: str
-    date: str
+    source: str = Field(min_length=1)
+    date: str = Field(min_length=1)
 
 
 class TraceParams(FrozenModel):

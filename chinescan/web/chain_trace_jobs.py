@@ -106,8 +106,10 @@ class ChainTraceJobManager:
                     if self.settings.chain_labels_path
                     else []
                 )
-                labels, _gaps = load_labels(label_paths)
-                scan, _findings = ChainTraceService(provider, labels, self.repository).trace(
+                labels, label_gaps = load_labels(label_paths)
+                scan, _findings = ChainTraceService(
+                    provider, labels, self.repository, label_gaps
+                ).trace(
                     TraceParams(
                         chain=chain.name,
                         seed=address,

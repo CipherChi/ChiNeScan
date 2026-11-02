@@ -13,7 +13,7 @@ from chinescan.chain_trace.providers.evm import EvmProvider, stdlib_http_get
 from chinescan.chain_trace.providers.offline import OfflineProvider
 from chinescan.chain_trace.registry import load_registry, normalize_address
 from chinescan.chain_trace.service import ChainTraceService
-from chinescan.core.config.settings import Settings
+from chinescan.cli.commands import _settings
 from chinescan.core.report_store import ReportStoreError, save_scan_reports
 from chinescan.core.storage.sqlite import SQLiteRepository
 
@@ -42,7 +42,7 @@ def trace_command(
         raise typer.BadParameter(str(exc)) from exc
     if not import_paths and not allow_network_chain:
         raise typer.BadParameter("provide --import or explicitly opt in with --allow-network-chain")
-    settings = Settings(_env_file=None)
+    settings = _settings()
     provider = (
         OfflineProvider(
             import_paths[0].read_text(encoding="utf-8"),
@@ -68,7 +68,9 @@ def trace_command(
     repository = SQLiteRepository(settings.database_path)
     try:
         try:
-            scan, findings = ChainTraceService(provider, labels, repository).trace(
+            scan, findings = ChainTraceService(
+                provider, labels, repository, label_gaps
+            ).trace(
                 TraceParams(
                     chain=selected.name,
                     seed=address,
@@ -81,10 +83,6 @@ def trace_command(
         except (ValueError, UnsupportedFamily) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(1) from exc
-        if label_gaps:
-            saved = repository.get("scan", scan.scan_id) or {}
-            saved["status"] = "partial"
-            repository.save("scan", scan.scan_id, saved)
         typer.echo(
             json.dumps(
                 {"scan_id": scan.scan_id, "verdict": scan.verdict, "findings": len(findings)},
@@ -117,7 +115,7 @@ def export_command(
     format: str = typer.Option(..., "--format"),
     output: Path = typer.Option(..., "--output"),  # noqa: B008
 ) -> None:
-    repository = SQLiteRepository(Settings(_env_file=None).database_path)
+    repository = SQLiteRepository(_settings().database_path)
     try:
         graph = repository.get("chain_graph", scan_id)
         if graph is None:
