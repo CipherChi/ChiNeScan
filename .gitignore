@@ -14,6 +14,11 @@ build/
 *.sqlite*
 .coverage
 htmlcov/
+/ct/
+/ct-chaintrace-final/
+/export.csv
+/g.graphml
+*.log
 .playwright-browsers/
 playwright-report/
 test-results/
