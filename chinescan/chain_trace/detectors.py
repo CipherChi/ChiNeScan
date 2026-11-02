@@ -2,6 +2,7 @@
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from decimal import Decimal
 
 from chinescan.chain_trace.models import Label, Transfer
 
@@ -30,7 +31,8 @@ def detect(edges: list[Transfer], labels: dict[tuple[str, str], Label]) -> list[
                     "cash_out",
                     edge.receiver,
                     (edge.tx_hash,),
-                    "Transfer to a locally labeled exchange",
+                    f"Transfer to locally labeled exchange {label.name} "
+                    f"from {label.source} dated {label.date}",
                 )
             )
         if label and label.category == "mixer":
@@ -39,7 +41,8 @@ def detect(edges: list[Transfer], labels: dict[tuple[str, str], Label]) -> list[
                     "mixer_exposure",
                     edge.receiver,
                     (edge.tx_hash,),
-                    "Transfer to a locally labeled mixer",
+                    f"Transfer to locally labeled mixer {label.name} "
+                    f"from {label.source} dated {label.date}",
                 )
             )
         if label and label.category == "sanctioned":
@@ -48,21 +51,22 @@ def detect(edges: list[Transfer], labels: dict[tuple[str, str], Label]) -> list[
                     "sanctioned_exposure",
                     edge.receiver,
                     (edge.tx_hash,),
-                    "Transfer to a locally listed sanctioned address",
+                    f"Transfer to locally listed sanctioned address {label.name} "
+                    f"from {label.source} dated {label.date}",
                 )
             )
-    parents: dict[str, list[str]] = defaultdict(list)
+    funder_wallets: dict[str, set[str]] = defaultdict(set)
     for edge in edges:
         if edge.sender:
-            parents[edge.receiver].append(edge.sender)
-    for wallet, funders in parents.items():
-        if len(set(funders)) > 1:
+            funder_wallets[edge.sender].add(edge.receiver)
+    for funder, wallets in funder_wallets.items():
+        if len(wallets) >= 2:
             leads.append(
                 Lead(
                     "first_funder",
-                    wallet,
-                    tuple(e.tx_hash for e in edges if e.receiver == wallet),
-                    "Shared-funder heuristic",
+                    funder,
+                    tuple(e.tx_hash for e in edges if e.sender == funder),
+                    "Shared first-funder heuristic",
                 )
             )
     by_sender: dict[str, list[Transfer]] = defaultdict(list)
@@ -94,25 +98,38 @@ def detect(edges: list[Transfer], labels: dict[tuple[str, str], Label]) -> list[
                         "Peel-chain heuristic",
                     )
                 )
-        if any(edge.kind == "approval" for edge in deposits) and outgoing_edges:
+    for approval in (edge for edge in edges if edge.kind == "approval" and edge.sender):
+        sweeps = [
+            edge
+            for edge in edges
+            if edge.sender == approval.sender
+            and edge.kind != "approval"
+            and edge.block_time > approval.block_time
+        ]
+        if sweeps:
+            sweep = min(sweeps, key=lambda edge: edge.block_time)
             leads.append(
                 Lead(
                     "drainer_pattern",
-                    wallet,
-                    (deposits[0].tx_hash, outgoing_edges[0].tx_hash),
-                    "Approval followed by sweep heuristic",
+                    approval.sender or "",
+                    (approval.tx_hash, sweep.tx_hash),
+                    "Approval to a spender followed by a sweep heuristic",
                 )
             )
-    shared_funder_wallets = {
-        wallet for wallet, funders in parents.items() if len(set(funders)) >= 2
-    }
-    if shared_funder_wallets:
-        leads.append(
-            Lead(
-                "first_funder",
-                next(iter(shared_funder_wallets)),
-                tuple(e.tx_hash for e in edges if e.receiver in shared_funder_wallets),
-                "Shared first-funder heuristic",
-            )
-        )
+    for edge in edges:
+        source = edge.sender or ""
+        target = edge.receiver
+        if edge.amount <= Decimal("0.00000001") and len(source) >= 8 and len(target) >= 8:
+            if (
+                source[:4].lower() == target[:4].lower()
+                or source[-4:].lower() == target[-4:].lower()
+            ):
+                leads.append(
+                    Lead(
+                        "address_poisoning",
+                        target,
+                        (edge.tx_hash,),
+                        "Dust transfer to a lookalike address heuristic",
+                    )
+                )
     return leads

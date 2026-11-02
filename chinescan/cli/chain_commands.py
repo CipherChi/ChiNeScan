@@ -42,6 +42,7 @@ def trace_command(
         raise typer.BadParameter(str(exc)) from exc
     if not import_paths and not allow_network_chain:
         raise typer.BadParameter("provide --import or explicitly opt in with --allow-network-chain")
+    settings = Settings(_env_file=None)
     provider = (
         OfflineProvider(
             import_paths[0].read_text(encoding="utf-8"),
@@ -54,17 +55,26 @@ def trace_command(
             os.getenv(selected.api_key_env, ""),
             stdlib_http_get,
             selected.name,
+            allowed_hosts=selected.host_allowlist,
+            allow_nonstandard_port=selected.allow_nonstandard_port,
+            deadline_seconds=settings.chain_trace_deadline_seconds,
+            max_requests=settings.chain_trace_max_requests,
         )
     )
     from chinescan.chain_trace.labels import load_labels
 
     labels, label_gaps = load_labels(label_paths)
-    settings = Settings(_env_file=None)
     repository = SQLiteRepository(settings.database_path)
     try:
         try:
             scan, findings = ChainTraceService(provider, labels, repository).trace(
-                TraceParams(chain=selected.name, seed=address, depth=depth, min_amount=min_amount),
+                TraceParams(
+                    chain=selected.name,
+                    seed=address,
+                    depth=depth,
+                    min_amount=min_amount,
+                    node_limit=settings.chain_trace_max_addresses,
+                ),
                 authorization=allow_network_chain,
             )
         except (ValueError, UnsupportedFamily) as exc:

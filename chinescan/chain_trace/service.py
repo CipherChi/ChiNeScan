@@ -4,7 +4,7 @@ import hashlib
 import uuid
 from datetime import UTC, datetime
 
-from chinescan.chain_trace.detectors import detect
+from chinescan.chain_trace.detectors import Lead, detect
 from chinescan.chain_trace.models import Label, TraceParams
 from chinescan.chain_trace.providers.base import ChainProvider
 from chinescan.chain_trace.tracer import trace
@@ -62,31 +62,7 @@ class ChainTraceService:
         except Exception:
             nodes, edges, gap_codes = [params.seed], [], ["provider_failure"]
         findings = []
-        for lead in detect(edges, self.labels):
-            txs = sorted(lead.transactions)
-            fp = hashlib.sha256(
-                f"{lead.rule_id}|{params.chain}|{'|'.join(txs)}".encode()
-            ).hexdigest()
-            findings.append(
-                Finding(
-                    title=f"{lead.rule_id}: {lead.detail}",
-                    description=(
-                        f"Heuristic lead ({lead.rule_id}); false positives may include exchanges, "
-                        "custodians, and CoinJoin activity. This is not proof of attribution."
-                    ),
-                    severity=Severity.MEDIUM,
-                    fingerprint=fp,
-                    category=FindingCategory.THREAT_INTEL,
-                    confidence=Confidence.LIKELY,
-                    evidence=EvidenceKind.PATTERN_MATCH,
-                    scanner="chain_trace",
-                    rule_id=lead.rule_id,
-                    location=f"chain:{params.chain}:{lead.address}"
-                    if lead.address
-                    else (txs[0] if txs else None),
-                    tags=["heuristic", "chain_trace"],
-                )
-            )
+        findings = [finding_for_lead(params, lead) for lead in detect(edges, self.labels)]
         gaps = [
             CoverageGap(code=code, reason=code.replace("_", " "), source="chain_trace")
             for code in gap_codes
@@ -108,7 +84,7 @@ class ChainTraceService:
             scanner="chain_trace",
             started_at=started,
             finished_at=datetime.now(UTC),
-            status="complete",
+            status="partial" if gap_codes else "complete",
             project_types=["chain", params.chain],
             finding_ids=[f.finding_id for f in findings],
             scan_options=scan.scan_options,
@@ -118,14 +94,79 @@ class ChainTraceService:
         self.repository.save("scan", scan_id, final.model_dump(mode="json"))
         for finding in findings:
             self.repository.save("finding", finding.finding_id, finding.model_dump(mode="json"))
+        depths = {params.seed: 0}
+        for _ in range(params.depth):
+            for edge in edges:
+                if edge.sender in depths:
+                    depths.setdefault(edge.receiver, depths[edge.sender] + 1)
+        graph_nodes = []
+        for address in nodes:
+            item: dict[str, object] = {
+                "address": address,
+                "depth": depths.get(address, params.depth),
+            }
+            label = self.labels.get((params.chain, address.lower()))
+            if label:
+                item["label"] = label.model_dump(mode="json")
+            graph_nodes.append(item)
         self.repository.save(
             "chain_graph",
             scan_id,
             {
                 "scan_id": scan_id,
                 "chain": params.chain,
-                "nodes": [{"address": n, "depth": 0} for n in nodes],
+                "nodes": graph_nodes,
                 "edges": [e.model_dump(mode="json") for e in edges],
+                "findings": [
+                    {
+                        "finding_id": f.finding_id,
+                        "title": f.title,
+                        "rule_id": f.rule_id,
+                        "location": f.location,
+                        "evidence": f.evidence.value if f.evidence else None,
+                        "confidence": f.confidence.value,
+                    }
+                    for f in findings
+                ],
             },
         )
         return final, findings
+
+
+def finding_for_lead(params: TraceParams, lead: Lead) -> Finding:
+    txs = sorted(lead.transactions)
+    fingerprint = hashlib.sha256(
+        f"{lead.rule_id}|{params.chain}|{'|'.join(txs)}".encode()
+    ).hexdigest()
+    if lead.rule_id in {"cash_out", "mixer_exposure", "sanctioned_exposure"}:
+        description = (
+            f"Label reference lead ({lead.rule_id}); {lead.detail}. "
+            "Labels may be stale or incorrect. False positives include exchange and "
+            "custodian labeling mistakes or CoinJoin context. This is not proof of attribution."
+        )
+    else:
+        description = (
+            f"Heuristic lead ({lead.rule_id}); false positives may include exchanges, "
+            "custodians, and CoinJoin activity. This is not proof of attribution."
+        )
+    return Finding(
+        title=f"{lead.rule_id}: {lead.detail}",
+        description=description,
+        severity=Severity.MEDIUM,
+        fingerprint=fingerprint,
+        category=FindingCategory.THREAT_INTEL,
+        confidence=Confidence.LIKELY,
+        evidence=(
+            EvidenceKind.CONFIRMED_ARTIFACT
+            if lead.rule_id == "sanctioned_exposure"
+            else EvidenceKind.REFERENCE_ONLY
+            if lead.rule_id in {"cash_out", "mixer_exposure"}
+            else EvidenceKind.PATTERN_MATCH
+        ),
+        scanner="chain_trace",
+        rule_id=lead.rule_id,
+        location=f"chain:{params.chain}:{lead.address}"
+        if lead.address
+        else (txs[0] if txs else None),
+        tags=["heuristic", "chain_trace"],
+    )
