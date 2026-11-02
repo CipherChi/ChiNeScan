@@ -1,4 +1,5 @@
 import json
+import ssl
 from decimal import Decimal
 from http.client import HTTPMessage
 from socket import AF_INET
@@ -13,6 +14,7 @@ from chinescan.chain_trace.models import Label, TraceParams, Transfer
 from chinescan.chain_trace.providers.evm import (
     EvmProvider,
     ProviderLimitError,
+    _PinnedHTTPSConnection,
     _SameHostHTTPSRedirectHandler,
     stdlib_http_get,
 )
@@ -599,6 +601,26 @@ def test_address_poisoning_requires_lookalike_dust_transfer() -> None:
     ordinary = _edge("normal", "0x11111111aaaa", "0xeeeeeeeeeeee", amount="1")
     assert "address_poisoning" in {lead.rule_id for lead in detect([lookalike], {})}
     assert "address_poisoning" not in {lead.rule_id for lead in detect([ordinary], {})}
+
+
+def test_pinned_https_connection_requires_tls_12_or_newer(monkeypatch) -> None:
+    class Context:
+        minimum_version = ssl.TLSVersion.MINIMUM_SUPPORTED
+
+        def wrap_socket(self, sock, *, server_hostname):
+            assert server_hostname == "api.example.test"
+            return sock
+
+    monkeypatch.setattr(
+        "chinescan.chain_trace.providers.evm.socket.create_connection", lambda *_args: object()
+    )
+    connection = _PinnedHTTPSConnection("api.example.test", addresses=("203.0.113.10",))
+    context = Context()
+    connection._context = context
+
+    connection.connect()
+
+    assert context.minimum_version == ssl.TLSVersion.TLSv1_2
 
 
 def test_chain_web_auth_csrf_validation_and_network_gate(tmp_path) -> None:

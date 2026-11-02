@@ -65,6 +65,7 @@ class _PinnedHTTPSConnection(HTTPSConnection):
                 last_error = exc
                 continue
             context = self._context or ssl.create_default_context()
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
             self.sock = context.wrap_socket(sock, server_hostname=self.host)
             return
         raise OSError("provider connection failed") from last_error
