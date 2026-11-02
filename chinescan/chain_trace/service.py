@@ -2,6 +2,7 @@
 
 import hashlib
 import uuid
+from collections import defaultdict
 from datetime import UTC, datetime
 
 from chinescan.chain_trace.detectors import Lead, detect
@@ -63,11 +64,21 @@ class ChainTraceService:
             nodes, edges, gap_codes = [params.seed], [], ["provider_failure"]
         findings = []
         findings = [finding_for_lead(params, lead) for lead in detect(edges, self.labels)]
-        gaps = []
+        gap_reasons: dict[str, list[str]] = defaultdict(list)
         for gap in gap_codes:
             code, separator, detail = gap.partition(":")
             reason = detail if code == "provider_error" and separator else code.replace("_", " ")
-            gaps.append(CoverageGap(code=code, reason=reason, source="chain_trace"))
+            gap_reasons[code].append(reason)
+        gaps = [
+            CoverageGap(
+                code=code,
+                reason=reasons[0],
+                count=len(reasons),
+                source="chain_trace",
+                example=f"chain-trace-{code.replace('_', '-')}",
+            )
+            for code, reasons in gap_reasons.items()
+        ]
         report = CoverageReport(
             examined={
                 "wallets": len(nodes),
@@ -135,28 +146,43 @@ class ChainTraceService:
 
 
 def finding_for_lead(params: TraceParams, lead: Lead) -> Finding:
-    txs = sorted(lead.transactions)
+    txs = sorted(set(lead.transactions))
     fingerprint = hashlib.sha256(
         f"{lead.rule_id}|{params.chain}|{'|'.join(txs)}".encode()
     ).hexdigest()
+    supporting = ", ".join(txs[:10]) or "none recorded"
     if lead.rule_id in {"cash_out", "mixer_exposure", "sanctioned_exposure"}:
         description = (
             f"Label reference lead ({lead.rule_id}); {lead.detail}. "
+            f"Supporting transaction hashes (up to 10): {supporting}. "
             "Labels may be stale or incorrect. False positives include exchange and "
             "custodian labeling mistakes or CoinJoin context. This is not proof of attribution."
         )
     else:
         description = (
-            f"Heuristic lead ({lead.rule_id}); false positives may include exchanges, "
+            f"Heuristic lead ({lead.rule_id}); trigger: {lead.detail}. "
+            f"Supporting transaction hashes (up to 10): {supporting}. {lead.context} "
+            "False positives may include exchanges, "
             "custodians, and CoinJoin activity. This is not proof of attribution."
         )
+    severity = (
+        Severity.LOW
+        if lead.rule_id
+        in {"fan_out", "fan_in", "first_funder", "peel_chain", "rapid_pass_through"}
+        else Severity.HIGH
+        if lead.rule_id == "sanctioned_exposure"
+        else Severity.MEDIUM
+    )
+    if lead.context and severity == Severity.MEDIUM:
+        severity = Severity.LOW
+    confidence = Confidence.POSSIBLE if lead.context else Confidence.LIKELY
     return Finding(
         title=f"{lead.rule_id}: {lead.detail}",
         description=description,
-        severity=Severity.MEDIUM,
+        severity=severity,
         fingerprint=fingerprint,
         category=FindingCategory.THREAT_INTEL,
-        confidence=Confidence.LIKELY,
+        confidence=confidence,
         evidence=(
             EvidenceKind.CONFIRMED_ARTIFACT
             if lead.rule_id == "sanctioned_exposure"

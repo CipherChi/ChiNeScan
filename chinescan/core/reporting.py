@@ -731,13 +731,19 @@ def _share_summary(scan: Scan, findings: list[Finding], caveat: str | None) -> s
             title = re.sub(
                 r"(?i)0x[a-f0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}",
                 lambda m: m.group(0)[:6] + "..." + m.group(0)[-4:],
-                title,
+                finding.title,
             )
-            location = re.sub(
-                r"(?i)(0x[a-f0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})",
-                lambda m: m.group(0)[:6] + "..." + m.group(0)[-4:],
-                location,
-            )
+            title = re.sub(r"(?i)0x[a-f0-9]{64}", "transaction hash omitted", title)
+            title = share_text(title)
+            if not (finding.location or "").startswith("chain:"):
+                location = "transaction reference omitted"
+            else:
+                raw_location = re.sub(
+                    r"(?i)(0x[a-f0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})",
+                    lambda m: m.group(0)[:6] + "..." + m.group(0)[-4:],
+                    finding.location or "",
+                )
+                location = relative_location(raw_location)
         if any(
             indicator_id in title
             for indicator_id in (item for item in finding.tags if item.startswith("indicator:"))

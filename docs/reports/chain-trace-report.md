@@ -6,6 +6,40 @@ The on-chain tracing implementation supports offline explorer imports, local pro
 labels, graph exports, investigative heuristic findings, and optional Etherscan-family lookup.
 Heuristic findings are leads, never proof of ownership or attribution.
 
+## Finding detail and report quality
+
+Repeated coverage gaps are grouped by code with an occurrence count and a representative chain-trace
+example. Heuristic descriptions report their trigger counts, time windows or thresholds, and up to ten
+supporting transaction hashes. Share summaries truncate wallet addresses and omit transaction
+references.
+
+Default lead severity is LOW for `fan_out`, `fan_in`, `first_funder`, `peel_chain`, and
+`rapid_pass_through`; MEDIUM for `address_poisoning`, `cash_out`, `mixer_exposure`, and
+`drainer_pattern`; and HIGH for `sanctioned_exposure`. Exchange, bridge, or router counterparty
+labels lower medium findings to LOW and confidence to POSSIBLE, with the label context stated in the
+description. A label only documents its local source and date; it does not establish identity or
+attribution. Heuristic false positives include exchanges, custodians, and CoinJoin activity.
+
+Example local label JSON (schema illustration only; it asserts no real attribution):
+
+```json
+{
+  "labels": [
+    {
+      "address": "<wallet-address>",
+      "chain": "ethereum",
+      "category": "exchange",
+      "name": "Example service",
+      "source": "operator sample",
+      "date": "2026-01-01"
+    }
+  ]
+}
+```
+
+`source` and `date` are required for every label. Supported categories include `exchange`, `bridge`,
+`router`, `mixer`, `sanctioned`, `scam`, and `other`.
+
 ## Network policy
 
 - Network access is disabled by default. CLI lookup requires `--allow-network-chain`; web lookup

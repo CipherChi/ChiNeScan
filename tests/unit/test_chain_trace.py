@@ -11,7 +11,7 @@ from urllib.request import Request
 import pytest
 from fastapi.testclient import TestClient
 
-from chinescan.chain_trace.detectors import detect
+from chinescan.chain_trace.detectors import Lead, detect
 from chinescan.chain_trace.endpoint_policy import EndpointPolicyError, validate_endpoint
 from chinescan.chain_trace.models import Label, TraceParams, Transfer
 from chinescan.chain_trace.providers.evm import (
@@ -174,6 +174,29 @@ def test_tracer_collects_outgoing_edges_and_depth_gap() -> None:
     wallets, edges, gaps = trace(FakeProvider(), TraceParams(chain="x", seed="seed", depth=1), {})
     assert set(wallets) == {"seed", "child"} and len(edges) == 1
     assert "depth_limit" in gaps
+
+
+def test_service_aggregates_repeated_coverage_gaps(repository) -> None:
+    from chinescan.chain_trace.providers.base import Page
+
+    class BranchingProvider:
+        def transfers(self, address, *, limit, cursor=None):
+            if address == "seed":
+                return Page(
+                    (
+                        _edge("tx-1", "seed", "child-1"),
+                        _edge("tx-2", "seed", "child-2"),
+                    )
+                )
+            return Page(())
+
+    scan, _findings = ChainTraceService(BranchingProvider(), {}, repository).trace(
+        TraceParams(chain="ethereum", seed="seed", depth=1), authorization=True
+    )
+    repeated = [gap for gap in scan.coverage.gaps if gap.code == "depth_limit"]
+    assert len(repeated) == 1
+    assert repeated[0].count == 2
+    assert repeated[0].example == "chain-trace-depth-limit"
 
 
 class FakeResponse:
@@ -744,6 +767,12 @@ def test_detector_positive_and_negative(rule, edges, labels) -> None:
     finding = finding_for_lead(TraceParams(chain="ethereum", seed="seed"), matching[0])
     assert rule in finding.title and rule in finding.description
     assert "false positives" in finding.description.casefold() and "CoinJoin" in finding.description
+    assert "Supporting transaction hashes" in finding.description
+    if finding.evidence.value == "pattern_match":
+        assert "threshold" in finding.description.casefold() or "window" in (
+            finding.description.casefold()
+        )
+    assert all(tx in finding.description for tx in matching[0].transactions[:10])
     expected_evidence = {
         "cash_out": "reference_only",
         "mixer_exposure": "reference_only",
@@ -751,7 +780,81 @@ def test_detector_positive_and_negative(rule, edges, labels) -> None:
     }.get(rule, "pattern_match")
     assert finding.evidence.value == expected_evidence
     assert finding.confidence.value in {"LIKELY", "POSSIBLE", "INFORMATIONAL"}
+    expected_severity = (
+        "low"
+        if rule in {"fan_out", "fan_in", "first_funder", "peel_chain", "rapid_pass_through"}
+        else "high"
+        if rule == "sanctioned_exposure"
+        else "medium"
+    )
+    assert finding.severity.value == expected_severity
     assert rule not in {lead.rule_id for lead in detect([_edge("negative", "alpha", "beta")], {})}
+
+
+def test_labeled_counterparty_downgrades_fan_out_and_notes_why() -> None:
+    edges = [_edge(f"tx-{i}", "source", f"wallet-{i}") for i in range(3)]
+    unlabeled_lead = next(lead for lead in detect(edges, {}) if lead.rule_id == "fan_out")
+    label = Label(
+        address="wallet-0",
+        chain="ethereum",
+        category="exchange",
+        name="local-service-label",
+        source="operator fixture",
+        date="2026-01-01",
+    )
+    labeled_lead = next(
+        lead
+        for lead in detect(edges, {("ethereum", "wallet-0"): label})
+        if lead.rule_id == "fan_out"
+    )
+    params = TraceParams(chain="ethereum", seed="source")
+    unlabeled_finding = finding_for_lead(params, unlabeled_lead)
+    labeled_finding = finding_for_lead(params, labeled_lead)
+
+    assert unlabeled_finding.confidence.value == "LIKELY"
+    assert labeled_finding.confidence.value == "POSSIBLE"
+    assert "Labeled counterparty context" not in unlabeled_finding.description
+    assert "local-service-label" in labeled_finding.description
+    assert "reduced weight" in labeled_finding.description
+
+
+def test_heuristic_description_caps_supporting_hashes_at_ten() -> None:
+    transactions = tuple(f"tx-{index}" for index in range(12))
+    finding = finding_for_lead(
+        TraceParams(chain="ethereum", seed="wallet"),
+        Lead("fan_out", "wallet", transactions, "12 counterparties (threshold >= 3)"),
+    )
+    supported = sorted(set(transactions))[:10]
+    omitted = sorted(set(transactions))[10:]
+    assert all(tx in finding.description for tx in supported)
+    assert all(tx not in finding.description for tx in omitted)
+
+
+def test_chain_share_summary_truncates_addresses_and_omits_tx_hashes() -> None:
+    from datetime import UTC, datetime
+
+    from chinescan.core.models.investigation import Scan
+
+    address = "0x" + "a" * 40
+    tx_hash = "0x" + "b" * 64
+    finding = finding_for_lead(
+        TraceParams(chain="ethereum", seed=address),
+        Lead("fan_out", "", (tx_hash,), f"3 counterparties from {address} (threshold >= 3)"),
+    )
+    finding = finding.model_copy(update={"location": tx_hash})
+    scan = Scan(
+        scan_id="chain-summary-test",
+        target_id="chain-summary-target",
+        scanner="chain_trace",
+        started_at=datetime.now(UTC),
+        project_types=["chain", "ethereum"],
+    )
+
+    summary = render_report(scan, [finding], "share-summary")
+    assert address not in summary
+    assert "0xaaaa...aaaa" in summary
+    assert tx_hash not in summary
+    assert "transaction reference omitted" in summary
 
 
 def test_service_persists_audit_and_running_scan_before_provider_call(repository, caplog) -> None:

@@ -26,7 +26,7 @@ class Transfer(FrozenModel):
 class Label(FrozenModel):
     address: str
     chain: str
-    category: Literal["exchange", "mixer", "bridge", "sanctioned", "scam", "other"]
+    category: Literal["exchange", "mixer", "bridge", "router", "sanctioned", "scam", "other"]
     name: str
     source: str
     date: str

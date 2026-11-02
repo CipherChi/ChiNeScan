@@ -22,7 +22,7 @@ def trace(
             break
         visited.add(address)
         label = labels.get((params.chain, address.lower()))
-        if depth and label and label.category in {"exchange", "bridge"}:
+        if depth and label and label.category in {"exchange", "bridge", "router"}:
             gaps.append("skipped_high_volume")
             if label.category == "bridge":
                 gaps.append("unresolved_bridge")

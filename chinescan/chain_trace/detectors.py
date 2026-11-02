@@ -1,6 +1,6 @@
 """Explainable wallet behavior leads; every rule is heuristic."""
 
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -13,91 +13,153 @@ class Lead:
     address: str
     transactions: tuple[str, ...]
     detail: str
+    context: str = ""
+
+
+def _context(labels: dict[tuple[str, str], Label], chain: str, addresses: list[str]) -> str:
+    notes = []
+    for address in dict.fromkeys(addresses):
+        label = labels.get((chain, address.lower()))
+        if label and (
+            label.category in {"exchange", "bridge", "router"}
+            or "router" in label.name.casefold()
+        ):
+            notes.append(
+                f"{label.category} label '{label.name}' from {label.source} dated {label.date}"
+            )
+    if not notes:
+        return ""
+    return (
+        " Labeled counterparty context: "
+        + "; ".join(notes[:5])
+        + ". Exchange, bridge, or router service activity can produce this pattern, so interpret "
+        "the heuristic with reduced weight."
+    )
+
+
+def _lead(
+    rule_id: str,
+    address: str,
+    transactions: tuple[str, ...],
+    detail: str,
+    labels: dict[tuple[str, str], Label],
+    chain: str,
+    counterparties: list[str],
+) -> Lead:
+    return Lead(rule_id, address, transactions, detail, _context(labels, chain, counterparties))
 
 
 def detect(edges: list[Transfer], labels: dict[tuple[str, str], Label]) -> list[Lead]:
     leads: list[Lead] = []
-    outgoing = Counter(e.sender for e in edges if e.sender)
-    incoming = Counter(e.receiver for e in edges)
-    if any(n >= 3 for n in outgoing.values()):
-        leads.append(Lead("fan_out", "", tuple(e.tx_hash for e in edges), "Fan-out heuristic"))
-    if any(n >= 3 for n in incoming.values()):
-        leads.append(Lead("fan_in", "", tuple(e.tx_hash for e in edges), "Fan-in heuristic"))
+    outgoing: dict[str, list[Transfer]] = defaultdict(list)
+    incoming: dict[str, list[Transfer]] = defaultdict(list)
+    for edge in edges:
+        if edge.sender:
+            outgoing[edge.sender].append(edge)
+        incoming[edge.receiver].append(edge)
+
+    for sender, transfers in outgoing.items():
+        counterparties = list(dict.fromkeys(edge.receiver for edge in transfers))
+        if len(counterparties) >= 3:
+            leads.append(
+                _lead(
+                    "fan_out",
+                    sender,
+                    tuple(edge.tx_hash for edge in transfers),
+                    f"{len(counterparties)} distinct outgoing counterparties (threshold >= 3)",
+                    labels,
+                    transfers[0].chain,
+                    counterparties,
+                )
+            )
+
+    for receiver, transfers in incoming.items():
+        counterparties = list(dict.fromkeys(edge.sender for edge in transfers if edge.sender))
+        if len(counterparties) >= 3:
+            leads.append(
+                _lead(
+                    "fan_in",
+                    receiver,
+                    tuple(edge.tx_hash for edge in transfers),
+                    f"{len(counterparties)} distinct incoming counterparties (threshold >= 3)",
+                    labels,
+                    transfers[0].chain,
+                    counterparties,
+                )
+            )
+
     for edge in edges:
         label = labels.get((edge.chain, edge.receiver.lower()))
-        if label and label.category == "exchange":
+        if label and label.category in {"exchange", "mixer", "sanctioned"}:
+            rule = {
+                "exchange": "cash_out",
+                "mixer": "mixer_exposure",
+                "sanctioned": "sanctioned_exposure",
+            }[label.category]
             leads.append(
                 Lead(
-                    "cash_out",
+                    rule,
                     edge.receiver,
                     (edge.tx_hash,),
-                    f"Transfer to locally labeled exchange {label.name} "
+                    f"Transfer to locally listed {label.category} label {label.name} "
                     f"from {label.source} dated {label.date}",
                 )
             )
-        if label and label.category == "mixer":
-            leads.append(
-                Lead(
-                    "mixer_exposure",
-                    edge.receiver,
-                    (edge.tx_hash,),
-                    f"Transfer to locally labeled mixer {label.name} "
-                    f"from {label.source} dated {label.date}",
-                )
-            )
-        if label and label.category == "sanctioned":
-            leads.append(
-                Lead(
-                    "sanctioned_exposure",
-                    edge.receiver,
-                    (edge.tx_hash,),
-                    f"Transfer to locally listed sanctioned address {label.name} "
-                    f"from {label.source} dated {label.date}",
-                )
-            )
-    funder_wallets: dict[str, set[str]] = defaultdict(set)
+
+    funder_wallets: dict[str, list[Transfer]] = defaultdict(list)
     for edge in edges:
         if edge.sender:
-            funder_wallets[edge.sender].add(edge.receiver)
-    for funder, wallets in funder_wallets.items():
+            funder_wallets[edge.sender].append(edge)
+    for funder, transfers in funder_wallets.items():
+        wallets = list(dict.fromkeys(edge.receiver for edge in transfers))
         if len(wallets) >= 2:
             leads.append(
-                Lead(
+                _lead(
                     "first_funder",
                     funder,
-                    tuple(e.tx_hash for e in edges if e.sender == funder),
-                    "Shared first-funder heuristic",
+                    tuple(edge.tx_hash for edge in transfers),
+                    f"Shared first-funder pattern across {len(wallets)} recipient wallets "
+                    "(threshold >= 2)",
+                    labels,
+                    transfers[0].chain,
+                    wallets,
                 )
             )
-    by_sender: dict[str, list[Transfer]] = defaultdict(list)
-    by_receiver: dict[str, list[Transfer]] = defaultdict(list)
-    for edge in edges:
-        if edge.sender:
-            by_sender[edge.sender].append(edge)
-        by_receiver[edge.receiver].append(edge)
-    for wallet, deposits in by_receiver.items():
-        outgoing_edges = by_sender.get(wallet, [])
-        if len(deposits) == 1 and len(outgoing_edges) == 1:
-            inbound, outbound = deposits[0], outgoing_edges[0]
-            elapsed = outbound.block_time - inbound.block_time
-            if 0 <= elapsed <= 3600:
-                leads.append(
-                    Lead(
-                        "rapid_pass_through",
-                        wallet,
-                        (inbound.tx_hash, outbound.tx_hash),
-                        "Rapid pass-through heuristic",
-                    )
+
+    for wallet, deposits in incoming.items():
+        outgoing_edges = outgoing.get(wallet, [])
+        if len(deposits) != 1 or len(outgoing_edges) != 1:
+            continue
+        inbound, outbound = deposits[0], outgoing_edges[0]
+        elapsed = outbound.block_time - inbound.block_time
+        counterparties = [inbound.sender or "", outbound.receiver]
+        if 0 <= elapsed <= 3600:
+            leads.append(
+                _lead(
+                    "rapid_pass_through",
+                    wallet,
+                    (inbound.tx_hash, outbound.tx_hash),
+                    f"Exactly 1 inbound and 1 outbound transfer; elapsed {elapsed} seconds "
+                    "(window <= 3600 seconds)",
+                    labels,
+                    inbound.chain,
+                    counterparties,
                 )
-            if elapsed > 0 and outbound.receiver.lower() != (inbound.sender or "").lower():
-                leads.append(
-                    Lead(
-                        "peel_chain",
-                        wallet,
-                        (inbound.tx_hash, outbound.tx_hash),
-                        "Peel-chain heuristic",
-                    )
+            )
+        if elapsed > 0 and outbound.receiver.lower() != (inbound.sender or "").lower():
+            leads.append(
+                _lead(
+                    "peel_chain",
+                    wallet,
+                    (inbound.tx_hash, outbound.tx_hash),
+                    f"Exactly 1 inbound and 1 outbound transfer; elapsed {elapsed} seconds "
+                    "(threshold > 0 seconds) with a different destination",
+                    labels,
+                    inbound.chain,
+                    counterparties,
                 )
+            )
+
     for approval in (edge for edge in edges if edge.kind == "approval" and edge.sender):
         sweeps = [
             edge
@@ -108,28 +170,37 @@ def detect(edges: list[Transfer], labels: dict[tuple[str, str], Label]) -> list[
         ]
         if sweeps:
             sweep = min(sweeps, key=lambda edge: edge.block_time)
+            elapsed = sweep.block_time - approval.block_time
             leads.append(
-                Lead(
+                _lead(
                     "drainer_pattern",
                     approval.sender or "",
                     (approval.tx_hash, sweep.tx_hash),
-                    "Approval to a spender followed by a sweep heuristic",
+                    f"Approval followed by a sweep after {elapsed} seconds (threshold > 0 seconds)",
+                    labels,
+                    approval.chain,
+                    [approval.receiver, sweep.receiver],
                 )
             )
+
     for edge in edges:
         source = edge.sender or ""
         target = edge.receiver
         if edge.amount <= Decimal("0.00000001") and len(source) >= 8 and len(target) >= 8:
-            if (
-                source[:4].lower() == target[:4].lower()
-                or source[-4:].lower() == target[-4:].lower()
-            ):
+            prefix_match = source[:4].lower() == target[:4].lower()
+            suffix_match = source[-4:].lower() == target[-4:].lower()
+            if prefix_match or suffix_match:
+                shared = "first" if prefix_match else "last"
                 leads.append(
-                    Lead(
+                    _lead(
                         "address_poisoning",
                         target,
                         (edge.tx_hash,),
-                        "Dust transfer to a lookalike address heuristic",
+                        f"Dust amount {edge.amount} <= 0.00000001 threshold with matching "
+                        f"{shared} 4 address characters",
+                        labels,
+                        edge.chain,
+                        [source, target],
                     )
                 )
     return leads
