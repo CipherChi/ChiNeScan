@@ -1,6 +1,7 @@
 """Audited chain trace orchestration and persistence."""
 
 import hashlib
+import re
 import uuid
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -30,6 +31,7 @@ _WALLET_LEVEL_RULES = {
     "address_poisoning",
     "drainer_pattern",
 }
+_EVM_ADDRESS = re.compile(r"0x[a-fA-F0-9]{40}\Z")
 
 
 class ChainTraceService:
@@ -189,6 +191,17 @@ def finding_for_lead(params: TraceParams, lead: Lead) -> Finding:
     if lead.context and severity == Severity.MEDIUM:
         severity = Severity.LOW
     confidence = Confidence.POSSIBLE if lead.context else Confidence.LIKELY
+    location: str | None
+    if lead.rule_id in _WALLET_LEVEL_RULES:
+        wallet_address = lead.wallet_address or params.seed
+        if wallet_address.casefold().startswith("0x") or params.seed.casefold().startswith("0x"):
+            if _EVM_ADDRESS.fullmatch(wallet_address) is None:
+                wallet_address = params.seed
+        location = f"chain:{params.chain}:{wallet_address}"
+    elif lead.wallet_address:
+        location = f"chain:{params.chain}:{lead.wallet_address}"
+    else:
+        location = txs[0] if txs else None
     return Finding(
         title=f"{lead.rule_id}: {lead.detail}",
         description=description,
@@ -205,12 +218,6 @@ def finding_for_lead(params: TraceParams, lead: Lead) -> Finding:
         ),
         scanner="chain_trace",
         rule_id=lead.rule_id,
-        location=(
-            f"chain:{params.chain}:{lead.address or params.seed}"
-            if lead.rule_id in _WALLET_LEVEL_RULES
-            else f"chain:{params.chain}:{lead.address}"
-            if lead.address
-            else (txs[0] if txs else None)
-        ),
+        location=location,
         tags=["heuristic", "chain_trace"],
     )

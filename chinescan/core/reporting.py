@@ -40,7 +40,7 @@ def _redact_finding(finding: Finding, *, chain_scan: bool) -> dict[str, Any]:
     def shield(value: Any) -> Any:
         if isinstance(value, str):
             def replace(match: re.Match[str]) -> str:
-                marker = f"{marker_prefix}{len(protected)}"
+                marker = f"{marker_prefix}{len(protected):08d}END"
                 protected[marker] = match.group(0)
                 return marker
 

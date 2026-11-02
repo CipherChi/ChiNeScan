@@ -10,7 +10,7 @@ from chinescan.chain_trace.models import Label, Transfer
 @dataclass(frozen=True)
 class Lead:
     rule_id: str
-    address: str
+    wallet_address: str
     transactions: tuple[str, ...]
     detail: str
     context: str = ""
@@ -39,14 +39,16 @@ def _context(labels: dict[tuple[str, str], Label], chain: str, addresses: list[s
 
 def _lead(
     rule_id: str,
-    address: str,
+    wallet_address: str,
     transactions: tuple[str, ...],
     detail: str,
     labels: dict[tuple[str, str], Label],
     chain: str,
     counterparties: list[str],
 ) -> Lead:
-    return Lead(rule_id, address, transactions, detail, _context(labels, chain, counterparties))
+    return Lead(
+        rule_id, wallet_address, transactions, detail, _context(labels, chain, counterparties)
+    )
 
 
 def detect(

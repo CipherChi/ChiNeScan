@@ -1,4 +1,5 @@
 import json
+import re
 import ssl
 from decimal import Decimal
 from http.client import HTTPMessage
@@ -851,6 +852,35 @@ def test_finding_locations_use_wallet_for_heuristics_and_exact_hash_for_tx_leads
     )
     assert tx_finding.location == tx_hash
     assert len(tx_finding.location) == 66
+
+
+def test_offline_csv_service_persists_fanout_wallet_location(repository) -> None:
+    seed = "0x" + "a" * 40
+    rows = ["hash,timeStamp,from,to,value"]
+    tx_hashes = set()
+    for index in range(16):
+        tx_hash = "0x" + f"{index + 1000:064x}"
+        recipient = "0x" + f"{index + 1:040x}"
+        tx_hashes.add(tx_hash)
+        rows.append(f"{tx_hash},{index + 1},{seed},{recipient},1")
+    provider = OfflineProvider("\n".join(rows), "ethereum", "csv")
+
+    scan, findings = ChainTraceService(provider, {}, repository).trace(
+        TraceParams(chain="ethereum", seed=seed, depth=1), authorization=False
+    )
+
+    fan_out = next(finding for finding in findings if finding.rule_id == "fan_out")
+    persisted = repository.get("finding", fan_out.finding_id)
+    assert persisted is not None
+    location = persisted["location"]
+    assert isinstance(location, str)
+    assert re.fullmatch(r"chain:[a-z0-9_-]+:0x[0-9a-fA-F]{40}", location)
+    assert location == f"chain:ethereum:{seed}"
+    assert all(tx_hash not in location for tx_hash in tx_hashes)
+    markdown = render_report(scan, findings, "markdown")
+    location_lines = [line for line in markdown.splitlines() if line.startswith("- Location:")]
+    assert len(location_lines) == 1
+    assert location in location_lines[0]
 
 
 def test_heuristic_description_caps_supporting_hashes_at_ten() -> None:
