@@ -46,9 +46,10 @@ Example local label JSON (schema illustration only; it asserts no real attributi
   requires both request opt-in and the server's `chain_network_enabled` setting.
 - Built-in EVM chains use the `api.etherscan.io` host allowlist. Custom registry endpoints require
   HTTPS, public DNS results, no user information, and port 443 unless configured otherwise.
-- Redirects are limited to two HTTPS hops on the original host. The transport disables environment
-  proxies, resolves and checks addresses again before connecting, pins the validated address, and
-  uses a bounded daemon resolver pool with a two-second timeout.
+- All redirects are refused to prevent the API-key POST body from being forwarded to another path
+  or host. The transport disables environment proxies, checks every resolved address, pins the
+  validated address, preserves TLS hostname verification, and uses at most four bounded daemon DNS
+  workers with a two-second resolver timeout.
 - Built-in Etherscan-family EVM chains use API V2 (`https://api.etherscan.io/v2/api`) with the
   registry's numeric `chain_id` parameter. Other EVM chains can be added through registry TOML.
 - The Etherscan API key is read from its configured environment variable and sent in the POST body
@@ -61,29 +62,23 @@ Example local label JSON (schema illustration only; it asserts no real attributi
   missing key while network lookup is enabled is a warning; disabled network lookup preserves the
   offline-ready check.
 
-## Checkout artifacts
+## Verification status
 
-Inspected names and sizes without reading generated file contents:
-
-| Path | Inventory |
-| --- | --- |
-| `ct/` | Pytest basetemp tree; 1,684 files, 2,332 directories, 9,471,218 bytes. Contains per-test directories, SQLite fixtures, and synthetic sample files. |
-| `ct-chaintrace-final/` | Pytest basetemp tree; 1,684 files, 2,331 directories, 9,472,812 bytes. Contains per-test directories, SQLite fixtures, and synthetic sample files. |
-| `export.csv` | 693 bytes; generated transfer export. |
-| `g.graphml` | 113 bytes; generated graph export. |
-
-These paths are now narrowly ignored. No artifact has been deleted. Proposed deletion after operator
-approval: `ct/`, `ct-chaintrace-final/`, `export.csv`, and `g.graphml`.
-
-Pytest now rejects `--basetemp` paths that resolve inside the repository. The guard was verified
-with an OS-temp basetemp (chain tests passed) and a checkout-local basetemp (pytest exited at
-configuration with the documented usage error).
-
-## Malware timer regression
-
-The separate `fix/malware-bound-timer` branch injects a monotonic clock into project malware
-scanning; the production default remains `time.monotonic`. The per-file bound test advances a fake
-clock without sleeps or a tiny real timeout. The malware project test file passed 50 consecutive
-runs. Full backend acceptance passed 423 tests with 5 deselected and 81.53% total coverage; Ruff
-check/format and strict mypy passed. PR #18 is open against `main`, ready for review, and all
-reported CI checks passed.
+- Review date: 2026-11-02.
+- No live provider request was made during this review. A previous Ethereum-only Etherscan V2 smoke
+  test is mentioned in task history, but no checked-in artifact independently supports that claim.
+- Other configured EVM chains are configured in the registry but have not been tested live.
+- Non-EVM chains are supported through offline import only; live provider lookups are not
+  configured for them.
+- Network lookups are off by default and require explicit operator authorization.
+- Findings are investigative leads, not proof of ownership or attribution.
+- Tested offline: endpoint authority and address validation (including mixed DNS and IPv4/IPv6
+  special ranges), redirect refusal for 301/302/303/307/308, API-key containment and error mapping,
+  response size/content type/JSON handling, retry bounds, report redaction with 25 identifiers, and
+  the CLI label-file path with synthetic fixture addresses and provenance. Diagnostics are covered
+  by a separate test that checks only enabled/configured booleans are exposed.
+- Untested live: every EVM chain and every non-EVM network provider. The non-EVM network provider is
+  not implemented; those chains use offline import only.
+- Local verification: Ruff passed, strict mypy passed, backend pytest reported 506 passed and 5
+  deselected, frontend typecheck passed, and frontend Vitest reported 50 passed. The five deselected
+  backend tests are opt-in real-scanner integration tests; no chain-trace security test was skipped.
