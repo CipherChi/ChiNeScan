@@ -5,7 +5,6 @@ from decimal import Decimal
 from http.client import HTTPMessage
 from io import BytesIO
 from socket import AF_INET
-from urllib.error import HTTPError
 from urllib.parse import parse_qs
 from urllib.request import Request
 
@@ -204,6 +203,7 @@ class FakeResponse:
     def __init__(self, body, status_code=200):
         self.body = body
         self.status_code = status_code
+        self.content_type = "application/json"
 
     def json(self):
         if isinstance(self.body, Exception):
@@ -301,6 +301,29 @@ def test_endpoint_policy_rejects_unsafe_urls(endpoint: str) -> None:
         validate_endpoint(endpoint, resolver=_private_resolver)
 
 
+@pytest.mark.parametrize(
+    "literal",
+    [
+        "127.0.0.1",
+        "10.0.0.1",
+        "172.16.0.1",
+        "192.168.1.1",
+        "169.254.169.254",
+        "224.0.0.1",
+        "0.0.0.0",
+        "::1",
+        "fc00::1",
+        "fe80::1",
+        "ff02::1",
+        "::",
+        "::ffff:8.8.8.8",
+    ],
+)
+def test_endpoint_policy_rejects_non_public_literal_addresses(literal: str) -> None:
+    with pytest.raises(EndpointPolicyError, match="endpoint_non_public_address"):
+        validate_endpoint(f"https://[{literal}]/api" if ":" in literal else f"https://{literal}/api")
+
+
 def test_endpoint_policy_rechecks_public_dns_and_allowlist() -> None:
     with pytest.raises(EndpointPolicyError, match="endpoint_non_public_address"):
         validate_endpoint("https://provider.example/api", resolver=_private_resolver)
@@ -328,6 +351,141 @@ def test_endpoint_policy_rechecks_public_dns_and_allowlist() -> None:
         )
 
 
+def test_endpoint_policy_rejects_mixed_dns_answers_and_empty_userinfo() -> None:
+    def mixed_resolver(_host, _port, *, type):
+        return [
+            (AF_INET, type, 6, "", ("93.184.216.34", 443)),
+            (AF_INET, type, 6, "", ("10.0.0.8", 443)),
+        ]
+
+    with pytest.raises(EndpointPolicyError, match="endpoint_non_public_address"):
+        validate_endpoint(
+            "https://provider.example/api",
+            allowed_hosts=("provider.example",),
+            resolver=mixed_resolver,
+        )
+    with pytest.raises(EndpointPolicyError, match="endpoint_invalid"):
+        validate_endpoint("https://@provider.example/api", resolver=_public_resolver)
+    with pytest.raises(EndpointPolicyError, match="endpoint_non_public_address"):
+        validate_endpoint("https://10.0.0.1/api", resolver=_public_resolver)
+
+
+def test_system_dns_resolution_uses_killable_sanitized_subprocess(monkeypatch) -> None:
+    import subprocess
+    import sys
+    from types import SimpleNamespace
+
+    import chinescan.chain_trace.endpoint_policy as policy
+
+    observed = {}
+
+    def fake_run(args, **kwargs):
+        observed.update(args=args, options=kwargs)
+        return SimpleNamespace(returncode=0, stdout='["8.8.8.8"]')
+
+    monkeypatch.setattr(policy.subprocess, "run", fake_run)
+    endpoint = validate_endpoint(
+        "https://provider.example/api", allowed_hosts=("provider.example",)
+    )
+    assert endpoint.hostname == "provider.example"
+    assert observed["args"][0] == sys.executable
+    assert observed["args"][3:5] == ["provider.example", "443"]
+    assert observed["options"]["timeout"] == 2.0
+    assert set(observed["options"]["env"]) <= {
+        "PATH",
+        "SystemRoot",
+        "WINDIR",
+        "TEMP",
+        "TMP",
+    }
+
+    def timed_out(_args, **_kwargs):
+        raise subprocess.TimeoutExpired("resolver", 2.0)
+
+    monkeypatch.setattr(policy.subprocess, "run", timed_out)
+    with pytest.raises(EndpointPolicyError, match="endpoint_dns_timeout"):
+        validate_endpoint("https://provider.example/api")
+
+
+def test_endpoint_resolver_timeout_keeps_worker_count_bounded() -> None:
+    import threading
+    import time
+
+    release = threading.Event()
+    entered = 0
+    entered_lock = threading.Lock()
+
+    def blocked_resolver(_host, _port, *, type):
+        nonlocal entered
+        with entered_lock:
+            entered += 1
+        release.wait(timeout=2)
+        return _public_resolver(_host, _port, type=type)
+
+    try:
+        for _ in range(4):
+            with pytest.raises(EndpointPolicyError, match="endpoint_dns_timeout"):
+                validate_endpoint(
+                    "https://provider.example/api",
+                    resolver=blocked_resolver,
+                    resolve_timeout_seconds=0.01,
+                )
+        workers = [
+            thread
+            for thread in threading.enumerate()
+            if thread.name == "chinescan-chain-dns"
+        ]
+        assert entered == 4
+        assert len(workers) <= 4
+        with pytest.raises(EndpointPolicyError, match="endpoint_dns_timeout"):
+            validate_endpoint(
+                "https://provider.example/api",
+                resolver=blocked_resolver,
+                resolve_timeout_seconds=0.01,
+            )
+        assert entered == 4
+    finally:
+        release.set()
+
+    deadline = time.monotonic() + 1
+    while time.monotonic() < deadline and any(
+        thread.name == "chinescan-chain-dns" for thread in threading.enumerate()
+    ):
+        time.sleep(0.01)
+    assert not any(thread.name == "chinescan-chain-dns" for thread in threading.enumerate())
+
+
+@pytest.mark.parametrize(
+    "status,new_url",
+    [
+        (301, "https://api.etherscan.io/other"),
+        (302, "https://api.etherscan.io/other"),
+        (303, "https://api.etherscan.io/other"),
+        (307, "https://api.etherscan.io/other"),
+        (308, "https://api.etherscan.io/other"),
+        (307, "http://api.etherscan.io/api"),
+        (307, "https://api.etherscan.io:8443/api"),
+        (307, "https://user@api.etherscan.io/api"),
+        (307, "https://127.0.0.1/api"),
+    ],
+)
+def test_redirect_policy_refuses_every_destination(status: int, new_url: str) -> None:
+    handler = _SameHostHTTPSRedirectHandler(
+        "https://api.etherscan.io/api",
+        allow_nonstandard_port=False,
+        resolver=_public_resolver,
+    )
+    with pytest.raises(EndpointPolicyError, match="redirect_rejected"):
+        handler.redirect_request(
+            Request("https://api.etherscan.io/api", data=b"apikey=SENTINEL"),
+            None,
+            status,
+            "Redirect",
+            HTTPMessage(),
+            new_url,
+        )
+
+
 def test_evm_provider_redirect_policy_and_secrets_stay_inside_request_layer() -> None:
     calls = []
     canary = "KEY_CANARY_DO_NOT_LEAK"
@@ -345,19 +503,7 @@ def test_evm_provider_redirect_policy_and_secrets_stay_inside_request_layer() ->
         resolver=_public_resolver,
     )
     request = Request("https://api.etherscan.io/api")
-    assert (
-        handler.redirect_request(
-            request, None, 302, "Found", HTTPMessage(), "https://api.etherscan.io/v2/api"
-        )
-        is not None
-    )
-    assert (
-        handler.redirect_request(
-            request, None, 302, "Found", HTTPMessage(), "https://api.etherscan.io/v3/api"
-        )
-        is not None
-    )
-    with pytest.raises(EndpointPolicyError, match="redirect_limit"):
+    with pytest.raises(EndpointPolicyError, match="redirect_rejected"):
         handler.redirect_request(
             request, None, 302, "Found", HTTPMessage(), "https://api.etherscan.io/v4/api"
         )
@@ -409,6 +555,33 @@ def test_evm_provider_request_and_deadline_bounds_become_gaps() -> None:
     assert "response_too_large" in large_page.gaps
 
 
+def test_evm_provider_retry_backoff_throttle_and_request_bounds() -> None:
+    calls = 0
+    delays: list[float] = []
+
+    def rate_limited(_url, *, params, **_options):
+        nonlocal calls
+        calls += 1
+        return FakeResponse({"message": "NOTOK", "result": "rate limit"}, status_code=429)
+
+    provider = EvmProvider(
+        "https://example.invalid/api",
+        "",
+        rate_limited,
+        retries=100,
+        throttle_seconds=1_000_000,
+        sleep=delays.append,
+        max_requests=1_000_000,
+    )
+    page = provider.transfers("wallet", limit=1)
+    assert calls == 18  # three actions, six total attempts per action
+    assert provider.retries == 5
+    assert provider.throttle_seconds == 5
+    assert provider.max_requests == 10_000
+    assert all(0 <= delay <= 5 for delay in delays)
+    assert page.gaps == ("rate_limited",)
+
+
 def test_evm_provider_rejects_wrong_content_type() -> None:
     def html(_url, *, params, **_options):
         response = FakeResponse({"message": "OK", "result": []})
@@ -417,6 +590,19 @@ def test_evm_provider_rejects_wrong_content_type() -> None:
 
     page = EvmProvider("url", "", html, retries=0, throttle_seconds=0).transfers("wallet", limit=1)
     assert "unexpected_content_type" in page.gaps
+
+
+def test_evm_provider_rejects_missing_content_type() -> None:
+    response = FakeResponse({"message": "OK", "result": []})
+    response.content_type = ""
+    page = EvmProvider(
+        "https://example.invalid/api",
+        "",
+        lambda _url, **_options: response,
+        retries=0,
+        throttle_seconds=0,
+    ).transfers("wallet", limit=1)
+    assert page.gaps == ("unexpected_content_type",)
 
 
 def test_live_adapter_rejects_invalid_endpoint_before_any_request() -> None:
@@ -451,7 +637,8 @@ def test_api_key_url_encoded_form_in_provider_data_becomes_gap() -> None:
 
     from urllib.parse import quote, quote_plus
 
-    for encoded in (key, quote(key), quote_plus(key)):
+    encodings = (key, quote(key), quote_plus(key), quote(quote(key)), quote_plus(quote_plus(key)))
+    for encoded in encodings:
         page = EvmProvider(
             "url", key, response_for(encoded), retries=0, throttle_seconds=0
         ).transfers("wallet", limit=1)
@@ -638,7 +825,7 @@ def test_stdlib_adapter_refuses_cross_host_redirect_without_key_leak(monkeypatch
     assert all(canary.encode() not in line for line in request_lines)
 
 
-def test_stdlib_adapter_same_host_redirect_keeps_key_out_of_urls(monkeypatch) -> None:
+def test_stdlib_adapter_refuses_same_host_307_before_forwarding_post_body(monkeypatch) -> None:
     import chinescan.chain_trace.providers.evm as evm_module
 
     requests, connections = _stub_https_responses(
@@ -647,12 +834,10 @@ def test_stdlib_adapter_same_host_redirect_keeps_key_out_of_urls(monkeypatch) ->
             b"HTTP/1.1 307 Temporary Redirect\r\n"
             b"Location: https://api.etherscan.io/v2/api\r\n"
             b"Content-Length: 0\r\nConnection: close\r\n\r\n",
-            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
-            b"Content-Length: 2\r\nConnection: close\r\n\r\n{}",
         ],
     )
     canary = "SAME_HOST_SECRET_CANARY"
-    with pytest.raises(HTTPError) as exc_info:
+    with pytest.raises(EndpointPolicyError) as exc_info:
         evm_module.stdlib_http_get(
             "https://api.etherscan.io/api",
             params={"module": "account"},
@@ -661,7 +846,7 @@ def test_stdlib_adapter_same_host_redirect_keeps_key_out_of_urls(monkeypatch) ->
             resolver=_public_resolver,
         )
 
-    assert exc_info.value.code == 307
+    assert exc_info.value.code == "redirect_rejected"
     assert canary not in str(exc_info.value)
     assert canary not in repr(exc_info.value)
     assert len(connections) == 1
@@ -670,7 +855,7 @@ def test_stdlib_adapter_same_host_redirect_keeps_key_out_of_urls(monkeypatch) ->
         for request in requests
         if request.startswith((b"POST ", b"GET "))
     ]
-    assert len(request_lines) == 1  # urllib refuses a 307 redirect for POST
+    assert len(request_lines) == 1  # no same-host redirect request receives the POST body
     assert all(canary.encode() not in line for line in request_lines)
 
 
@@ -958,6 +1143,40 @@ def test_full_chain_reports_keep_identifiers_but_redact_sentinel_key() -> None:
     assert "0xaaaa...aaaa" in summary
 
 
+def test_chain_report_restores_twenty_five_identifiers_without_placeholder_collisions() -> None:
+    from datetime import UTC, datetime
+
+    from chinescan.core.models.investigation import Scan
+
+    address = "0x" + "a" * 40
+    hashes = ["0x" + f"{index:064x}" for index in range(1, 26)]
+    marker_like = "CHAINHEXPLACEHOLDER00000000END"
+    sentinel = "REPORT_HEX_SECRET_SENTINEL"
+    finding = finding_for_lead(
+        TraceParams(chain="ethereum", seed=address),
+        Lead("fan_out", address, tuple(hashes), "Synthetic fixture"),
+    ).model_copy(
+        update={
+            "title": " ".join([marker_like, address, *hashes]),
+            "description": f"api_key={sentinel} identifiers: " + " ".join(hashes),
+        }
+    )
+    scan = Scan(
+        scan_id="chain-placeholder-test",
+        target_id="chain-placeholder-target",
+        scanner="chain_trace",
+        started_at=datetime.now(UTC),
+        project_types=["chain", "ethereum"],
+    )
+
+    for output_format in ("json", "markdown", "html", "csv"):
+        report = render_report(scan, [finding], output_format)
+        assert marker_like in report
+        assert address in report
+        assert all(tx_hash in report for tx_hash in hashes)
+        assert sentinel not in report
+
+
 def test_service_persists_audit_and_running_scan_before_provider_call(repository, caplog) -> None:
     order = []
 
@@ -1173,6 +1392,130 @@ def test_chain_cli_is_offline_without_explicit_network_opt_in(tmp_path) -> None:
     assert "explicitly opt in" in result.output
 
 
+def test_chain_cli_label_file_loads_provenance_and_downgrades_only_labeled_lead(tmp_path) -> None:
+    from typer.testing import CliRunner
+
+    from chinescan.chain_trace.labels import load_labels
+    from chinescan.cli.app import app as cli_app
+    seed = "0x" + "a" * 40
+    exchange = "0x" + "b" * 40
+    other_one = "0x" + "c" * 40
+    other_two = "0x" + "d" * 40
+    transactions = "\n".join(
+        [
+            "hash,from,to,value,timeStamp",
+            f"0x{'1' * 64},{seed},{exchange},1,1",
+            f"0x{'2' * 64},{seed},{other_one},1,2",
+            f"0x{'3' * 64},{seed},{other_two},1,3",
+        ]
+    )
+    import_file = tmp_path / "transfers.csv"
+    import_file.write_text(transactions, encoding="utf-8")
+    label_file = tmp_path / "labels.json"
+    label_file.write_text(
+        json.dumps(
+            {
+                "labels": [
+                    {
+                        "address": exchange,
+                        "chain": "ethereum",
+                        "category": "exchange",
+                        "name": "synthetic exchange fixture",
+                        "source": "unit-test fixture",
+                        "date": "2026-01-15",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def run(name: str, label_path=None):
+        database = tmp_path / f"{name}.sqlite3"
+        config = tmp_path / f"{name}.toml"
+        config.write_text("", encoding="utf-8")
+        args = [
+            "--config",
+            str(config),
+            "--database",
+            str(database),
+            "chain",
+            "trace",
+            seed,
+            "--chain",
+            "ethereum",
+            "--import",
+            str(import_file),
+            "--depth",
+            "1",
+            "--no-save-report",
+        ]
+        if label_path is not None:
+            args.extend(["--label-file", str(label_path)])
+        result = CliRunner().invoke(cli_app, args)
+        assert result.exit_code == 0, result.output
+        output = json.loads(result.output)
+        repository = SQLiteRepository(database)
+        try:
+            scan = repository.get("scan", output["scan_id"])
+            findings = [repository.get("finding", key) for key in scan["finding_ids"]]
+        finally:
+            repository.close()
+        return scan, [item for item in findings if item is not None]
+
+    labeled_scan, labeled_findings = run("labeled", label_file)
+    unlabeled_scan, unlabeled_findings = run("unlabeled")
+    assert labeled_scan["coverage"]["examined"]["labels_loaded"] == 1
+    labeled_lead = next(item for item in labeled_findings if item["rule_id"] == "fan_out")
+    unlabeled_lead = next(item for item in unlabeled_findings if item["rule_id"] == "fan_out")
+    assert labeled_lead["confidence"] == "POSSIBLE"
+    assert "Labeled counterparty context" in labeled_lead["description"]
+    assert "reduced weight" in labeled_lead["description"]
+    assert unlabeled_lead["confidence"] == "LIKELY"
+    assert "Labeled counterparty context" not in unlabeled_lead["description"]
+
+    invalid_file = tmp_path / "invalid-labels.json"
+    invalid_file.write_text(
+        json.dumps(
+            {
+                "labels": [
+                    {
+                        "address": exchange,
+                        "chain": "ethereum",
+                        "category": "exchange",
+                        "name": "fixture missing source",
+                        "date": "2026-01-15",
+                    },
+                    {
+                        "address": other_one,
+                        "chain": "ethereum",
+                        "category": "exchange",
+                        "name": "fixture missing date",
+                        "source": "unit-test fixture",
+                    },
+                    {
+                        "address": other_two,
+                        "chain": "ethereum",
+                        "category": "exchange",
+                        "name": "fixture empty provenance",
+                        "source": " ",
+                        "date": " ",
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    invalid_labels, label_gaps = load_labels([invalid_file])
+    assert invalid_labels == {}
+    assert label_gaps == ["label_row_invalid"] * 3
+    invalid_scan, _ = run("invalid-labels", invalid_file)
+    assert invalid_scan["status"] == "partial"
+    assert any(
+        gap["code"] == "label_row_invalid" for gap in invalid_scan["coverage"]["gaps"]
+    )
+
+
 def test_chain_web_fake_provider_job_graph_and_exports(tmp_path, monkeypatch) -> None:
     import threading
 
@@ -1181,10 +1524,11 @@ def test_chain_web_fake_provider_job_graph_and_exports(tmp_path, monkeypatch) ->
 
     started = threading.Event()
     release = threading.Event()
+    provider_configuration = []
 
     class FakeNetworkProvider:
         def __init__(self, *_args, **_kwargs):
-            pass
+            provider_configuration.append((_args, _kwargs))
 
         def transfers(self, address, *, limit, cursor=None):
             started.set()
@@ -1217,6 +1561,9 @@ def test_chain_web_fake_provider_job_graph_and_exports(tmp_path, monkeypatch) ->
                 "chain": "ethereum",
                 "depth": 1,
                 "allow_network": True,
+                "endpoint": "https://attacker.example/collect",
+                "host": "attacker.example",
+                "url": "https://attacker.example/collect",
             },
             headers=headers,
         )
@@ -1226,6 +1573,8 @@ def test_chain_web_fake_provider_job_graph_and_exports(tmp_path, monkeypatch) ->
         import time
 
         assert started.wait(timeout=5)
+        assert provider_configuration[0][0][0] == "https://api.etherscan.io/v2/api"
+        assert provider_configuration[0][1]["allowed_hosts"] == ("api.etherscan.io",)
         assert client.get(f"/api/chain/jobs/{job_id}").json()["status"] == "running"
         release.set()
         deadline = time.monotonic() + 5
