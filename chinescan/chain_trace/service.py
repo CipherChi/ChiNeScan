@@ -63,10 +63,11 @@ class ChainTraceService:
             nodes, edges, gap_codes = [params.seed], [], ["provider_failure"]
         findings = []
         findings = [finding_for_lead(params, lead) for lead in detect(edges, self.labels)]
-        gaps = [
-            CoverageGap(code=code, reason=code.replace("_", " "), source="chain_trace")
-            for code in gap_codes
-        ]
+        gaps = []
+        for gap in gap_codes:
+            code, separator, detail = gap.partition(":")
+            reason = detail if code == "provider_error" and separator else code.replace("_", " ")
+            gaps.append(CoverageGap(code=code, reason=reason, source="chain_trace"))
         report = CoverageReport(
             examined={
                 "wallets": len(nodes),

@@ -95,6 +95,7 @@ class ChainTraceJobManager:
                         chain.name,
                         allowed_hosts=chain.host_allowlist,
                         allow_nonstandard_port=chain.allow_nonstandard_port,
+                        chain_id=chain.chain_id,
                         deadline_seconds=self.settings.chain_trace_deadline_seconds,
                         max_requests=self.settings.chain_trace_max_requests,
                     )

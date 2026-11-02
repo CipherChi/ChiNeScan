@@ -15,8 +15,12 @@ Heuristic findings are leads, never proof of ownership or attribution.
 - Redirects are limited to two HTTPS hops on the original host. The transport disables environment
   proxies, resolves and checks addresses again before connecting, pins the validated address, and
   uses a bounded daemon resolver pool with a two-second timeout.
-- The Etherscan API key is read from its configured environment variable and attached to the query
+- Built-in Etherscan-family EVM chains use API V2 (`https://api.etherscan.io/v2/api`) with the
+  registry's numeric `chain_id` parameter. Other EVM chains can be added through registry TOML.
+- The Etherscan API key is read from its configured environment variable and sent in the POST body
   only inside the transport adapter. It is not stored in records or returned by APIs or diagnostics.
+- Provider error payloads map to `rate_limited`, `invalid_api_key`, or `provider_error` with a short
+  redacted reason. “No transactions found” is an empty result with no coverage gap.
 - Trace limits default to a 120-second deadline, 100 provider requests, 500 addresses, depth 6, and
   2 MB per response. Bound hits produce coverage gaps and a partial scan.
 - Doctor and web diagnostics report network enabled state and key configuration as booleans. A

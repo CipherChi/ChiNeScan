@@ -16,6 +16,7 @@ class Chain:
     api_key_env: str = ""
     host_allowlist: tuple[str, ...] = ()
     allow_nonstandard_port: bool = False
+    chain_id: int | None = None
 
 
 CHAINS: dict[str, Chain] = {
@@ -23,18 +24,19 @@ CHAINS: dict[str, Chain] = {
         name,
         "evm",
         asset,
-        "https://api.etherscan.io/api",
+        "https://api.etherscan.io/v2/api",
         "CHINESCAN_ETHERSCAN_KEY",
         ("api.etherscan.io",),
+        chain_id=chain_id,
     )
-    for name, asset in {
-        "ethereum": "ETH",
-        "bsc": "BNB",
-        "polygon": "POL",
-        "arbitrum": "ETH",
-        "optimism": "ETH",
-        "base": "ETH",
-        "avalanche": "AVAX",
+    for name, (asset, chain_id) in {
+        "ethereum": ("ETH", 1),
+        "bsc": ("BNB", 56),
+        "polygon": ("POL", 137),
+        "arbitrum": ("ETH", 42161),
+        "optimism": ("ETH", 10),
+        "base": ("ETH", 8453),
+        "avalanche": ("AVAX", 43114),
     }.items()
 }
 CHAINS.update(
@@ -66,6 +68,7 @@ def load_registry(path: Path | None = None) -> dict[str, Chain]:
                 values.get("api_key_env", ""),
                 tuple(values.get("host_allowlist", ())),
                 bool(values.get("allow_nonstandard_port", False)),
+                int(values["chain_id"]) if values.get("chain_id") is not None else None,
             )
     return chains
 

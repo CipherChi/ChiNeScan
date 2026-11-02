@@ -72,12 +72,79 @@ def test_family_address_normalization_and_configurable_evm_registry(tmp_path) ->
     path.write_text(
         '{"chains":{"custom":{"family":"evm","native_asset":"NEW",'
         '"explorer_api":"https://explorer.example/api",'
-        '"allow_nonstandard_port":true}}}'
+        '"allow_nonstandard_port":true,"chain_id":999}}}'
     )
     custom = load_registry(path)["custom"]
     assert custom.native_asset == "NEW"
     assert custom.explorer_api == "https://explorer.example/api"
     assert custom.allow_nonstandard_port
+    assert custom.chain_id == 999
+
+
+def test_builtin_etherscan_v2_registry_chain_ids() -> None:
+    expected = {
+        "ethereum": 1,
+        "bsc": 56,
+        "polygon": 137,
+        "arbitrum": 42161,
+        "optimism": 10,
+        "base": 8453,
+        "avalanche": 43114,
+    }
+    for name, chain_id in expected.items():
+        chain = load_registry()[name]
+        assert chain.explorer_api == "https://api.etherscan.io/v2/api"
+        assert chain.chain_id == chain_id
+        assert chain.api_key_env == "CHINESCAN_ETHERSCAN_KEY"
+        assert chain.host_allowlist == ("api.etherscan.io",)
+
+
+def test_evm_provider_sends_v2_chainid_and_maps_error_payloads() -> None:
+    canary = "CHAIN_ID_ERROR_SECRET_CANARY"
+    observed: list[tuple[str, dict[str, object]]] = []
+
+    def run(payload):
+        def http(url, *, params, **_options):
+            observed.append((url, params))
+            return FakeResponse(payload)
+
+        provider = EvmProvider(
+            "https://api.etherscan.io/v2/api",
+            canary,
+            http,
+            retries=0,
+            throttle_seconds=0,
+            chain_id=8453,
+        )
+        return provider.transfers("0x" + "a" * 40, limit=10)
+
+    rate_limited = run({"status": "0", "message": "NOTOK", "result": "Rate limit reached"})
+    assert "rate_limited" in rate_limited.gaps
+    invalid_key = run({"status": "0", "message": "NOTOK", "result": "Invalid API Key"})
+    assert "invalid_api_key" in invalid_key.gaps
+    generic = run(
+        {
+            "status": "0",
+            "message": "NOTOK",
+            "result": f"Provider rejected request; diagnostic {canary}",
+        }
+    )
+    generic_gaps = [gap for gap in generic.gaps if gap.startswith("provider_error:")]
+    assert generic_gaps
+    assert all(len(gap.partition(":")[2]) <= 120 for gap in generic_gaps)
+    assert canary not in str(generic.gaps)
+    for payload in (
+        {"status": "0", "message": "OK", "result": []},
+        {"message": "NOTOK", "result": []},
+        {"status": "1", "message": "OK", "result": "Unexpected provider response"},
+    ):
+        variant = run(payload)
+        assert any(gap.startswith("provider_error:") for gap in variant.gaps)
+    empty = run({"status": "0", "message": "NOTOK", "result": "No transactions found"})
+    assert not empty.gaps
+    assert all(url == "https://api.etherscan.io/v2/api" for url, _params in observed)
+    assert all(params["chainid"] == 8453 for _url, params in observed)
+    assert all("apikey" not in params for _url, params in observed)
 
 
 class FakeProvider:
@@ -750,6 +817,44 @@ def test_provider_exception_url_and_error_body_never_escape(repository, caplog) 
     assert sentinel not in report
     assert sentinel not in caplog.text
     assert sentinel not in str(scan.coverage.gaps)
+
+
+def test_etherscan_error_reason_is_redacted_before_persistence(repository) -> None:
+    sentinel = "ETHERSCAN_ERROR_REASON_SECRET_CANARY"
+
+    def rejected(_url, *, params, api_key, **_options):
+        assert params["chainid"] == 1
+        assert api_key == sentinel
+        return FakeResponse(
+            {
+                "status": "0",
+                "message": "NOTOK",
+                "result": f"Provider diagnostic: {sentinel}",
+            }
+        )
+
+    provider = EvmProvider(
+        "https://api.etherscan.io/v2/api",
+        sentinel,
+        rejected,
+        retries=0,
+        throttle_seconds=0,
+        chain_id=1,
+    )
+    scan, findings = ChainTraceService(provider, {}, repository).trace(
+        TraceParams(chain="ethereum", seed="0x" + "a" * 40), authorization=True
+    )
+    records = [repository.get(kind, scan.scan_id) for kind in ("scan", "chain_graph")]
+    records += repository.list_records("authorization_record")
+    records += repository.list_records("target")
+    report = render_report(scan, findings, "markdown")
+
+    assert scan.status == "partial"
+    assert all(gap.code == "provider_error" for gap in scan.coverage.gaps)
+    assert all(sentinel not in gap.reason for gap in scan.coverage.gaps)
+    assert all("[REDACTED]" in gap.reason for gap in scan.coverage.gaps)
+    assert sentinel not in json.dumps(records)
+    assert sentinel not in report
 
 
 def test_address_poisoning_requires_lookalike_dust_transfer() -> None:

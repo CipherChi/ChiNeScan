@@ -57,6 +57,7 @@ def trace_command(
             selected.name,
             allowed_hosts=selected.host_allowlist,
             allow_nonstandard_port=selected.allow_nonstandard_port,
+            chain_id=selected.chain_id,
             deadline_seconds=settings.chain_trace_deadline_seconds,
             max_requests=settings.chain_trace_max_requests,
         )

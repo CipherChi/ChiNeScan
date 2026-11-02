@@ -20,6 +20,7 @@ from chinescan.chain_trace.endpoint_policy import (
 )
 from chinescan.chain_trace.models import Transfer
 from chinescan.chain_trace.providers.base import Page
+from chinescan.core.logging.redaction import redact
 
 MAX_RESPONSE_BYTES = 2_000_000
 REQUEST_TIMEOUT_SECONDS = 15
@@ -35,6 +36,15 @@ def _contains_api_key(value: object, api_key: str) -> bool:
         for candidate in {api_key, quote(api_key), quote_plus(api_key)}
         if candidate
     )
+
+
+def _safe_provider_reason(value: object, api_key: str) -> str:
+    reason = str(redact(str(value)))
+    if api_key:
+        for candidate in {api_key, quote(api_key), quote_plus(api_key)}:
+            if candidate:
+                reason = reason.replace(candidate, "[REDACTED]")
+    return " ".join(reason.split())[:120] or "Provider returned an error."
 
 
 class ProviderLimitError(RuntimeError):
@@ -253,11 +263,13 @@ class EvmProvider:
         deadline_seconds: float = 120,
         max_requests: int = 100,
         clock: Callable[[], float] = time.monotonic,
+        chain_id: int | None = None,
     ) -> None:
         self.endpoint = endpoint
         self.api_key = api_key
         self.http_get = http_get
         self.chain = chain
+        self.chain_id = chain_id
         self.retries = max(0, min(5, retries))
         self.throttle_seconds = max(0.0, throttle_seconds)
         self.sleep = sleep
@@ -279,6 +291,8 @@ class EvmProvider:
             "page": page,
             "offset": limit,
         }
+        if self.chain_id is not None:
+            params["chainid"] = self.chain_id
         for attempt in range(self.retries + 1):
             elapsed = self.clock() - self.started_at
             remaining = self.deadline_seconds - elapsed
@@ -323,13 +337,33 @@ class EvmProvider:
                 result = body.get("result", [])
                 message = str(body.get("message", ""))
                 text = str(result).casefold()
+                no_transactions = "no transactions found" in text or (
+                    "no transactions found" in message.casefold()
+                )
+                if no_transactions:
+                    return body, None
                 if status == 429 or "rate limit" in text:
                     if attempt < self.retries:
                         self.sleep(0.25 * (attempt + 1))
                         continue
                     return None, "rate_limited"
-                if message == "NOTOK" and not isinstance(result, list):
-                    return None, "provider_error"
+                is_error = (
+                    str(body.get("status", "")) == "0"
+                    or message.casefold() == "notok"
+                    or isinstance(result, str)
+                )
+                if is_error:
+                    result_text = result if isinstance(result, str) else ""
+                    lowered = f"{message} {result_text}".casefold()
+                    if "rate limit" in lowered:
+                        return None, "rate_limited"
+                    if "invalid api key" in lowered or "invalid apikey" in lowered:
+                        return None, "invalid_api_key"
+                    reason = result_text or message
+                    if reason.casefold() == "notok" or not reason:
+                        reason = "Provider returned status 0."
+                    safe_reason = _safe_provider_reason(reason, self.api_key)
+                    return None, f"provider_error:{safe_reason}"
                 return body, None
             except TimeoutError:
                 if attempt < self.retries:
