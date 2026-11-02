@@ -13,7 +13,8 @@ Heuristic findings are leads, never proof of ownership or attribution.
 - Built-in EVM chains use the `api.etherscan.io` host allowlist. Custom registry endpoints require
   HTTPS, public DNS results, no user information, and port 443 unless configured otherwise.
 - Redirects are limited to two HTTPS hops on the original host. The transport disables environment
-  proxies, resolves and checks addresses again before connecting, and pins the validated address.
+  proxies, resolves and checks addresses again before connecting, pins the validated address, and
+  uses a bounded daemon resolver pool with a two-second timeout.
 - The Etherscan API key is read from its configured environment variable and attached to the query
   only inside the transport adapter. It is not stored in records or returned by APIs or diagnostics.
 - Trace limits default to a 120-second deadline, 100 provider requests, 500 addresses, depth 6, and
