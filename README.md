@@ -11,7 +11,7 @@ ChineScan helps operators collect and review leads from local assessment workflo
 - Code scanning with built-in heuristic rules and optional scanner integrations. The `indicators` scanner matches local project files against local indicator files.
 - Optional finding evidence grades: `confirmed_artifact`, `pattern_match`, `reference_only`, and `context_only`. Evidence grade is separate from confidence; existing findings may omit a grade.
 - Code-scan coverage accounting records examined files and coverage gaps. Verdicts are `leads_found`, `no_matches_with_gaps`, `no_matches_in_scope`, and `scan_failed`.
-- Code scans automatically save JSON and Markdown reports. Log, malware, and domain scans do not currently auto-save JSON or Markdown reports.
+- Code scans and on-chain traces automatically save JSON and Markdown reports. Log, malware, and domain scans do not currently auto-save JSON or Markdown reports.
 - A local authenticated web dashboard supports first-operator sign-up and sign-in.
 
 ## CLI quick start
@@ -91,7 +91,7 @@ uv run chinescan code . --scanner indicators --indicator-file .\domains.txt --in
 
 ## Reports and share summaries
 
-Only code scans automatically save JSON and Markdown reports. The default directory is `~/.local/share/chinescan/reports`; set it with the global `--reports-dir` option or `CHINESCAN_REPORTS_DIR`. You can also set `reports_dir` in the local TOML configuration. Use `--no-save-report` to opt out for a code scan.
+Code scans and on-chain traces automatically save JSON and Markdown reports. The default directory is `~/.local/share/chinescan/reports`; set it with the global `--reports-dir` option or `CHINESCAN_REPORTS_DIR`. You can also set `reports_dir` in the local TOML configuration. Use `--no-save-report` to opt out for a code scan or on-chain trace.
 
 Reports for persisted scans can be rendered as JSON, Markdown, HTML, CSV, SARIF, or `share-summary`:
 
@@ -169,7 +169,17 @@ Malware analysis is static triage: samples are not executed or uploaded. It is n
 
 ## On-chain tracing
 
-Wallet tracing is offline-first and accepts local explorer CSV/JSON exports. Network lookups require explicit per-run opt-in and, in the dashboard, server-side enablement. Behavioral patterns and address labels are leads for investigation, not proof of ownership or identity. No private keys or signing operations are used.
+List the built-in chains, then trace from a local explorer CSV/JSON export passed with `--import`. Use `--label-file` for local labels. Trace depth is limited to 1–6 and defaults to 3.
+
+```powershell
+uv run chinescan chain chains
+uv run chinescan chain trace 0x0123456789abcdef0123456789abcdef01234567 --chain ethereum --import .\transfers.csv
+uv run chinescan chain export <scan-id> --format transfers-csv --output .\transfers.csv
+```
+
+The built-in chain list includes Ethereum, BSC, Polygon, Arbitrum, Optimism, Base, Avalanche, Bitcoin, Tron, and Solana. The built-in online provider is for EVM chains; other families can be traced from local imports. Network lookups require the CLI `--allow-network-chain` flag or, in the dashboard, request opt-in together with server-side `chain_network_enabled = true`. EVM online lookups use the `CHINESCAN_ETHERSCAN_KEY` environment variable when configured. Saved graph exports support `graph-json`, `indicators`, and `transfers-csv`; the other export format is GraphML.
+
+Wallet tracing is offline-first. Behavioral patterns and address labels are leads for investigation, not proof of ownership or identity. No private keys or signing operations are used.
 
 ## Development and tests
 
