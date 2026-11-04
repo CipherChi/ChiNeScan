@@ -91,6 +91,7 @@ from chinescan.web.chain_trace_jobs import ChainTraceJobManager
 from chinescan.web.code_jobs import CodeJobManager, ProjectConfigurationError, ProjectRegistry
 from chinescan.web.log_jobs import LogJobManager, LogSourceError, LogSourceRegistry
 from chinescan.web.malware_jobs import MalwareDashboardManager
+from chinescan.web.rate_limit import InProcessRateLimiter
 
 COOKIE_NAME = "chinescan_session"
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
@@ -538,6 +539,23 @@ def create_app(
         "Execution unavailable: configure managed storage and an operator registry."
     )
     active_settings = settings or Settings(_env_file=None)
+    rate_limiter = InProcessRateLimiter(
+        {
+            "auth": (active_settings.auth_rate_limit, active_settings.rate_limit_window_seconds),
+            "job_start": (
+                active_settings.job_start_rate_limit,
+                active_settings.rate_limit_window_seconds,
+            ),
+            "exports": (
+                active_settings.export_rate_limit,
+                active_settings.rate_limit_window_seconds,
+            ),
+            "reads": (
+                active_settings.read_rate_limit,
+                active_settings.rate_limit_window_seconds,
+            ),
+        }
+    )
     hard_denied, soft_denied = policy_paths(active_settings)
     fs_browser = FilesystemBrowserService(
         list(active_settings.allowed_roots),
@@ -772,6 +790,49 @@ def create_app(
                 result = Response("Same-origin request required.", status_code=403)
                 result.headers["X-Request-ID"] = request_id
                 return result
+        if request.url.path.startswith("/api/"):
+            path = request.url.path
+            if path in {
+                "/api/auth/login",
+                "/api/auth/signup",
+                "/api/auth/forgot-password",
+                "/api/auth/reset-password",
+            }:
+                category = "auth"
+            elif "/report/" in path or "/export/" in path or "/exports/" in path:
+                category = "exports"
+            elif request.method == "GET":
+                category = "reads"
+            else:
+                category = "job_start"
+            client_key = request.client.host if request.client else "unknown"
+            if active_settings.trusted_proxy:
+                forwarded = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
+                if forwarded:
+                    client_key = forwarded[:64]
+            retry = rate_limiter.check(category, client_key)
+            if retry:
+                limited = JSONResponse(
+                    status_code=429,
+                    content={
+                        "detail": {
+                            "code": "rate_limited",
+                            "message": "Request limit reached; retry shortly.",
+                        }
+                    },
+                    headers={"Retry-After": str(retry)},
+                )
+                limited.headers["X-Request-ID"] = request_id
+                limited.headers["X-API-Version"] = "1"
+                limited.headers["X-Content-Type-Options"] = "nosniff"
+                limited.headers["X-Frame-Options"] = "DENY"
+                limited.headers["Referrer-Policy"] = "no-referrer"
+                limited.headers["Content-Security-Policy"] = (
+                    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                    "img-src 'self' data:; connect-src 'self'; object-src 'none'; "
+                    "base-uri 'self'; frame-ancestors 'none'"
+                )
+                return limited
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
         response.headers["X-API-Version"] = "1"

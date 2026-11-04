@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     api_token: str | None = Field(default=None, repr=False)
     session_idle_ttl_seconds: int = Field(default=900, ge=60, le=86_400)
+    auth_rate_limit: int = Field(default=60, ge=1, le=10_000)
+    job_start_rate_limit: int = Field(default=120, ge=1, le=10_000)
+    export_rate_limit: int = Field(default=240, ge=1, le=10_000)
+    read_rate_limit: int = Field(default=1000, ge=1, le=100_000)
+    rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
+    trusted_proxy: bool = False
     allowed_roots: list[Path] = Field(default_factory=list)
     extra_denied_paths: list[Path] = Field(default_factory=list)
     allow_soft_denied: bool = False
