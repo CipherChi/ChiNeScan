@@ -74,17 +74,17 @@ from chinescan.scanners.indicators import IndicatorScanner
 from chinescan.web.app import create_app
 from chinescan.web.auth import (
     CredentialError,
+    confirm_totp_enrollment,
     create_operator,
+    disable_operator_totp,
     issue_reset_token,
     migrate_legacy_operator,
     migrate_operator_email_for_reset,
     normalize_email,
     operator_identity_summary,
     operator_status,
-    start_totp_enrollment,
-    confirm_totp_enrollment,
-    disable_operator_totp,
     set_operator_password,
+    start_totp_enrollment,
     timestamped_credential_backup,
 )
 

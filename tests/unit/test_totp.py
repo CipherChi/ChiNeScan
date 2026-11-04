@@ -9,7 +9,6 @@ from chinescan.web.auth import (
     confirm_totp_enrollment,
     disable_operator_totp,
     generate_totp_code,
-    generate_totp_secret,
     start_totp_enrollment,
     totp_code_at,
     verify_operator_totp,

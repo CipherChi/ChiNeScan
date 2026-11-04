@@ -132,7 +132,10 @@ def test_unknown_login_response_matches_known_failure_shape(tmp_path: Path) -> N
 
 def test_session_idle_and_absolute_expiry_use_independent_fake_clock() -> None:
     now = [1_000.0]
-    clock = lambda: now[0]
+
+    def clock() -> float:
+        return now[0]
+
     store = SessionStore(ttl_seconds=50, idle_ttl_seconds=10, clock=clock)
     idle_token, _ = store.create("known@example.test", "epoch")
     now[0] += 9
