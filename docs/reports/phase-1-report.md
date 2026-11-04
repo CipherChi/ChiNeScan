@@ -1,5 +1,24 @@
 # Phase 1 verification report
 
+## Security hardening verification rerun — 2026-11-04
+
+Commands were run from `C:\src\Chinescan` using the Python 3.12 launcher. The full backend
+suite was run alone with the required basetemp after an earlier overlapping attempt produced
+Windows file-lock setup errors in `C:\t`.
+
+| Command | Exit | Exact result |
+| --- | ---: | --- |
+| `py -3.12 -m ruff check .` | 0 | `All checks passed!` |
+| `py -3.12 -m mypy --strict chinescan` | 0 | `Success: no issues found in 83 source files` |
+| `py -3.12 -m pytest -q --basetemp=C:\t` | 0 | `566 passed, 5 deselected, 3 warnings in 299.00s` |
+| `npm run typecheck` (in `frontend/`) | 0 | TypeScript check completed; chained frontend test command started. |
+| `npm test -- --run` (in `frontend/`) | 0 | `Test Files 11 passed (11); Tests 54 passed (54)` |
+| `npm test -- --run src/ui/ProjectsWorkspace.test.tsx` (in `frontend/`) | 0 | `Test Files 1 passed (1); Tests 13 passed (13)`; isolated rerun passed. |
+
+The earlier overlapping pytest attempt is not the accepted result: it reported 534 passed,
+5 deselected, and 32 setup errors because two pytest processes concurrently cleared `C:\t`.
+The subsequent isolated run completed successfully as recorded above.
+
 Recorded 2026-10-25. Python 3.12.10 was newly installed after the user authorized installation. The standalone repository is `C:\src\Chinescan`; the parent repository was not staged or changed.
 
 ## Outcome

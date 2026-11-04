@@ -7,6 +7,42 @@ through the explicit `chinescan web serve` command, which binds one worker to `1
 Docker Compose remains a local one-shot CLI runner; its default `--help` command exits and never
 starts the dashboard.
 
+### Reverse proxy example for an explicitly approved remote deployment
+
+The default bind remains `127.0.0.1`. Do not expose the dashboard publicly without a TLS
+terminating reverse proxy, proxy-side rate limits, and an explicitly reviewed deployment
+configuration. Keep the application bound to loopback and proxy to it locally. Example Traefik
+dynamic configuration (replace the hostname and certificate resolver for the deployment):
+
+```yaml
+http:
+  middlewares:
+    chinescan-rate-limit:
+      rateLimit:
+        average: 30
+        burst: 10
+        period: 1m
+  routers:
+    chinescan:
+      rule: Host(`chinescan.example.invalid`)
+      entryPoints: [websecure]
+      middlewares: [chinescan-rate-limit]
+      tls:
+        certResolver: letsencrypt
+      service: chinescan
+  services:
+    chinescan:
+      loadBalancer:
+        servers:
+          - url: http://127.0.0.1:8765
+```
+
+The proxy must preserve the request host and scheme, route the full path to the application,
+and must not set a client IP header that the application is configured to trust without
+restricting access to that proxy. Configure the listener and firewall so the application port
+is not reachable outside the host. Proxy rate limits complement the application's controls;
+they do not authorize remote exposure by themselves.
+
 ## Local database backup and restore
 
 The application offers an explicit local backup bundle containing `database.sqlite3` and a

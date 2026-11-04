@@ -210,3 +210,18 @@ Sessions expire after 30 minutes and are held only in process memory. Logout rev
 session; a process restart discards all sessions. Run one application worker. The included server
 uses plain HTTP with `Secure` cookies disabled. Setting `Secure` on an HTTP cookie would prevent
 normal browsers from sending it. HTTPS termination and trusted proxy headers are not configured.
+# API versioning and transport headers
+
+`/api/v1/*` is an alias for the corresponding `/api/*` route. Both prefixes use the
+same cookie session, CSRF, authorization, and in-process throttles. Existing `/api/*`
+paths remain supported. Responses include `X-API-Version: 1`; standard security headers
+include CSP, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and
+`Referrer-Policy: no-referrer`. API responses are private and non-cacheable.
+
+Changes within v1 are additive. Breaking request or response changes require `/api/v2`.
+When a route is deprecated, responses will include `Deprecation` and `Sunset` headers
+with a published removal date. Rate-limit failures use HTTP 429, a `Retry-After` header,
+and the usual `{"detail":{"code":"...","message":"..."}}` error form where the
+limiter generates the response. Authentication lockouts return a generic response and
+apply a temporary increasing delay to the operator account and client address.
+
