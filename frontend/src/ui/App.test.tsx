@@ -42,6 +42,28 @@ describe('dashboard authentication and overview', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/overview', expect.anything()));
   });
 
+  it('renders API finding titles containing markup as text', async () => {
+    const title = '<script>alert(1)</script>';
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = String(input);
+      if (path === '/api/auth/session') return json({ authenticated: true, email_masked: 'a***@example.test', signup_available: false });
+      if (path === '/api/auth/csrf') return json({ csrf_token: 'csrf-value' });
+      if (path === '/api/overview') return json({ scan_count: 0, finding_count: 1, findings_by_severity: { critical: 0, high: 1, medium: 0, low: 0, info: 0 }, recent_scans: [] });
+      if (path.startsWith('/api/findings?')) return json({ items: [{ finding_id: 'finding-xss', title, severity: 'high', category: 'code', confidence: 'high', scanner: 'fixture', rule_id: 'XSS' }], total: 1, limit: 20, offset: 0 });
+      if (path === '/api/findings/finding-xss') return json({ finding_id: 'finding-xss', title, severity: 'high', category: 'code', confidence: 'high', scanner: 'fixture', rule_id: 'XSS' });
+      throw new Error(`Unexpected API call: ${path}`);
+    });
+    render(<App/>);
+    await screen.findByRole('heading', { name: 'Overview' });
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Main navigation' })).getByRole('button', { name: /findings/i }));
+    const finding = await screen.findByText(title);
+    expect(finding).toBeInTheDocument();
+    expect(document.querySelector('script')).toBeNull();
+    fireEvent.click(finding);
+    expect(await screen.findByRole('heading', { name: 'Finding details' })).toBeInTheDocument();
+    expect(screen.getAllByText(title).length).toBeGreaterThan(1);
+  });
+
   it('renders an honest empty state when persisted scans are absent', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const path = String(input);

@@ -179,6 +179,24 @@ def test_get_routes_do_not_expose_settings_or_credential_secrets(
         client.close()
 
 
+def test_security_headers_are_present_on_api_and_downloads(tmp_path: Path) -> None:
+    _, client, *_ = _fixture(tmp_path)
+    try:
+        headers = _import_session(client)
+        for path in ("/api/scans", "/api/scans/scan-1/report/html"):
+            response = client.get(path, headers=headers)
+            assert response.status_code == 200
+            assert "default-src 'self'" in response.headers["content-security-policy"]
+            assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+            assert response.headers["x-content-type-options"] == "nosniff"
+            assert response.headers["x-frame-options"] == "DENY"
+            assert response.headers["referrer-policy"] == "no-referrer"
+        download = client.get("/api/scans/scan-1/report/html", headers=headers)
+        assert download.headers["content-disposition"].startswith("attachment;")
+    finally:
+        client.close()
+
+
 def test_external_report_import_rejects_non_loopback(tmp_path: Path) -> None:
     app, *_ = _fixture(tmp_path)
     client = TestClient(app, base_url="http://127.0.0.1", client=("192.0.2.10", 50000))

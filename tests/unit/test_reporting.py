@@ -26,7 +26,7 @@ def sample_scan() -> tuple[Scan, list[Finding]]:
     )
     finding = Finding(
         finding_id="finding-1",
-        title="Unsafe <script>",
+        title="<script>alert(1)</script>",
         description="token=topsecret",
         severity=Severity.HIGH,
         fingerprint="abc123",
@@ -42,8 +42,9 @@ def test_render_all_formats_redacts_and_escapes() -> None:
     markdown = render_report(scan, findings, "markdown")
     assert "REDACTED" in markdown
     assert "topsecret" not in markdown
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in markdown
     html_report = render_report(scan, findings, "html")
-    assert html.escape("Unsafe <script>") in html_report
+    assert html.escape("<script>alert(1)</script>") in html_report
     assert "<script>" not in html_report
     rows = list(csv.DictReader(io.StringIO(render_report(scan, findings, "csv"))))
     assert rows[0]["rule_id"] == "TEST-RULE"

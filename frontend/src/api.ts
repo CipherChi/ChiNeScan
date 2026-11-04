@@ -1,5 +1,17 @@
 import type { ApprovedFolder, CaseData, CaseSummary, CodeJob, CodeProject, Finding, FolderPreview, Overview, Page, Scan, LogSource, LogSourceRegistryStatus, LogJob, LogAlert, LogEvent, LogTimeline, MalwareAnalysis, MalwareCapability, MalwareJob, MalwareSample, ProjectDetail, ProjectSummary, ProjectLogLocation, ProjectLogSuggestion, ProjectLogJob, ProjectMalwareJob, MalwareHostHint, FsDirectory, FsPage, GitHubImportCapabilities, GitHubImportPreview, GitHubImportJob, ChainInfo, ChainJob, ChainGraph } from './types';
 
+export function safeLocalUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || value.trim() !== value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return null;
+  try {
+    const parsed = new URL(value, window.location.origin);
+    if (parsed.origin !== window.location.origin || !['http:', 'https:'].includes(parsed.protocol)) return null;
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return null;
+  }
+}
+
 let csrfToken = '';
 export function setCsrfToken(token: string) { csrfToken = token; }
 
