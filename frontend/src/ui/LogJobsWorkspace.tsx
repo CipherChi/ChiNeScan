@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, UnauthorizedError } from '../api';
-import type { CaseSummary, LogAlert, LogEvent, LogJob, LogSource, LogSourceRegistryStatus, LogTimeline, Page } from '../types';
+import type { ApprovedFolder, CaseSummary, LogAlert, LogEvent, LogJob, LogSource, LogSourceRegistryStatus, LogTimeline, Page } from '../types';
+import { FolderApprovalPicker } from './FolderApprovalPicker';
 
 export function LogJobsWorkspace({ onUnauthorized }: { onUnauthorized: () => void }) {
   const [sources, setSources] = useState<LogSource[]>([]);
@@ -17,6 +18,8 @@ export function LogJobsWorkspace({ onUnauthorized }: { onUnauthorized: () => voi
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const [folderPickerOpen, setFolderPickerOpen] = useState(false);
+  const [approvedFolder, setApprovedFolder] = useState<ApprovedFolder | null>(null);
   const [alertOffset, setAlertOffset] = useState(0);
   const [eventOffset, setEventOffset] = useState(0);
   const [timelineOffset, setTimelineOffset] = useState(0);
@@ -48,6 +51,18 @@ export function LogJobsWorkspace({ onUnauthorized }: { onUnauthorized: () => voi
     catch (reason) { if (reason instanceof UnauthorizedError) onUnauthorized(); else setError(reason instanceof Error ? reason.message : 'Unable to start log analysis.'); }
     finally { setBusy(false); }
   }
+  async function analyzeApprovedFolder() {
+    if (!approvedFolder?.log_location_id) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const job = await api.startProjectLogJob(approvedFolder.project_id, [approvedFolder.log_location_id]);
+      setJobs((current) => current ? { ...current, items: [job, ...current.items.filter((item) => item.job_id !== job.job_id)] } : null);
+      setNotice(`Log analysis queued for ${approvedFolder.name}.`);
+    } catch (reason) {
+      if (reason instanceof UnauthorizedError) onUnauthorized();
+      else setError(reason instanceof Error ? reason.message : 'Log analysis could not start.');
+    } finally { setBusy(false); }
+  }
   const [selectedSource, setSelectedSource] = useState('');
   async function link(type: 'alert' | 'event', id: string) {
     if (!caseId) return;
@@ -75,6 +90,7 @@ export function LogJobsWorkspace({ onUnauthorized }: { onUnauthorized: () => voi
     <div className="panel-heading"><div><h2>Local log analysis</h2><p>Configured local sources · bounded read-only ingestion · no uploads</p></div><span className="data-chip">Operator configured</span></div>
     {error && <div className="alert-error" role="alert"><span>!</span><div><strong>Log analysis</strong><p>{error}</p></div></div>}{notice && <p role="status" className="case-notice">{notice}</p>}
     <form onSubmit={start} className="job-start-form"><label htmlFor="approved-log-source">Approved log source</label><select id="approved-log-source" value={selectedSource} onChange={(event) => setSelectedSource(event.target.value)} required><option value="">Select a source</option>{sources.map((source) => <option key={source.source_id} value={source.source_id}>{source.display_name}</option>)}</select><button className="primary-button" disabled={!selectedSource || busy || sources.length === 0}>{busy ? 'Starting…' : 'Analyze logs'}</button></form>
+    <div className="project-actions"><button className="secondary-button" onClick={() => setFolderPickerOpen(true)}>Select folder</button>{approvedFolder && <><span role="status">Approved log folder: {approvedFolder.name}</span><button className="primary-button" disabled={busy || !approvedFolder.log_location_id} onClick={() => void analyzeApprovedFolder()}>{busy ? 'Starting…' : 'Analyze selected folder'}</button></>}</div>
     {!sources.length && <div className="empty-state"><h3>{registryStatus?.status === 'missing' ? 'Registry file not found' : registryStatus?.status === 'unreadable' ? 'Registry file is unreadable' : registryStatus?.status === 'invalid' ? 'Registry file is invalid' : registryStatus?.status === 'empty' ? 'Registry is valid but has no sources' : 'No approved log sources'}</h3><p>{registryStatus?.reason ?? 'Configure sources in the operator log-source file, then reload this page.'}</p></div>}
     {!jobs?.items.length ? <div className="empty-state"><h3>No log analysis jobs</h3><p>Queued results and partial-ingestion diagnostics will remain available here.</p></div> : <div className="table-scroll"><table><thead><tr><th>SOURCE</th><th>STATE</th><th>EVENTS</th><th>ALERTS</th><th>DIAGNOSTICS</th><th>RESULT</th></tr></thead><tbody>{jobs.items.map((job) => <tr key={job.job_id}><td>{job.source_name}<small className="sub-id">{job.job_id.slice(0, 8)}</small></td><td><span className="status">{job.status}</span>{job.error && <small className="sub-id">{job.error}</small>}{job.diagnostics.map((message) => <small className="sub-id" key={message}>{message}</small>)}</td><td>{job.event_count}</td><td>{job.alert_count}</td><td>{job.error_count || '—'}</td><td>{job.scan_id && <button className="text-button" onClick={() => setSelected(job.scan_id!)}>Open results →</button>}</td></tr>)}</tbody></table></div>}
     {selected && <>
@@ -84,6 +100,7 @@ export function LogJobsWorkspace({ onUnauthorized }: { onUnauthorized: () => voi
       <section className="log-timeline"><h3>Timeline ({timeline?.total ?? 0})</h3><ol>{timeline?.items.map((item) => <li key={item.entry_id}><time>{new Date(item.occurred_at).toLocaleString()}</time><p className="evidence-text">{item.description}</p></li>)}</ol>{timeline && <SmallPages data={timeline} offset={timelineOffset} onPage={setTimelineOffset}/>}</section></div>
       {(alertDetail || eventDetail) && <section className="job-detail" aria-label={alertDetail ? 'Alert details' : 'Event details'}><h3>{alertDetail ? 'Alert details' : 'Event details'}</h3><dl>{Object.entries(alertDetail ?? eventDetail ?? {}).map(([key, value]) => <div className="log-detail-value" key={key}><dt>{key.replaceAll('_', ' ')}</dt><dd className="evidence-text">{Array.isArray(value) ? value.join(', ') : String(value ?? '—')}</dd></div>)}</dl></section>}
     </>}
+    {folderPickerOpen && <FolderApprovalPicker purpose="logs" onClose={() => setFolderPickerOpen(false)} onUnauthorized={onUnauthorized} onApproved={(project) => { setApprovedFolder(project); setFolderPickerOpen(false); setNotice('Folder approved. Log analysis will read supported local log files only.'); }} />}
   </section>;
 }
 

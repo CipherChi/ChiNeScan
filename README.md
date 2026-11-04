@@ -23,6 +23,18 @@ uv sync --extra dev
 uv run chinescan --help
 ```
 
+On Windows, `py -3.12 -m chinescan` is also supported after installing the project and its
+dependencies. For example, from the repository root:
+
+```powershell
+py -3.12 -m pip install -e ".[dev]"
+py -3.12 -m chinescan --help
+```
+
+This module form does not depend on the Python `Scripts` directory being on `PATH`. If using
+`chinescan` directly, activate the environment where the project was installed or add that
+environment's `Scripts` directory to `PATH`.
+
 Initialize local configuration and inspect it:
 
 ```powershell
@@ -106,6 +118,16 @@ Log, malware, and domain scans do not currently auto-save JSON or Markdown repor
 ## Web dashboard sign-in
 
 Start the dashboard and create the first operator from the **Create operator account** link. The operator identity is an email address, normalized to lowercase. Passwords must be at least 12 characters and are stored as Argon2id hashes. Only one operator account is supported, so signup is disabled after the first account exists.
+
+On Windows, after installing frontend dependencies once with `npm ci` in `frontend`, start both
+local services from the repository root with:
+
+```powershell
+.\scripts\start-dashboard.ps1
+```
+
+The script opens separate consoles for the backend and frontend. The dashboard is available at
+`http://127.0.0.1:5173`; close each service console to stop that service.
 
 ```powershell
 uv run chinescan web serve

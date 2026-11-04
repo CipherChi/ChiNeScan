@@ -11,6 +11,8 @@ from chinescan.core.fs_policy import (
     MAX_PAGE_SIZE,
     FilesystemBrowserService,
     decide_path,
+    folder_approval_decision,
+    folder_approval_error,
     validate_allowed_roots,
 )
 
@@ -49,6 +51,107 @@ def test_path_length_is_bounded_before_filesystem_resolution(tmp_path: Path) -> 
     decision = decide_path(value, allowed_roots=[tmp_path])
     assert not decision.allowed
     assert decision.reason_code == "path_too_long"
+
+
+def test_folder_approval_rejects_filesystem_and_profile_roots() -> None:
+    filesystem_root = Path(Path.cwd().anchor or "/")
+    root = folder_approval_decision(
+        filesystem_root, allowed_roots=[], hard_denied=[], soft_denied=[], allow_soft_denied=False
+    )
+    profile = folder_approval_decision(
+        Path.home(), allowed_roots=[], hard_denied=[], soft_denied=[], allow_soft_denied=False
+    )
+    assert root.reason_code == "filesystem_root"
+    assert profile.reason_code == "user_profile_root"
+    assert "subfolder" in folder_approval_error(root.reason_code)
+
+
+def test_folder_approval_allows_readable_local_folder_with_spaces(tmp_path: Path) -> None:
+    folder = tmp_path / "approved project folder"
+    folder.mkdir()
+    decision = folder_approval_decision(
+        folder, allowed_roots=[], hard_denied=[], soft_denied=[], allow_soft_denied=False
+    )
+    assert decision.allowed
+    assert decision.path == folder.resolve()
+
+
+def test_folder_approval_keeps_nonempty_allowed_roots_as_a_restriction(tmp_path: Path) -> None:
+    allowed = tmp_path / "allowed"
+    outside = tmp_path / "outside"
+    allowed.mkdir()
+    outside.mkdir()
+    decision = folder_approval_decision(
+        outside,
+        allowed_roots=[allowed],
+        hard_denied=[],
+        soft_denied=[],
+        allow_soft_denied=False,
+    )
+    assert not decision.allowed
+    assert decision.reason_code == "outside_allowed_roots"
+
+
+def test_folder_approval_rejects_network_and_drive_relative_paths() -> None:
+    for path, expected in [
+        (r"\\server\share", "network_path"),
+        (r"C:relative\folder", "drive_relative"),
+    ]:
+        decision = folder_approval_decision(
+            path, allowed_roots=[], hard_denied=[], soft_denied=[], allow_soft_denied=False
+        )
+        assert not decision.allowed
+        assert decision.reason_code == expected
+
+
+def test_folder_approval_rejects_unreadable_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    folder = tmp_path / "unreadable"
+    folder.mkdir()
+    original_scandir = os.scandir
+
+    def guarded_scandir(path):
+        if Path(path) == folder:
+            raise PermissionError("denied")
+        return original_scandir(path)
+
+    monkeypatch.setattr(policy.os, "scandir", guarded_scandir)
+    decision = folder_approval_decision(
+        folder, allowed_roots=[], hard_denied=[], soft_denied=[], allow_soft_denied=False
+    )
+    assert not decision.allowed
+    assert decision.reason_code == "unreadable_directory"
+
+
+def test_folder_approval_rejects_reparse_points_when_supported(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(target, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("Directory symlinks are not available for this account.")
+    decision = folder_approval_decision(
+        alias, allowed_roots=[], hard_denied=[], soft_denied=[], allow_soft_denied=False
+    )
+    assert not decision.allowed
+    assert decision.reason_code == "reparse_point"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows system folders only")
+def test_folder_approval_rejects_system_directories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    system = tmp_path / "Windows"
+    candidate = system / "app"
+    candidate.mkdir(parents=True)
+    monkeypatch.setenv("WINDIR", str(system))
+    decision = folder_approval_decision(
+        candidate, allowed_roots=[], hard_denied=[], soft_denied=[], allow_soft_denied=False
+    )
+    assert not decision.allowed
+    assert decision.reason_code == "system_directory"
 
 
 def test_allowed_root_itself_is_selectable_and_descendants_are_contained(tmp_path: Path) -> None:

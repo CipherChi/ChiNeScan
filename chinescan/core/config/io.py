@@ -1,6 +1,7 @@
 """TOML configuration utilities."""
 
 import os
+import re
 import tomllib
 from pathlib import Path
 
@@ -50,9 +51,17 @@ def load_settings(
         data.update(cli_overrides or {})
         return Settings(_env_file=None, **data)
     except (OSError, ValueError, TypeError) as exc:
+        detail = "check the file and setting values."
+        if isinstance(exc, tomllib.TOMLDecodeError):
+            location = re.search(r"\(at line (\d+), column (\d+)\)$", str(exc))
+            if location is not None:
+                detail = (
+                    f"check TOML syntax near line {location.group(1)}, column {location.group(2)}."
+                )
+            else:
+                detail = "check TOML syntax."
         raise ConfigurationError(
-            f"Unable to load configuration ({type(exc).__name__}); "
-            "check the file and setting values."
+            f"Unable to load configuration ({type(exc).__name__}); {detail}"
         ) from exc
 
 

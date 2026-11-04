@@ -14,7 +14,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from chinescan.core.fs_policy import FilesystemBrowserService, PathDecision, decide_path
+from chinescan.core.fs_policy import (
+    FilesystemBrowserService,
+    PathDecision,
+    decide_path,
+    folder_approval_decision,
+    folder_approval_error,
+)
 from chinescan.core.storage.sqlite import SQLiteRepository
 
 
@@ -204,10 +210,11 @@ class ProjectService:
             return self._github_decision(path, github_item)
         return decide_path(
             path,
-            allowed_roots=self.allowed_roots,
+            allowed_roots=self.allowed_roots or [Path(path)],
             hard_denied=self.hard_denied,
             soft_denied=self.soft_denied,
-            allow_soft_denied=self.allow_soft_denied,
+            allow_soft_denied=self.allow_soft_denied or not self.allowed_roots,
+            require_allowed_root=True,
         )
 
     def github_project_count(self) -> int:
@@ -345,13 +352,25 @@ class ProjectService:
         root = self.browser.resolve_selection(session, "project_directory", directory_id)
         return self.create(name, root)
 
+    def create_from_folder_approval(
+        self, session: str, directory_id: str, name: str | None = None
+    ) -> dict[str, Any]:
+        root = self.browser.resolve_folder_approval(session, directory_id)
+        return self.create(name or root.name, root)
+
     def create(self, name: str, root: str | Path) -> dict[str, Any]:
         normalized = unicodedata.normalize("NFKC", name).strip()
         if not 1 <= len(normalized) <= 120 or any(ord(char) < 32 for char in normalized):
             raise ProjectError("invalid_name", "Project name must be 1 to 120 characters.")
-        decision = self.decision(root)
+        decision = folder_approval_decision(
+            root,
+            allowed_roots=self.allowed_roots,
+            hard_denied=self.hard_denied,
+            soft_denied=self.soft_denied,
+            allow_soft_denied=self.allow_soft_denied,
+        )
         if not decision.allowed or decision.path is None or not decision.path.is_dir():
-            raise ProjectError("root_denied", "The selected folder is no longer approved.")
+            raise ProjectError(decision.reason_code, folder_approval_error(decision.reason_code))
         if any(
             _name_key(item["name"]) == _name_key(normalized)
             for item in self._all_internal_and_file()
@@ -363,7 +382,7 @@ class ProjectService:
             "name": normalized,
             "kind": "local",
             "root": str(decision.path),
-            "configured_by": "ui",
+            "configured_by": "dashboard",
             "created_at": _now(),
             "last_scan_refs": [],
         }
@@ -516,7 +535,7 @@ class ProjectService:
         item = self._stored(project_id)
         if item is None:
             raise ProjectError("project_not_found", "Project not found.")
-        if item.get("configured_by") != "ui":
+        if item.get("configured_by") not in {"ui", "dashboard"}:
             raise ProjectError("file_configured", "Projects configured by file are read-only.")
         if confirmation != item.get("name"):
             raise ProjectError(
@@ -560,17 +579,26 @@ class ProjectService:
         if item is not None and item.get("kind") == "github":
             decision = self._github_decision(root, item)
         else:
-            decision = decide_path(
+            decision = folder_approval_decision(
                 root,
-                allowed_roots=self.allowed_roots if configured_by == "ui" else [root],
+                allowed_roots=(self.allowed_roots or [root])
+                if configured_by == "dashboard"
+                else self.allowed_roots
+                if configured_by == "ui"
+                else [root],
                 hard_denied=self.hard_denied,
                 soft_denied=self.soft_denied,
                 allow_soft_denied=self.allow_soft_denied,
             )
         if not decision.allowed or decision.path is None or not decision.path.is_dir():
+            if item is not None and item.get("kind") == "github":
+                raise ProjectError(
+                    "root_denied",
+                    f"Project folder is no longer approved or available ({decision.reason_code}).",
+                )
             raise ProjectError(
-                "root_denied",
-                f"Project folder is no longer approved or available ({decision.reason_code}).",
+                decision.reason_code or "root_denied",
+                folder_approval_error(decision.reason_code),
             )
         return name, decision.path
 

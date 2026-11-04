@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import ntpath
 import os
 import re
 import secrets
@@ -18,8 +19,8 @@ from urllib.parse import unquote
 if TYPE_CHECKING:
     from chinescan.core.config.settings import Settings
 
-Capability = Literal["project_directory", "log_location"]
-CAPABILITIES = frozenset({"project_directory", "log_location"})
+Capability = Literal["project_directory", "log_location", "folder_approval"]
+CAPABILITIES = frozenset({"project_directory", "log_location", "folder_approval"})
 MAX_PAGE_SIZE = 500
 MAX_DIRECTORY_ENTRIES = 50_000
 ID_TTL_SECONDS = 300
@@ -55,6 +56,7 @@ class _Selection:
     path: Path
     boundary: Path
     label: str
+    selectable: bool
     expires_at: float
 
 
@@ -173,6 +175,17 @@ def _is_remote(path: Path) -> bool:
         return os.name == "nt"
 
 
+def _local_filesystem_roots() -> list[Path]:
+    if os.name != "nt":
+        return [Path(Path.cwd().anchor or "/")]
+    try:
+        mask = int(cast(Any, ctypes).windll.kernel32.GetLogicalDrives())
+    except (AttributeError, OSError, ValueError):
+        return []
+    roots = [Path(f"{chr(65 + index)}:\\") for index in range(26) if mask & (1 << index)]
+    return [root for root in roots if not _is_remote(root)]
+
+
 def _reparse(path: Path) -> bool:
     """Return true if any existing path component is a link or reparse point."""
     try:
@@ -203,6 +216,7 @@ def decide_path(
     soft_denied: tuple[Path, ...] | list[Path] = (),
     allow_soft_denied: bool = False,
     must_exist: bool = True,
+    require_allowed_root: bool = True,
 ) -> PathDecision:
     """Return one path authorization decision; hard denials always win."""
     raw = str(value)
@@ -245,7 +259,7 @@ def decide_path(
         except (OSError, RuntimeError, ValueError):
             continue
     matching_roots = [root for root in roots if _under(resolved, root)]
-    if not matching_roots:
+    if require_allowed_root and not matching_roots:
         return PathDecision(False, "none", "outside_allowed_roots", resolved)
     soft_paths: list[Path] = []
     for raw_soft in soft_denied:
@@ -271,11 +285,95 @@ def decide_path(
         final = candidate.resolve(strict=must_exist)
     except (OSError, RuntimeError, ValueError):
         return PathDecision(False, "hard", "unavailable")
-    if _key(final) != _key(resolved) or not any(_under(final, root) for root in roots):
+    if _key(final) != _key(resolved) or (
+        require_allowed_root and not any(_under(final, root) for root in roots)
+    ):
         return PathDecision(False, "hard", "containment_changed")
     if any(_under(final, item) for item in denied):
         return PathDecision(False, "hard", "hard_denied", final)
     return PathDecision(True, "allowed", "allowed", final)
+
+
+def folder_approval_decision(
+    value: str | Path,
+    *,
+    allowed_roots: list[Path],
+    hard_denied: list[Path],
+    soft_denied: list[Path],
+    allow_soft_denied: bool,
+) -> PathDecision:
+    """Validate a user-selected directory before it can become an approved project."""
+    candidate = Path(value).expanduser()
+    raw_candidate = str(value)
+    if os.name == "nt":
+        drive, tail = ntpath.splitdrive(raw_candidate)
+        if drive and tail and not tail.startswith(("\\", "/")):
+            return PathDecision(False, "hard", "drive_relative")
+        if raw_candidate.startswith(("\\\\", "//")):
+            return PathDecision(False, "hard", "network_path")
+    if not candidate.is_absolute():
+        return PathDecision(False, "hard", "absolute_path_required")
+    decision = decide_path(
+        candidate,
+        allowed_roots=allowed_roots,
+        hard_denied=hard_denied,
+        soft_denied=soft_denied,
+        allow_soft_denied=allow_soft_denied or not allowed_roots,
+        require_allowed_root=bool(allowed_roots),
+    )
+    if not decision.allowed or decision.path is None:
+        return decision
+    resolved = decision.path
+    if resolved == Path(resolved.anchor):
+        return PathDecision(False, "hard", "filesystem_root", resolved)
+    try:
+        if resolved == Path.home().resolve(strict=False):
+            return PathDecision(False, "hard", "user_profile_root", resolved)
+    except (OSError, RuntimeError, ValueError):
+        return PathDecision(False, "hard", "unavailable")
+    system_paths = (
+        [
+            Path(os.environ.get("WINDIR", r"C:\Windows")),
+            Path(os.environ.get("ProgramFiles", r"C:\Program Files")),
+            Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")),
+            Path(os.environ.get("ProgramW6432", r"C:\Program Files")),
+        ]
+        if os.name == "nt"
+        else []
+    )
+    for system_path in system_paths:
+        try:
+            system_root = system_path.resolve(strict=False)
+            if _under(resolved, system_root):
+                return PathDecision(False, "hard", "system_directory", resolved)
+        except (OSError, RuntimeError, ValueError):
+            return PathDecision(False, "hard", "invalid_system_directory_rule")
+    if not resolved.is_dir():
+        return PathDecision(False, "hard", "not_a_directory", resolved)
+    try:
+        with os.scandir(resolved):
+            pass
+    except OSError:
+        return PathDecision(False, "hard", "unreadable_directory", resolved)
+    return decision
+
+
+def folder_approval_error(code: str) -> str:
+    messages = {
+        "absolute_path_required": "Choose an absolute local folder.",
+        "filesystem_root": "A drive root cannot be approved. Choose a subfolder.",
+        "user_profile_root": "The user profile root cannot be approved. Choose a subfolder.",
+        "system_directory": "Windows and Program Files system folders cannot be approved.",
+        "network_path": "Network locations cannot be approved.",
+        "network_drive": "Network drives cannot be approved.",
+        "reparse_point": "Shortcuts, symlinks, and junctions cannot be approved.",
+        "unreadable_directory": "This folder cannot be read. Choose a readable folder.",
+        "not_a_directory": "Choose a folder, not a file.",
+        "unavailable": "The selected folder is no longer available.",
+        "outside_allowed_roots": "The selected folder is outside the configured allowed roots.",
+        "hard_denied": "This protected system or application folder cannot be approved.",
+    }
+    return messages.get(code, "The selected folder is not available for approval.")
 
 
 def validate_allowed_roots(
@@ -443,18 +541,77 @@ class FilesystemBrowserService:
                 key: value for key, value in self._cursors.items() if value.expires_at > now
             }
 
-    def _decision(self, path: Path, boundary: Path) -> PathDecision:
+    def _decision(
+        self, path: Path, boundary: Path, *, allow_soft_override: bool = False
+    ) -> PathDecision:
         return decide_path(
             path,
             allowed_roots=[boundary],
             hard_denied=self.hard_denied,
             soft_denied=self.soft_denied,
-            allow_soft_denied=self.allow_soft_denied,
+            allow_soft_denied=self.allow_soft_denied or allow_soft_override,
             must_exist=True,
         )
 
+    def picker_roots_view(self, session: str) -> dict[str, object]:
+        """Return policy roots or local drive anchors for the approval picker."""
+        roots = self.roots or _local_filesystem_roots()
+        items: list[dict[str, object]] = []
+        for root in roots:
+            decision = self._decision(root, root, allow_soft_override=True)
+            if not decision.allowed or decision.path is None or not decision.path.is_dir():
+                continue
+            selectable = folder_approval_decision(
+                decision.path,
+                allowed_roots=self.roots,
+                hard_denied=self.hard_denied,
+                soft_denied=self.soft_denied,
+                allow_soft_denied=True,
+            ).allowed
+            identifier = self._issue(
+                session,
+                "folder_approval",
+                decision.path,
+                decision.path,
+                str(root),
+                selectable=selectable,
+            )
+            items.append({"directory_id": identifier, "name": str(root), "selectable": selectable})
+        return {"items": items}
+
+    def preview_folder_approval(self, session: str, directory_id: str) -> dict[str, str]:
+        path = self.resolve_folder_approval(session, directory_id)
+        return {"directory_id": directory_id, "name": path.name, "resolved_path": str(path)}
+
+    def resolve_folder_approval(self, session: str, directory_id: str) -> Path:
+        selection = self._lookup(session, "folder_approval", directory_id)
+        if not selection.selectable:
+            raise ValueError("folder_not_selectable")
+        decision = folder_approval_decision(
+            selection.path,
+            allowed_roots=self.roots,
+            hard_denied=self.hard_denied,
+            soft_denied=self.soft_denied,
+            allow_soft_denied=True,
+        )
+        if (
+            not decision.allowed
+            or decision.path is None
+            or _key(decision.path) != _key(selection.path)
+            or not _under(decision.path, selection.boundary)
+        ):
+            raise ValueError(decision.reason_code or "directory_unavailable")
+        return decision.path
+
     def _issue(
-        self, session: str, capability: Capability, path: Path, boundary: Path, label: str
+        self,
+        session: str,
+        capability: Capability,
+        path: Path,
+        boundary: Path,
+        label: str,
+        *,
+        selectable: bool = True,
     ) -> str:
         self._purge()
         with self._lock:
@@ -463,7 +620,13 @@ class FilesystemBrowserService:
                 del self._selections[oldest]
             identifier = secrets.token_urlsafe(32)
             self._selections[identifier] = _Selection(
-                session, capability, path, boundary, label, time.monotonic() + ID_TTL_SECONDS
+                session,
+                capability,
+                path,
+                boundary,
+                label,
+                selectable,
+                time.monotonic() + ID_TTL_SECONDS,
             )
             return identifier
 
@@ -526,7 +689,11 @@ class FilesystemBrowserService:
             ):
                 raise ValueError("cursor_unavailable")
         selection = self._lookup(session, capability, directory_id)
-        checked = self._decision(selection.path, selection.boundary)
+        checked = self._decision(
+            selection.path,
+            selection.boundary,
+            allow_soft_override=capability == "folder_approval",
+        )
         if not checked.allowed or checked.path is None or not checked.path.is_dir():
             raise ValueError("directory_unavailable")
         if _key(checked.path) != _key(selection.path) or not _under(
@@ -535,7 +702,9 @@ class FilesystemBrowserService:
             raise ValueError("directory_unavailable")
 
         if cursor is None:
-            names, truncated = self._snapshot_children(checked.path, selection.boundary)
+            names, truncated = self._snapshot_children(
+                checked.path, selection.boundary, capability=capability
+            )
             start = 0
         else:
             assert page is not None
@@ -545,15 +714,33 @@ class FilesystemBrowserService:
         items: list[dict[str, object]] = []
         for name in page_names:
             child = checked.path / name
-            child_decision = self._decision(child, selection.boundary)
+            child_decision = self._decision(
+                child,
+                selection.boundary,
+                allow_soft_override=capability == "folder_approval",
+            )
             if not child_decision.allowed or child_decision.path is None:
                 continue
             if child_decision.path.name != name or not child_decision.path.is_dir():
                 continue
+            selectable = True
+            if capability == "folder_approval":
+                selectable = folder_approval_decision(
+                    child_decision.path,
+                    allowed_roots=self.roots,
+                    hard_denied=self.hard_denied,
+                    soft_denied=self.soft_denied,
+                    allow_soft_denied=True,
+                ).allowed
             child_id = self._issue(
-                session, capability, child_decision.path, selection.boundary, name
+                session,
+                capability,
+                child_decision.path,
+                selection.boundary,
+                name,
+                selectable=selectable,
             )
-            items.append({"directory_id": child_id, "name": name, "selectable": True})
+            items.append({"directory_id": child_id, "name": name, "selectable": selectable})
 
         next_cursor = None
         next_index = start + len(page_names)
@@ -590,12 +777,19 @@ class FilesystemBrowserService:
             if _key(current) == _key(checked.path):
                 current_id = directory_id
             else:
-                current_id = self._issue(session, capability, current, selection.boundary, part)
+                current_id = self._issue(
+                    session,
+                    capability,
+                    current,
+                    selection.boundary,
+                    part,
+                    selectable=selection.selectable,
+                )
             breadcrumbs.append({"name": part, "directory_id": current_id})
         return {
             "directory_id": directory_id,
             "name": selection.label if not relative_parts else relative_parts[-1],
-            "selectable": True,
+            "selectable": selection.selectable,
             "breadcrumbs": breadcrumbs,
             "items": items,
             "next_cursor": next_cursor,
@@ -616,8 +810,18 @@ class FilesystemBrowserService:
             raise ValueError("directory_unavailable")
         return decision.path
 
-    def _snapshot_children(self, directory: Path, boundary: Path) -> tuple[tuple[str, ...], bool]:
-        decision = self._decision(directory, boundary)
+    def _snapshot_children(
+        self,
+        directory: Path,
+        boundary: Path,
+        *,
+        capability: Capability,
+    ) -> tuple[tuple[str, ...], bool]:
+        decision = self._decision(
+            directory,
+            boundary,
+            allow_soft_override=capability == "folder_approval",
+        )
         if not decision.allowed or decision.path is None:
             raise ValueError("directory_unavailable")
         names: list[str] = []
@@ -645,7 +849,11 @@ class FilesystemBrowserService:
                         continue
         except OSError as exc:
             raise ValueError("directory_unavailable") from exc
-        after = self._decision(decision.path, boundary)
+        after = self._decision(
+            decision.path,
+            boundary,
+            allow_soft_override=capability == "folder_approval",
+        )
         if not after.allowed or after.path is None or _key(after.path) != _key(decision.path):
             raise ValueError("directory_unavailable")
         return (

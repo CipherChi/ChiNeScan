@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+import chinescan.core.fs_policy as fs_policy
 from chinescan.core.accounts import create_operator
 from chinescan.core.config.settings import Settings
 from chinescan.core.models.common import Severity
@@ -58,6 +59,77 @@ def _selection(client: TestClient) -> str:
     roots = client.get("/api/fs/roots?capability=project_directory")
     assert roots.status_code == 200
     return roots.json()["items"][0]["directory_id"]
+
+
+def test_folder_picker_requires_auth_and_approval_creates_dashboard_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    folder = tmp_path / "selected web project"
+    folder.mkdir()
+    monkeypatch.setattr(fs_policy, "_local_filesystem_roots", lambda: [folder])
+    _app, client, headers = _client(tmp_path, [])
+
+    assert client.get("/api/fs/picker-roots").status_code == 200
+    client.cookies.clear()
+    assert client.get("/api/fs/picker-roots").status_code == 401
+    unauthenticated_approval = client.post(
+        "/api/projects/approve-folder",
+        json={"directory_id": "x" * 40, "approved": True},
+        headers=headers,
+    )
+    assert unauthenticated_approval.status_code == 401
+    login = client.post(
+        "/api/auth/login",
+        json={"email": "projects@example.test", "password": "project-test-password-123"},
+        headers={"Origin": "http://127.0.0.1"},
+    )
+    headers = {"Origin": "http://127.0.0.1", "X-CSRF-Token": login.json()["csrf_token"]}
+    root = client.get("/api/fs/picker-roots").json()["items"][0]
+    assert root["selectable"] is True
+    preview = client.get("/api/fs/picker-preview", params={"directory_id": root["directory_id"]})
+    assert preview.status_code == 200
+    assert preview.json()["resolved_path"] == str(folder.resolve())
+
+    rejected = client.post(
+        "/api/projects/approve-folder",
+        json={"directory_id": root["directory_id"], "approved": False},
+        headers=headers,
+    )
+    assert rejected.status_code == 400
+    body_path = client.post(
+        "/api/projects/approve-folder",
+        json={"path": str(folder), "approved": True},
+        headers=headers,
+    )
+    assert body_path.status_code == 422
+
+    approved = client.post(
+        "/api/projects/approve-folder",
+        json={"directory_id": root["directory_id"], "approved": True},
+        headers=headers,
+    )
+    assert approved.status_code == 201
+    assert approved.json()["configured_by"] == "dashboard"
+    assert approved.json()["name"] == folder.name
+    assert client.get("/api/code/projects").json() == [
+        {"project_id": approved.json()["project_id"], "display_name": folder.name}
+    ]
+    detail = client.get(f"/api/projects/{approved.json()['project_id']}").json()
+    removed = client.request(
+        "DELETE",
+        f"/api/projects/{approved.json()['project_id']}",
+        json={"confirmation": folder.name},
+        headers=headers,
+    )
+    assert removed.status_code == 200
+    assert folder.is_dir()
+    assert detail["configured_by"] == "dashboard"
+
+
+def test_folder_picker_endpoints_enforce_loopback_host(tmp_path: Path) -> None:
+    _app, client, _headers = _client(tmp_path, [])
+    response = client.get("/api/fs/picker-roots", headers={"Host": "127.0.0.1.evil.test"})
+    assert response.status_code == 400
 
 
 def test_github_import_api_is_stably_disabled_by_default(tmp_path: Path) -> None:
@@ -544,7 +616,7 @@ def test_project_api_create_show_remove_keeps_files_scans_findings_and_cases(
     )
     assert response.status_code == 201
     project = response.json()
-    assert project["configured_by"] == "ui"
+    assert project["configured_by"] == "dashboard"
     assert str(root) not in response.text
     detail = client.get(f"/api/projects/{project['project_id']}")
     assert detail.status_code == 200 and str(root) not in detail.text
@@ -601,7 +673,7 @@ def test_project_api_create_show_remove_keeps_files_scans_findings_and_cases(
     client.close()
 
 
-def test_project_creation_and_job_start_recheck_policy_and_names_are_unique(tmp_path: Path) -> None:
+def test_project_creation_is_operator_approval_and_names_are_unique(tmp_path: Path) -> None:
     root = tmp_path / "approved"
     root.mkdir()
     app, client, headers = _client(tmp_path, [root])
@@ -615,11 +687,11 @@ def test_project_creation_and_job_start_recheck_policy_and_names_are_unique(tmp_
     )
     assert duplicate.status_code == 422
     app.state.project_service.allowed_roots.clear()
-    rejected = client.post(
+    submitted = client.post(
         f"/api/projects/{created.json()['project_id']}/code-jobs", headers=headers
     )
-    assert rejected.status_code == 422
-    assert str(root) not in rejected.text
+    assert submitted.status_code == 202
+    assert created.json()["configured_by"] == "dashboard"
     client.close()
 
 
@@ -654,7 +726,7 @@ def test_project_job_rejects_root_swapped_to_junction(tmp_path: Path) -> None:
         f"/api/projects/{created.json()['project_id']}/code-jobs", headers=headers
     )
     assert response.status_code == 422
-    assert "root_denied" in response.text
+    assert '"code":"reparse_point"' in response.text
     assert str(root) not in response.text and str(moved) not in response.text
     client.close()
 

@@ -1,4 +1,4 @@
-import type { CaseData, CaseSummary, CodeJob, CodeProject, Finding, Overview, Page, Scan, LogSource, LogSourceRegistryStatus, LogJob, LogAlert, LogEvent, LogTimeline, MalwareAnalysis, MalwareCapability, MalwareJob, MalwareSample, ProjectDetail, ProjectSummary, ProjectLogLocation, ProjectLogSuggestion, ProjectLogJob, ProjectMalwareJob, MalwareHostHint, FsDirectory, FsPage, GitHubImportCapabilities, GitHubImportPreview, GitHubImportJob, ChainInfo, ChainJob, ChainGraph } from './types';
+import type { ApprovedFolder, CaseData, CaseSummary, CodeJob, CodeProject, Finding, FolderPreview, Overview, Page, Scan, LogSource, LogSourceRegistryStatus, LogJob, LogAlert, LogEvent, LogTimeline, MalwareAnalysis, MalwareCapability, MalwareJob, MalwareSample, ProjectDetail, ProjectSummary, ProjectLogLocation, ProjectLogSuggestion, ProjectLogJob, ProjectMalwareJob, MalwareHostHint, FsDirectory, FsPage, GitHubImportCapabilities, GitHubImportPreview, GitHubImportJob, ChainInfo, ChainJob, ChainGraph } from './types';
 
 let csrfToken = '';
 export function setCsrfToken(token: string) { csrfToken = token; }
@@ -60,6 +60,16 @@ export const api = {
   },
   finding: (id: string) => request<Finding>(`/api/findings/${encodeURIComponent(id)}`),
   codeProjects: () => request<CodeProject[]>('/api/code/projects'),
+  folderPickerRoots: () => request<{ items: FsDirectory[] }>('/api/fs/picker-roots'),
+  folderPickerList: (directoryId: string, cursor?: string | null) => {
+    const query = new URLSearchParams({ directory_id: directoryId, limit: '100' });
+    if (cursor) query.set('cursor', cursor);
+    return request<FsPage>(`/api/fs/picker-list?${query}`);
+  },
+  folderPickerPreview: (directoryId: string) => request<FolderPreview>(`/api/fs/picker-preview?${new URLSearchParams({ directory_id: directoryId })}`),
+  approveFolder: (directoryId: string, name: string, purpose: 'project' | 'logs' | 'malware' = 'project') => request<ApprovedFolder>('/api/projects/approve-folder', {
+    method: 'POST', body: JSON.stringify({ directory_id: directoryId, name, approved: true, purpose }),
+  }),
   fsRoots: (capability: 'project_directory' | 'log_location') => request<{ items: FsDirectory[] }>(`/api/fs/roots?${new URLSearchParams({ capability })}`),
   fsList: (capability: 'project_directory' | 'log_location', directoryId: string, cursor?: string | null) => {
     const query = new URLSearchParams({ capability, directory_id: directoryId, limit: '100' });

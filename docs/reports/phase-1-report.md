@@ -1316,3 +1316,46 @@ The chain-trace provider uses an explicit host allowlist, HTTPS-only URL policy,
 validation with DNS pinning, same-host redirect checks, bounded response/request/deadline limits,
 and fixed-code provider failures. On-chain networking remains disabled by default. Details and
 the generated-artifact inventory are recorded in [chain-trace-report.md](chain-trace-report.md).
+
+## 2026-11-04 Windows CLI launch and configuration diagnostics
+
+Added a `python -m chinescan` entry point so the CLI can be launched through the selected Python
+interpreter without relying on the installed console-script directory being on `PATH`. TOML syntax
+errors now report their line and column without echoing configuration contents.
+
+Verification from the repository root using Python 3.12:
+
+| Command | Result |
+| --- | --- |
+| `py -3.12 -m chinescan --help` | Exit 0 — displayed CLI help. |
+| `py -3.12 -m chinescan config init --path <temporary-file>` | Exit 0 — created temporary default configuration. |
+| `py -3.12 -m chinescan config validate --path <temporary-file>` | Exit 0 — `Configuration is valid.` Temporary file removed. |
+| `py -3.12 -m chinescan config validate --path C:\Users\CipherChi\.config\chinescan\config.toml` | Exit 1 — `Unable to load configuration (TOMLDecodeError); check TOML syntax near line 1, column 9.` No file contents printed. The existing user configuration remains unchanged. |
+| `py -3.12 -m ruff check chinescan\__main__.py chinescan\core\config\io.py` | Exit 0 — all checks passed. |
+| `py -3.12 -m ruff format --check chinescan\__main__.py chinescan\core\config\io.py` | Exit 0 — both files formatted. |
+| `git diff --check` | Exit 0. |
+
+## 2026-11-04 Operator-approved local folder selection
+
+Replaced the dashboard's preconfigured-root requirement with authenticated, loopback-only local
+folder browsing and explicit approval. Selection tokens are session-bound; the approval request
+does not accept a filesystem path. The backend revalidates approved paths at creation and assessment
+submission, stores dashboard-approved projects in SQLite, and supports optional `allowed_roots`
+restrictions. The shared UI flow is available to code assessments, log analysis, malware triage, and
+the Projects page.
+
+Verification from the repository root:
+
+| Command | Result |
+| --- | --- |
+| `py -3.12 -m pytest -q --basetemp C:\pt` | Exit 0 — 515 passed, 5 deselected, 3 dependency deprecation warnings in 215.71s. |
+| `npm test -- --run` (from `frontend`) | Exit 0 — 54 tests passed across 11 files. |
+| `npm run build` (from `frontend`) | Exit 0 — TypeScript check and Vite production build passed. |
+| `py -3.12 -m ruff check .` | Exit 0 — all checks passed. |
+| `py -3.12 -m ruff format --check .` | Exit 0 — 177 files already formatted. |
+| `py -3.12 -m mypy --strict chinescan` | Exit 0 — no issues in 81 source files. |
+| `git diff --check` | Exit 0. |
+
+The default Windows pytest temp path caused the existing GitHub import test to fail with
+`path_too_long`. The isolated test passed with `--basetemp C:\pt`, and the complete suite passed
+with that short temp base.

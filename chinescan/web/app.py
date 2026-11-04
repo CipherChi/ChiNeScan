@@ -34,7 +34,11 @@ from chinescan.core.cases import (
 )
 from chinescan.core.config.settings import Settings
 from chinescan.core.diagnostics import build_report, health_report
-from chinescan.core.fs_policy import FilesystemBrowserService, policy_paths
+from chinescan.core.fs_policy import (
+    FilesystemBrowserService,
+    folder_approval_error,
+    policy_paths,
+)
 from chinescan.core.github_import import GitHubImportError, GitHubImportService, session_binding
 from chinescan.core.log_locations import LogLocationService
 from chinescan.core.logging.redaction import redact
@@ -248,6 +252,14 @@ class ProjectCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=120)
     directory_id: str = Field(min_length=32, max_length=128)
+
+
+class FolderApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    directory_id: str = Field(min_length=32, max_length=128)
+    approved: bool
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    purpose: Literal["project", "logs", "malware"] = "project"
 
 
 class ProjectRemoveRequest(BaseModel):
@@ -1428,6 +1440,40 @@ def create_app(
                 },
             ) from exc
 
+    @application.post("/api/projects/approve-folder", status_code=201)
+    def approve_project_folder(
+        payload: FolderApprovalRequest,
+        request: Request,
+        session: Session = Depends(require_csrf),  # noqa: B008
+    ) -> dict[str, Any]:
+        client_ip = request.client.host if request.client else ""
+        if not project_throttle.allowed("projects:" + client_ip):
+            raise HTTPException(status_code=429, detail="Project operation rate limit reached.")
+        if payload.approved is not True:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "approval_required", "message": "Explicit approval is required."},
+            )
+        try:
+            project = project_service.create_from_folder_approval(
+                session.csrf_token, payload.directory_id, payload.name
+            )
+            if payload.purpose == "logs":
+                location = log_location_service.add_approved_root(str(project["project_id"]))
+                return {**project, "log_location_id": location["location_id"]}
+            return project
+        except ProjectError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": exc.code, "message": str(exc)},
+            ) from exc
+        except ValueError as exc:
+            code = str(exc)
+            raise HTTPException(
+                status_code=422,
+                detail={"code": code, "message": folder_approval_error(code)},
+            ) from exc
+
     @application.delete("/api/projects/{project_id}")
     def remove_project(
         project_id: str,
@@ -2064,6 +2110,56 @@ def create_app(
         if not fs_browse_throttle.allowed("fs:" + (request.client.host if request.client else "")):
             raise HTTPException(status_code=429, detail="Browse rate limit reached; retry shortly.")
         return fs_browser.roots_view(session.csrf_token, capability)
+
+    @application.get("/api/fs/picker-roots")
+    def folder_picker_roots(
+        request: Request,
+        session: Session = Depends(current_session),  # noqa: B008
+    ) -> dict[str, object]:
+        if not fs_browse_throttle.allowed("fs:" + (request.client.host if request.client else "")):
+            raise HTTPException(status_code=429, detail="Browse rate limit reached; retry shortly.")
+        return fs_browser.picker_roots_view(session.csrf_token)
+
+    @application.get("/api/fs/picker-list")
+    def folder_picker_list(
+        request: Request,
+        directory_id: Annotated[str, Query(min_length=32, max_length=128)],
+        session: Session = Depends(current_session),  # noqa: B008
+        cursor: Annotated[str | None, Query(max_length=128)] = None,
+        limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    ) -> dict[str, object]:
+        if not fs_browse_throttle.allowed("fs:" + (request.client.host if request.client else "")):
+            raise HTTPException(status_code=429, detail="Browse rate limit reached; retry shortly.")
+        try:
+            return fs_browser.list_view(
+                session.csrf_token,
+                "folder_approval",
+                directory_id,
+                cursor=cursor,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "directory_unavailable", "message": "Folder is unavailable."},
+            ) from exc
+
+    @application.get("/api/fs/picker-preview")
+    def folder_picker_preview(
+        request: Request,
+        directory_id: Annotated[str, Query(min_length=32, max_length=128)],
+        session: Session = Depends(current_session),  # noqa: B008
+    ) -> dict[str, str]:
+        if not fs_browse_throttle.allowed("fs:" + (request.client.host if request.client else "")):
+            raise HTTPException(status_code=429, detail="Browse rate limit reached; retry shortly.")
+        try:
+            return fs_browser.preview_folder_approval(session.csrf_token, directory_id)
+        except ValueError as exc:
+            code = str(exc)
+            raise HTTPException(
+                status_code=422,
+                detail={"code": code, "message": folder_approval_error(code)},
+            ) from exc
 
     @application.get("/api/fs/list")
     def filesystem_list(

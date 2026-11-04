@@ -26,7 +26,7 @@ class LogLocationService:
 
     def _project(self, project_id: str) -> tuple[dict[str, Any], Path]:
         record = self.projects._stored(project_id)
-        if record is None or record.get("configured_by") != "ui":
+        if record is None or record.get("configured_by") not in {"ui", "dashboard"}:
             raise ProjectError("project_not_found", "Project not found.")
         _, root = self.projects.resolve(project_id)
         return record, root
@@ -57,13 +57,18 @@ class LogLocationService:
         if scope == "project" and record.get("kind") == "github":
             decision = self.projects.decision(selected)
         else:
-            approved = [project_root] if scope == "project" else self.projects.allowed_roots
+            approved = (
+                [project_root]
+                if scope == "project"
+                else self.projects.allowed_roots or [Path(selected)]
+            )
             decision = decide_path(
                 selected,
                 allowed_roots=approved,
                 hard_denied=self.projects.hard_denied,
                 soft_denied=self.projects.soft_denied,
-                allow_soft_denied=self.projects.allow_soft_denied,
+                allow_soft_denied=self.projects.allow_soft_denied
+                or (scope == "external" and not self.projects.allowed_roots),
             )
         if not decision.allowed or decision.path is None or not decision.path.is_dir():
             raise ProjectError("location_denied", "The selected log folder is no longer approved.")
@@ -87,6 +92,25 @@ class LogLocationService:
         return self.add(
             project_id, name, selected, "project" if _under(selected, root) else "external"
         )
+
+    def add_approved_root(self, project_id: str) -> dict[str, Any]:
+        """Make a deliberately approved folder directly available for log analysis."""
+        record, root = self._project(project_id)
+        rows = list(record.get("log_locations", []))
+        if len(rows) >= 20:
+            raise ProjectError("location_limit", "A project can have at most 20 log locations.")
+        item = {
+            "location_id": str(uuid.uuid4()),
+            "project_id": project_id,
+            "name": "Selected folder",
+            "scope": "project",
+            "root": str(root),
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        rows.append(item)
+        record["log_locations"] = rows
+        self.repository.save("project", project_id, record)
+        return self._public(item)
 
     def remove(self, project_id: str, location_id: str) -> None:
         record, _ = self._project(project_id)

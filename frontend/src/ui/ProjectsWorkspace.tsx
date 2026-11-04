@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, UnauthorizedError } from '../api';
-import type { FsDirectory, FsPage, LogJob, ProjectDetail, ProjectSummary } from '../types';
+import type { LogJob, ProjectDetail, ProjectSummary } from '../types';
 import { ProjectMalware } from './ProjectMalware';
 import { GitHubImportDialog } from './GitHubImportDialog';
+import { FolderApprovalPicker } from './FolderApprovalPicker';
 
 type Props = { onUnauthorized: () => void; onOpenScan: (id: string) => void; onCreateCase: (id: string) => void };
-const pickerExample = "allowed_roots = ['C:\\src']";
 
 export function ProjectsWorkspace({ onUnauthorized, onOpenScan, onCreateCase }: Props) {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -91,7 +91,7 @@ export function ProjectsWorkspace({ onUnauthorized, onOpenScan, onCreateCase }: 
   if (detail) return <section className="projects-workspace" aria-label="Project detail">
     <div className="panel project-detail-panel">
       <div className="panel-heading"><div><button className="text-button" onClick={() => setDetail(null)}>← All projects</button><h2>{detail.name}</h2><p>{detail.kind} · configured by {detail.configured_by} · {detail.origin_label}</p></div>
-        <div className="project-actions"><button className="primary-button" onClick={() => void startAssessment()}>Assess code</button>{detail.configured_by === 'ui' && <button className="secondary-button" onClick={() => { setConfirmation(''); setRemoveOpen(true); }}>Remove project</button>}</div>
+        <div className="project-actions"><button className="primary-button" onClick={() => void startAssessment()}>Assess code</button>{detail.configured_by !== 'file' && <button className="secondary-button" onClick={() => { setConfirmation(''); setRemoveOpen(true); }}>Remove project</button>}</div>
       </div>
       {error && <div className="alert-error" role="alert" aria-live="assertive">{error}</div>}
       <ProjectLogs projectId={detail.project_id} locations={detail.log_locations ?? []} onUnauthorized={onUnauthorized} onChanged={() => void openProject(detail)} />
@@ -120,7 +120,7 @@ export function ProjectsWorkspace({ onUnauthorized, onOpenScan, onCreateCase }: 
       {error && <div className="alert-error" role="alert" aria-live="assertive">{error}</div>}
       {loading ? <div className="skeleton-card" aria-label="Loading projects"/> : projects.length ? <div className="table-scroll"><table><thead><tr><th>PROJECT</th><th>KIND</th><th>CONFIGURED BY</th><th>LAST SCAN</th><th>ACTIONS</th></tr></thead><tbody>{projects.map((project) => <tr key={project.project_id}><td><strong>{project.name}</strong></td><td>{project.kind}</td><td><span className={`project-origin ${project.configured_by}`}>{project.configured_by === 'file' ? 'Configured by file' : 'Added here'}</span></td><td>{project.last_scan ?? '—'}</td><td><button className="text-button" onClick={() => void openProject(project)}>Open project</button></td></tr>)}</tbody></table></div> : <div className="empty-state"><h3>No projects yet</h3><p>Add an approved local folder to begin code assessments.</p></div>}
     </div>
-    {pickerOpen && <FolderPicker dialogRef={dialogRef} onClose={() => setPickerOpen(false)} onUnauthorized={onUnauthorized} onCreated={async (project) => { setPickerOpen(false); await load(); await openProject(project); }} />}
+    {pickerOpen && <FolderApprovalPicker onClose={() => setPickerOpen(false)} onUnauthorized={onUnauthorized} onApproved={async (project) => { setPickerOpen(false); await load(); await openProject(project); }} />}
     {importOpen && <GitHubImportDialog onClose={() => setImportOpen(false)} onUnauthorized={onUnauthorized} onFinished={async () => { await load(); }} />}
   </section>;
 }
@@ -281,64 +281,4 @@ function ProjectLogs({ projectId, locations, onUnauthorized, onChanged }: { proj
     <p role="status" aria-live="polite">{jobAnnouncement}</p><section aria-label="Recent project log jobs"><h4>Recent log jobs</h4>{projectJobs.length ? <ul>{projectJobs.map((job) => <li key={job.job_id}>{job.status === 'failed' && job.error_code === 'location_denied' ? `Location now denied: ${job.error ?? 'The selected folder is no longer approved.'}` : job.status}{job.status === 'partial' && ` · skipped ${Object.entries(job.skipped_counts ?? {}).map(([key, count]) => `${key}: ${count}`).join(', ') || job.error_count}`}{job.error && job.error_code !== 'location_denied' && ` · ${job.error}`}</li>)}</ul> : <p className="empty-copy">No project log jobs yet.</p>}</section>
     {browserOpen && <div className="project-dialog-backdrop"><div className="project-dialog folder-picker" role="dialog" aria-modal="true" aria-labelledby="project-log-folder-title" ref={dialog}><h2 id="project-log-folder-title">Add a log folder</h2><fieldset><legend>Folder scope</legend><label><input type="radio" name="log-scope" checked={scopeMode === 'project'} onChange={() => { setScopeMode('project'); setFolder(null); setChildren([]); void openFolder(); }} /> Inside this project</label><label><input type="radio" name="log-scope" checked={scopeMode === 'external'} onChange={() => void openExternal()} /> Outside this project (approved roots)</label></fieldset>{scopeMode === 'external' && <ul aria-label="Approved external roots">{externalRoots.map((item) => <li key={item.directory_id}><button className="text-button" onClick={() => void browseExternal(item.directory_id)}>{item.name}</button><button className="secondary-button" onClick={() => setFolder(item)}>Select</button></li>)}</ul>}{browseTruncated && <p role="status" aria-live="polite">Folder listing is truncated. Browse a narrower folder to continue.</p>}{folder && <p role="status">Selected: {folder.name}</p>}<ul aria-label="Folder contents">{children.map((item) => <li key={item.directory_id}><button className="text-button" onClick={() => scopeMode === 'project' ? void openFolder(item.directory_id) : void browseExternal(item.directory_id)}>{item.name}</button><button className="secondary-button" onClick={() => setFolder(item)}>Select</button></li>)}</ul><label htmlFor="project-log-name">Location name</label><input id="project-log-name" value={locationName} onChange={(event) => setLocationName(event.target.value)} maxLength={120} /><div className="project-actions"><button className="secondary-button" onClick={() => setBrowserOpen(false)}>Cancel</button><button className="primary-button" disabled={!folder || !locationName.trim()} onClick={() => void addFolder()}>Add</button></div></div></div>}
   </section>;
-}
-
-function FolderPicker({ dialogRef, onClose, onUnauthorized, onCreated }: { dialogRef: React.RefObject<HTMLDivElement | null>; onClose: () => void; onUnauthorized: () => void; onCreated: (project: ProjectSummary) => void }) {
-  const [roots, setRoots] = useState<FsDirectory[]>([]);
-  const [page, setPage] = useState<FsPage | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [items, setItems] = useState<FsDirectory[]>([]);
-  const [selected, setSelected] = useState<FsDirectory | null>(null);
-  const [name, setName] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    api.fsRoots('project_directory').then((result) => setRoots(result.items)).catch((reason: unknown) => {
-      if (reason instanceof UnauthorizedError) onUnauthorized();
-      else setError(reason instanceof Error ? reason.message : 'Folder list could not be loaded.');
-    }).finally(() => setLoading(false));
-  }, [onUnauthorized]);
-
-  async function browse(directory: FsDirectory, append = false) {
-    setLoading(true); setError('');
-    try {
-      const result = await api.fsList('project_directory', directory.directory_id, append ? cursor : null);
-      setPage(result); setSelected({ directory_id: result.directory_id, name: result.name, selectable: result.selectable });
-      setItems(append ? [...items, ...result.items] : result.items); setCursor(result.next_cursor);
-    } catch (reason) {
-      if (reason instanceof UnauthorizedError) onUnauthorized();
-      else setError(reason instanceof Error ? reason.message : 'Folder list could not be loaded.');
-    } finally { setLoading(false); }
-  }
-  async function add() {
-    if (!selected || !name.trim()) return;
-    setSaving(true); setError('');
-    try { onCreated(await api.addProject(name.trim(), selected.directory_id)); }
-    catch (reason) { if (reason instanceof UnauthorizedError) onUnauthorized(); else setError(reason instanceof Error ? reason.message : 'Project could not be added.'); }
-    finally { setSaving(false); }
-  }
-
-  return <div className="project-dialog-backdrop"><div className="project-dialog folder-picker" role="dialog" aria-modal="true" aria-labelledby="folder-picker-title" ref={dialogRef}>
-    <div className="dialog-heading"><div><h2 id="folder-picker-title">Add a local project</h2><p>Choose a folder inside an approved root. Files are only read for assessment.</p></div><button aria-label="Close folder picker" className="close-button" onClick={onClose}>×</button></div>
-    {error && <div role="alert" aria-live="assertive" className="alert-error">{error}</div>}
-    {loading && !roots.length && <p role="status" aria-live="polite">Loading approved folders…</p>}
-    {!loading && !roots.length && <div className="empty-state"><h3>No allowed roots</h3><p>Add an approved folder to <code>config.toml</code>, then restart ChineScan. Example:</p><pre>{pickerExample}</pre></div>}
-    {roots.length > 0 && <div className="folder-browser">
-      <section aria-label="Approved roots"><h3>Approved roots</h3><ul>{roots.map((root) => <li key={root.directory_id}>
-        <button className="text-button" onClick={() => void browse(root)}>{root.name}</button>
-        {root.selectable && <button className="secondary-button" onClick={() => { setSelected(root); setPage(null); setItems([]); }}>Select this folder</button>}
-      </li>)}</ul></section>
-      {page && <section aria-label="Folder contents"><nav aria-label="Folder breadcrumbs" className="folder-breadcrumbs">{page.breadcrumbs.map((crumb, index) => <button key={`${crumb.directory_id}-${index}`} className="text-button" onClick={() => void browse(crumb)}>{crumb.name}</button>)}</nav>
-        <button className="secondary-button" onClick={() => setSelected({ directory_id: page.directory_id, name: page.name, selectable: page.selectable })}>Select this folder</button>
-        {page.truncated && <p role="status">Folder listing reached its directory-entry cap; results may be incomplete.</p>}
-        {items.length ? <ul className="folder-list">{items.map((item) => <li key={item.directory_id}><button className="text-button" onClick={() => void browse(item)} aria-label={`Open ${item.name}`}>📁 {item.name}</button><button className="secondary-button" disabled={!item.selectable} onClick={() => setSelected(item)}>Select this folder</button></li>)}</ul> : <p className="empty-copy">No subfolders in this folder.</p>}
-        {cursor && <button className="secondary-button" disabled={loading} onClick={() => void browse({ directory_id: page.directory_id, name: page.name, selectable: true }, true)}>Load more</button>}
-      </section>}
-      {selected && <div className="selected-project-folder" role="status">Selected folder: {selected.name}</div>}
-      <label htmlFor="new-project-name">Project name</label><input id="new-project-name" value={name} onChange={(event) => setName(event.target.value)} maxLength={120} required />
-      <div className="project-actions"><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={!selected || !name.trim() || saving} onClick={() => void add()}>{saving ? 'Adding…' : 'Add project'}</button></div>
-    </div>}
-  </div></div>;
 }

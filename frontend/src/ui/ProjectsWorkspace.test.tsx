@@ -20,53 +20,51 @@ function makeLogJob(overrides: Partial<LogJob> = {}): LogJob {
   return { job_id: 'job1', source_id: 'project:p1', source_name: 'Project logs', status: 'queued', created_at: '', started_at: null, finished_at: null, scan_id: null, event_count: 0, alert_count: 0, error_count: 0, error: null, diagnostics: [], project_id: 'p1', location_ids: ['loc1'], skipped_counts: {}, ...overrides };
 }
 
-const roots = [{ directory_id: 'root-id', name: 'approved', selectable: true }];
-const page = { directory_id: 'root-id', name: 'approved', selectable: true, breadcrumbs: [roots[0]], items: [{ directory_id: 'child-id', name: 'source', selectable: true }], next_cursor: 'next', truncated: false };
+const roots = [{ directory_id: 'root-id', name: 'approved', selectable: false }];
+const page = { directory_id: 'root-id', name: 'approved', selectable: false, breadcrumbs: [roots[0]], items: [{ directory_id: 'child-id', name: 'source', selectable: true }], next_cursor: 'next', truncated: false };
 function reply(value: unknown, status = 200) { return Promise.resolve(new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } })); }
 
 describe('projects workspace', () => {
   beforeEach(() => { vi.restoreAllMocks(); setCsrfToken('csrf'); });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('shows the no-roots guidance and opens an accessible folder picker', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => String(input).startsWith('/api/fs/roots') ? reply({ items: [] }) : reply([]));
+  it('opens the shared folder approval picker and supports keyboard dismissal', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => String(input).startsWith('/api/fs/picker-roots') ? reply({ items: [] }) : reply([]));
     render(<ProjectsWorkspace onUnauthorized={vi.fn()} onOpenScan={vi.fn()} onCreateCase={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Add project' }));
-    expect(await screen.findByRole('heading', { name: 'No allowed roots' })).toBeInTheDocument();
-    expect(screen.getByText("allowed_roots = ['C:\\src']")).toBeInTheDocument();
-    const dialog = screen.getByRole('dialog', { name: 'Add a local project' });
+    const dialog = await screen.findByRole('dialog', { name: 'Select a project folder' });
     expect(dialog).toBeInTheDocument();
     const close = within(dialog).getByRole('button', { name: 'Close folder picker' });
     await waitFor(() => expect(document.activeElement).toBe(close));
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
-    expect(document.activeElement).toBe(close);
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' }));
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByRole('dialog', { name: 'Add a local project' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Select a project folder' })).not.toBeInTheDocument();
   });
 
-  it('browses folders, paginates, and creates a project from a selected directory', async () => {
-    let listCount = 0;
+  it('reviews the resolved folder and explicitly approves the project', async () => {
+    let approved = false;
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const path = String(input);
-      if (path === '/api/projects' && init?.method === 'POST') return reply(makeProject(), 201);
-      if (path === '/api/projects') return reply([]);
-      if (path.startsWith('/api/projects/p1')) return reply(makeDetail());
-      if (path.startsWith('/api/fs/roots')) return reply({ items: roots });
-      if (path.startsWith('/api/fs/list')) {
-        listCount += 1;
-        return reply(listCount === 1 ? page : { ...page, items: [{ directory_id: 'second-child', name: 'tests', selectable: true }], next_cursor: null });
-      }
+      if (path === '/api/projects/approve-folder' && init?.method === 'POST') { approved = true; return reply(makeProject({ configured_by: 'dashboard' }), 201); }
+      if (path === '/api/projects') return reply(approved ? [makeProject({ configured_by: 'dashboard' })] : []);
+      if (path === '/api/projects/p1') return reply(makeDetail({ configured_by: 'dashboard' }));
+      if (path === '/api/fs/picker-roots') return reply({ items: roots });
+      if (path.startsWith('/api/fs/picker-list')) return reply({ ...page, next_cursor: null });
+      if (path.startsWith('/api/fs/picker-preview')) return reply({ directory_id: 'child-id', name: 'source', resolved_path: 'C:\\work\\source' });
       return reply({});
     });
     render(<ProjectsWorkspace onUnauthorized={vi.fn()} onOpenScan={vi.fn()} onCreateCase={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Add project' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'approved' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Load more' }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('cursor=next'), expect.anything()));
-    fireEvent.click(screen.getAllByRole('button', { name: 'Select this folder' })[1]);
-    fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'Example' } });
-    fireEvent.click(screen.getAllByRole('button', { name: 'Add project' }).at(-1)!);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/projects', expect.objectContaining({ method: 'POST' })));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open approved' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Select this folder' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Select this folder' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Review folder' }));
+    expect(await screen.findByText('C:\\work\\source')).toBeInTheDocument();
+    expect(screen.getByText('Approve this folder for assessment?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve folder' }));
+    await waitFor(() => expect(approved).toBe(true));
+    expect(fetchMock).toHaveBeenCalledWith('/api/projects/approve-folder', expect.objectContaining({ method: 'POST' }));
   });
 
   it('shows persisted partial counts and requires typed removal confirmation', async () => {

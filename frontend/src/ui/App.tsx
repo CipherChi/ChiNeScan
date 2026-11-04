@@ -142,7 +142,7 @@ export function App() {
         {section === 'chain' && <ChainTraceWorkspace onUnauthorized={signOut} onOpenScan={(id) => { setSection('scans'); setDetail({ kind: 'scan', id }); }} />}
         {section === 'projects' && <ProjectsWorkspace onUnauthorized={signOut} onOpenScan={(id) => { setSection('scans'); setDetail({ kind: 'scan', id }); }} onCreateCase={(id) => { setCaseScanId(id); setSection('cases'); }} />}
         {section === 'logs' && <LogJobsWorkspace onUnauthorized={signOut} />}
-        {section === 'malware' && <MalwareWorkspace onUnauthorized={signOut} />}
+        {section === 'malware' && <MalwareWorkspace onUnauthorized={signOut} onOpenProjects={() => setSection('projects')} />}
         {section === 'cases' && <CasesWorkspace onUnauthorized={signOut} initialScanId={caseScanId}/>}
         {section === 'status' && <SystemStatus onUnauthorized={signOut} />}
       </section>
