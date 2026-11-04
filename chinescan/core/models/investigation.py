@@ -29,7 +29,22 @@ class CoverageGap(SchemaRecord):
 
 class CoverageReport(SchemaRecord):
     examined: dict[str, int] = Field(default_factory=dict)
+    excluded: dict[str, int] = Field(default_factory=dict)
     gaps: list[CoverageGap] = Field(default_factory=list)
+
+
+class VibeCodingRisk(SchemaRecord):
+    score: int = Field(ge=0, le=100)
+    confidence: Confidence
+    signals: list[str] = Field(default_factory=list)
+    disclaimer: str = "Heuristic risk indicators only; this score is not proof of AI authorship."
+
+
+class CodeAssessmentSummary(SchemaRecord):
+    files_scanned: int = Field(default=0, ge=0)
+    files_excluded: int = Field(default=0, ge=0)
+    excluded_paths: list[str] = Field(default_factory=list)
+    vibe_coding_risk: VibeCodingRisk | None = None
 
 
 class Event(SchemaRecord):
@@ -182,6 +197,7 @@ class Scan(SchemaRecord):
     failures: dict[str, str] = Field(default_factory=dict)
     scan_options: dict[str, str | int | float | bool] = Field(default_factory=dict)
     coverage: CoverageReport | None = None
+    code_assessment: CodeAssessmentSummary | None = None
     verdict: ScanVerdict | None = None
 
 

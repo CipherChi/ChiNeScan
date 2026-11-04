@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     max_depth: int = 32
     per_file_seconds: float = 2.0
     job_deadline_seconds: int = 300
+    code_excluded_paths: list[str] = Field(default_factory=list)
     malware_max_files: int = 50_000
     malware_max_total_bytes: int = 1_073_741_824
     malware_max_file_bytes: int = 16_777_216

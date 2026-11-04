@@ -34,6 +34,11 @@ from chinescan.core.cases import (
 )
 from chinescan.core.config.settings import Settings
 from chinescan.core.diagnostics import build_report, health_report
+from chinescan.core.external_reports import (
+    MAX_EXTERNAL_REPORT_BYTES,
+    ExternalReportError,
+    parse_scanity_export,
+)
 from chinescan.core.fs_policy import (
     FilesystemBrowserService,
     folder_approval_error,
@@ -51,6 +56,7 @@ from chinescan.core.models.investigation import (
     Alert,
     Case,
     CaseStatus,
+    CodeAssessmentSummary,
     CoverageReport,
     Event,
     Scan,
@@ -58,6 +64,7 @@ from chinescan.core.models.investigation import (
 )
 from chinescan.core.orchestration.code_scan import ScanBounds
 from chinescan.core.projects import ProjectError, ProjectService
+from chinescan.core.report_store import ReportStoreError, save_scan_reports
 from chinescan.core.reporting import ReportingError, render_case_report, render_report, scan_data
 from chinescan.core.storage.sqlite import SQLiteRepository
 from chinescan.malware_analysis.managed import (
@@ -575,6 +582,7 @@ def create_app(
             max_depth=active_settings.max_depth,
             per_file_seconds=active_settings.per_file_seconds,
             job_deadline_seconds=active_settings.job_deadline_seconds,
+            excluded_paths=tuple(active_settings.code_excluded_paths),
         ),
     )
     chain_jobs = ChainTraceJobManager(repository, active_settings)
@@ -718,7 +726,13 @@ def create_app(
         content_length = request.headers.get("content-length")
         if content_length:
             try:
-                maximum_body = 2_100_000 if request.url.path == "/api/chain/jobs" else 8192
+                maximum_body = (
+                    2_100_000
+                    if request.url.path == "/api/chain/jobs"
+                    else MAX_EXTERNAL_REPORT_BYTES
+                    if request.url.path.endswith("/external-reports")
+                    else 8192
+                )
                 if int(content_length) > maximum_body:
                     result = Response("Request body is too large.", status_code=413)
                     result.headers["X-Request-ID"] = request_id
@@ -2100,6 +2114,62 @@ def create_app(
             return _download_response(body, f"scan-report.{output_format}", output_format)
         except ReportingError as exc:
             raise _case_http_error(exc) from exc
+
+    @application.post("/api/scans/{scan_id}/external-reports", status_code=201)
+    async def import_scanity_report(
+        scan_id: str,
+        request: Request,
+        _session: Session = Depends(require_csrf),  # noqa: B008
+    ) -> dict[str, Any]:
+        length = request.headers.get("content-length")
+        if length and length.isdigit() and int(length) > MAX_EXTERNAL_REPORT_BYTES:
+            raise HTTPException(status_code=413, detail="Report exceeds the 2 MB import limit.")
+        body = bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body) > MAX_EXTERNAL_REPORT_BYTES:
+                raise HTTPException(status_code=413, detail="Report exceeds the 2 MB import limit.")
+        try:
+            with db_lock:
+                scan_payload = repository.get("scan", scan_id)
+                if scan_payload is None:
+                    raise HTTPException(status_code=404, detail="Scan not found.")
+                scan_record = Scan.model_validate(scan_payload)
+                if not scan_record.code_assessment and not (
+                    {kind.casefold() for kind in scan_record.project_types or []}
+                    & {"python", "node"}
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="External reports can only be imported into code assessments.",
+                    )
+                if scan_record.code_assessment is None:
+                    scan_record.code_assessment = CodeAssessmentSummary()
+                target_record = repository.get("target", scan_record.target_id)
+                target_root = Path(str(target_record["value"])) if target_record else Path.cwd()
+                imported = parse_scanity_export(
+                    bytes(body), target=target_root, project_id=scan_record.project_id
+                )
+                existing_ids = set(scan_record.finding_ids)
+                existing_fingerprints = {
+                    str(item.get("fingerprint"))
+                    for item in repository.list_records("finding")
+                    if item.get("source") == "scanity" and item.get("finding_id") in existing_ids
+                }
+                added = [item for item in imported if item.fingerprint not in existing_fingerprints]
+                for item in added:
+                    repository.save("finding", item.finding_id, item.model_dump(mode="json"))
+                scan_record.finding_ids = list(
+                    dict.fromkeys([*scan_record.finding_ids, *(item.finding_id for item in added)])
+                )
+                repository.save("scan", scan_id, scan_record.model_dump(mode="json"))
+                try:
+                    save_scan_reports(repository, scan_id, active_settings.reports_dir)
+                except ReportStoreError:
+                    pass
+            return {"scan_id": scan_id, "imported": len(added), "source": "scanity"}
+        except ExternalReportError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @application.get("/api/fs/roots")
     def filesystem_roots(

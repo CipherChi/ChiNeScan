@@ -90,6 +90,19 @@ uv run chinescan code . --no-save-report
 uv run chinescan code . --fail-on-gaps
 ```
 
+The built-in assessment scans source files only, honors `.gitignore`, and excludes generated/vendor
+trees and lockfiles by default. Add project-specific exclusions with `code_excluded_paths` in the
+local TOML configuration. Reports include exclusion coverage, grouped findings, remediation guidance,
+and a heuristic “vibe-coding risk indicators” score; that score is not evidence of authorship.
+
+From a scan detail in the authenticated dashboard, use **Import external report** to import a
+external JSON or SARIF report. If Scanity provides an export in one of these formats, it can be
+imported locally; the public Scanity documentation does not currently document an API, CLI, or export
+format. Imports are limited to 2 MB, validated locally, and stored as separate
+external scanner results. Imported text is untrusted: it is escaped for display, never executed, and
+no links or instructions in the report are followed. This import does not send project files or
+reports to Scanity. No Scanity upload integration is enabled.
+
 `--fail-on-gaps` exits with status 1 when the scan records coverage gaps. Scanner failures also produce a nonzero exit. A verdict summarizes findings and coverage; it is not a safety determination.
 
 ## Indicator scanning examples

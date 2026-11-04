@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 import stat
 import threading
 import time
@@ -17,9 +16,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
+from pathspec import GitIgnoreSpec
+
 from chinescan.core.models.common import EvidenceKind, ScanVerdict, Severity
 from chinescan.core.models.finding import Finding
-from chinescan.core.models.investigation import CoverageGap, CoverageReport, Scan, Target
+from chinescan.core.models.investigation import (
+    CodeAssessmentSummary,
+    CoverageGap,
+    CoverageReport,
+    Scan,
+    Target,
+    VibeCodingRisk,
+)
 from chinescan.core.storage.repository import Repository
 from chinescan.core.verdict import VERDICT_CAVEAT
 
@@ -36,11 +44,41 @@ SOURCE_SUFFIXES = {
     ".go",
     ".rb",
 }
-IGNORED_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", "dist", "build"}
+IGNORED_DIRS = {
+    ".git",
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    ".next",
+    "dist",
+    "build",
+    "out",
+    "coverage",
+    ".turbo",
+    ".vercel",
+}
 MAX_SOURCE_BYTES = 1_000_000
 MAX_SOURCE_FILES = 20_000
 MAX_TOTAL_SOURCE_BYTES = 250_000_000
-DEFAULT_IGNORED_DIRS = {".git", "node_modules", "venv", ".venv", "dist", "build", "__pycache__"}
+DEFAULT_IGNORED_DIRS = IGNORED_DIRS
+LOCKFILES = {
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "bun.lock",
+    "bun.lockb",
+    "poetry.lock",
+    "pipfile.lock",
+    "uv.lock",
+    "pdm.lock",
+    "cargo.lock",
+    "gemfile.lock",
+    "composer.lock",
+    "go.sum",
+}
+DEFAULT_EXCLUDED_FILES = {"*.min.js", "*.map"}
 
 
 @dataclass(frozen=True)
@@ -51,6 +89,7 @@ class ScanBounds:
     max_depth: int = 32
     per_file_seconds: float = 2.0
     job_deadline_seconds: int = 300
+    excluded_paths: tuple[str, ...] = ()
 
 
 @dataclass
@@ -61,6 +100,9 @@ class ProjectProfile:
     kinds: tuple[str, ...]
     source_files: tuple[Path, ...]
     skipped_counts: dict[str, int] | None = None
+    excluded_counts: dict[str, int] | None = None
+    excluded_paths: list[str] | None = None
+    env_file_paths: list[Path] | None = None
     files_scanned: int = 0
     bytes_scanned: int = 0
     deadline_at: float | None = None
@@ -100,14 +142,51 @@ def detect_project(target: Path, bounds: ScanBounds | None = None) -> ProjectPro
 
     total_bytes = 0
     skipped: dict[str, int] = {}
+    excluded: dict[str, int] = {}
+    excluded_paths: list[str] = []
+    env_file_paths: list[Path] = []
     files_seen = 0
     deadline = time.monotonic() + bounds.job_deadline_seconds if bounds else None
+    configured_exclusions = (
+        GitIgnoreSpec.from_lines(bounds.excluded_paths)
+        if bounds and bounds.excluded_paths
+        else None
+    )
+    ignore_specs: list[tuple[Path, GitIgnoreSpec]] = []
     for directory, dirnames, filenames in os.walk(root, followlinks=False, onerror=walk_error):
         current = Path(directory)
+        gitignore = current / ".gitignore"
+        if gitignore.is_file():
+            try:
+                ignore_specs.append(
+                    (
+                        current,
+                        GitIgnoreSpec.from_lines(
+                            gitignore.read_text(encoding="utf-8", errors="replace").splitlines()
+                        ),
+                    )
+                )
+            except OSError:
+                pass
         depth = len(current.relative_to(root).parts)
-        dirnames[:] = sorted(
-            name for name in dirnames if name.casefold() not in DEFAULT_IGNORED_DIRS
-        )
+        retained_dirs: list[str] = []
+        for name in sorted(dirnames):
+            child = current / name
+            relative = child.relative_to(root).as_posix()
+            if name.casefold() in DEFAULT_IGNORED_DIRS:
+                count = _count_source_files(
+                    child, cap=(bounds.max_files if bounds else MAX_SOURCE_FILES)
+                )
+                _record_exclusion(excluded, excluded_paths, "generated", relative, count)
+                continue
+            if configured_exclusions and configured_exclusions.match_file(relative + "/"):
+                count = _count_source_files(
+                    child, cap=(bounds.max_files if bounds else MAX_SOURCE_FILES)
+                )
+                _record_exclusion(excluded, excluded_paths, "configured", relative, count)
+                continue
+            retained_dirs.append(name)
+        dirnames[:] = retained_dirs
         if bounds and depth >= bounds.max_depth:
             skipped["max_depth"] = skipped.get("max_depth", 0) + len(dirnames)
             dirnames.clear()
@@ -129,6 +208,34 @@ def detect_project(target: Path, bounds: ScanBounds | None = None) -> ProjectPro
             kinds.add("node")
         for name in sorted(filenames):
             path = current / name
+            relative = path.relative_to(root).as_posix()
+            if name.casefold() == ".gitignore":
+                continue
+            if name.casefold() in LOCKFILES or any(
+                Path(name).match(pattern) for pattern in DEFAULT_EXCLUDED_FILES
+            ):
+                _record_exclusion(excluded, excluded_paths, "generated", relative, 1)
+                continue
+            ignored = False
+            for base, spec in ignore_specs:
+                try:
+                    local = path.relative_to(base).as_posix()
+                except ValueError:
+                    continue
+                match = spec.check_file(local)
+                if match.include is not None:
+                    ignored = match.include
+            if ignored:
+                _record_exclusion(excluded, excluded_paths, "gitignore", relative, 1)
+                continue
+            if configured_exclusions and configured_exclusions.match_file(relative):
+                _record_exclusion(excluded, excluded_paths, "configured", relative, 1)
+                continue
+            if name.casefold() == ".env" or (
+                name.casefold().startswith(".env.")
+                and name.casefold() not in {".env.example", ".env.sample", ".env.template"}
+            ):
+                env_file_paths.append(path)
             files_seen += 1
             if bounds and deadline is not None and time.monotonic() >= deadline:
                 skipped["job_deadline"] = skipped.get("job_deadline", 0) + 1
@@ -174,10 +281,36 @@ def detect_project(target: Path, bounds: ScanBounds | None = None) -> ProjectPro
         kinds=tuple(sorted(kinds)),
         source_files=tuple(sources),
         skipped_counts=skipped,
+        excluded_counts=excluded,
+        excluded_paths=excluded_paths[:200],
+        env_file_paths=env_file_paths,
         files_scanned=len(sources),
         bytes_scanned=total_bytes,
         deadline_at=deadline,
     )
+
+
+def _record_exclusion(
+    counts: dict[str, int], paths: list[str], reason: str, relative: str, count: int
+) -> None:
+    counts[reason] = counts.get(reason, 0) + count
+    if len(paths) < 200:
+        paths.append(f"{relative} — {reason}")
+
+
+def _count_source_files(directory: Path, *, cap: int) -> int:
+    """Count source candidates under an excluded tree without reading file contents."""
+    count = 0
+    visited_dirs = 0
+    for _current, dirnames, filenames in os.walk(directory, followlinks=False):
+        visited_dirs += 1
+        if visited_dirs > max(cap * 4, 1000):
+            break
+        dirnames[:] = [name for name in dirnames if name.casefold() not in DEFAULT_IGNORED_DIRS]
+        count += sum(Path(name).suffix.lower() in SOURCE_SUFFIXES for name in filenames)
+        if count >= cap:
+            return cap
+    return count
 
 
 def _contains_reparse_point(path: Path) -> bool:
@@ -246,46 +379,46 @@ class BuiltinRuleScanner:
     """Small local-only heuristic ruleset; reads source without executing it."""
 
     name = "builtin"
-    _rules: tuple[tuple[str, re.Pattern[str], Severity, str], ...] = (
-        (
-            "DYNAMIC-EVAL",
-            re.compile(r"\beval\s*\("),
-            Severity.HIGH,
-            "Dynamic evaluation can execute attacker-controlled input.",
-        ),
-        (
-            "PY-SHELL",
-            re.compile(
-                r"\bsubprocess\.(?:run|Popen|call|check_output)\s*\([^\n]*\bshell\s*=\s*True"
-            ),
-            Severity.HIGH,
-            "Shell command construction can expose command injection risk.",
-        ),
-        (
-            "TLS-VERIFY-DISABLED",
-            re.compile(r"\bverify\s*=\s*False\b"),
-            Severity.MEDIUM,
-            "Disabling TLS certificate validation weakens transport security.",
-        ),
-        (
-            "HARDCODED-CREDENTIAL",
-            re.compile(
-                r"(?i)\b(?:password|passwd|api[_-]?key|secret|access[_-]?token)\b"
-                r"\s*[:=]\s*(['\"]).{4,}?\1"
-            ),
-            Severity.HIGH,
-            "A credential-like literal is present; the value is intentionally omitted.",
-        ),
-    )
 
     def __init__(self, bounds: ScanBounds | None = None) -> None:
         self.bounds = bounds
+        self.vibe_coding_risk: VibeCodingRisk | None = None
 
     def scan(self, target: Path) -> list[Finding]:
         return self.scan_profile(detect_project(target, self.bounds))
 
     def scan_profile(self, profile: ProjectProfile) -> list[Finding]:
+        from chinescan.core.orchestration.code_rules import (
+            analyze_source,
+            dependency_findings,
+            vibe_risk,
+        )
+
         findings: list[Finding] = []
+        for env_file in profile.env_file_paths or []:
+            relative_env = env_file.relative_to(profile.root).as_posix()
+            findings.append(
+                make_finding(
+                    target=profile.root,
+                    scanner=self.name,
+                    rule_id="ENV-FILE-PRESENT",
+                    title="Environment file present",
+                    severity=Severity.MEDIUM,
+                    confidence="POSSIBLE",
+                    location=f"{relative_env}:1",
+                    description="An environment file exists in the project. Verify it is ignored and not committed; no contents were read or reported.",  # noqa: E501
+                    tags=["heuristic", "manual-review"],
+                ).model_copy(
+                    update={
+                        "source": "builtin",
+                        "line_numbers": [1],
+                        "remediation": "Keep real environment files out of version control; commit a placeholder-only example instead.",  # noqa: E501
+                        "cwe_ids": ["CWE-312"],
+                        "references": [],
+                    }
+                )
+            )
+        scanned_sources: list[Path] = []
         for index, source in enumerate(profile.source_files):
             if profile.deadline_at is not None and time.monotonic() >= profile.deadline_at:
                 counts = profile.skipped_counts
@@ -300,53 +433,53 @@ class BuiltinRuleScanner:
             except OSError as exc:
                 raise ScannerError("A source file could not be read; scan aborted.") from exc
             relative = source.relative_to(profile.root).as_posix()
-            for line_number, line in enumerate(text.splitlines(), start=1):
-                if self.bounds and (
-                    time.monotonic() - started > self.bounds.per_file_seconds
-                    or (profile.deadline_at is not None and time.monotonic() >= profile.deadline_at)
-                ):
-                    counts = profile.skipped_counts
-                    if counts is not None:
-                        key = (
-                            "job_deadline"
-                            if profile.deadline_at and time.monotonic() >= profile.deadline_at
-                            else "per_file_seconds"
-                        )
-                        counts[key] = counts.get(key, 0) + 1
-                    profile.files_scanned = max(0, profile.files_scanned - 1)
-                    try:
-                        profile.bytes_scanned = max(
-                            0, profile.bytes_scanned - source.stat().st_size
-                        )
-                    except OSError:
-                        pass
-                    findings = [
-                        item
-                        for item in findings
-                        if not item.location or not item.location.startswith(relative + ":")
-                    ]
-                    break
-                if len(line) > 10_000:
-                    if self.bounds and profile.skipped_counts is not None:
-                        profile.skipped_counts["long_lines"] = (
-                            profile.skipped_counts.get("long_lines", 0) + 1
-                        )
-                    continue
-                for rule_id, pattern, severity, description in self._rules:
-                    if pattern.search(line):
-                        findings.append(
-                            make_finding(
-                                target=profile.root,
-                                scanner=self.name,
-                                rule_id=rule_id,
-                                title=rule_id.replace("-", " ").title(),
-                                severity=severity,
-                                location=f"{relative}:{line_number}",
-                                description=description,
-                                evidence=EvidenceKind.PATTERN_MATCH,
-                                tags=["heuristic", "local"],
-                            )
-                        )
+            lines = text.splitlines()
+            if any(len(line) > 10_000 for line in lines):
+                counts = profile.excluded_counts
+                if counts is not None:
+                    key = "generated (line over 10,000 characters)"
+                    counts[key] = counts.get(key, 0) + 1
+                if profile.excluded_paths is not None and len(profile.excluded_paths) < 200:
+                    profile.excluded_paths.append(f"{relative} — generated (long line)")
+                profile.files_scanned = max(0, profile.files_scanned - 1)
+                try:
+                    profile.bytes_scanned = max(0, profile.bytes_scanned - source.stat().st_size)
+                except OSError:
+                    pass
+                continue
+            scanned_sources.append(source)
+            is_test = any(
+                part.casefold() in {"test", "tests", "fixture", "fixtures", "__tests__"}
+                for part in Path(relative).parts
+            ) or Path(relative).name.casefold().startswith(("test_", "test."))
+            findings.extend(analyze_source(profile.root, source, text, is_test=is_test))
+            if self.bounds and (
+                time.monotonic() - started > self.bounds.per_file_seconds
+                or (profile.deadline_at is not None and time.monotonic() >= profile.deadline_at)
+            ):
+                counts = profile.skipped_counts
+                if counts is not None:
+                    key = (
+                        "job_deadline"
+                        if profile.deadline_at and time.monotonic() >= profile.deadline_at
+                        else "per_file_seconds"
+                    )
+                    counts[key] = counts.get(key, 0) + 1
+                profile.files_scanned = max(0, profile.files_scanned - 1)
+                try:
+                    profile.bytes_scanned = max(0, profile.bytes_scanned - source.stat().st_size)
+                except OSError:
+                    pass
+                scanned_sources.pop()
+                findings = [
+                    item
+                    for item in findings
+                    if not item.location or not item.location.startswith(relative + ":")
+                ]
+        profile.source_files = tuple(scanned_sources)
+        findings.extend(dependency_findings(profile.root))
+        score, confidence, signals = vibe_risk(profile)
+        self.vibe_coding_risk = VibeCodingRisk(score=score, confidence=confidence, signals=signals)
         return findings
 
 
@@ -365,6 +498,7 @@ class CodeScanResult:
     coverage: CoverageReport | None = None
     verdict: ScanVerdict | None = None
     scan_options: dict[str, str | int | float | bool] | None = None
+    code_assessment: CodeAssessmentSummary | None = None
 
     def summary(self) -> dict[str, object]:
         counts = {severity.value: 0 for severity in Severity}
@@ -380,6 +514,9 @@ class CodeScanResult:
             "failures": self.failures,
             "findings": [finding.model_dump(mode="json") for finding in self.findings],
             "coverage": self.coverage.model_dump(mode="json") if self.coverage else None,
+            "code_assessment": (
+                self.code_assessment.model_dump(mode="json") if self.code_assessment else None
+            ),
             "verdict": self.verdict.value if self.verdict else None,
             "caveat": VERDICT_CAVEAT.get(self.verdict) if self.verdict is not None else None,
             "scan_options": self.scan_options or {},
@@ -509,6 +646,7 @@ def _coverage_for_project(
             "bytes_scanned": profile.bytes_scanned,
             "scanner_count": len(scanners),
         },
+        excluded=dict(profile.excluded_counts or {}),
         gaps=gaps,
     )
 
@@ -631,6 +769,16 @@ class CodeScanService:
             coverage=coverage,
             scan_options=scan_options,
         )
+        builtin = next(
+            (scanner for scanner in self.scanners if isinstance(scanner, BuiltinRuleScanner)), None
+        )
+        excluded_total = sum((profile.excluded_counts or {}).values())
+        result.code_assessment = CodeAssessmentSummary(
+            files_scanned=profile.files_scanned,
+            files_excluded=excluded_total,
+            excluded_paths=list(profile.excluded_paths or []),
+            vibe_coding_risk=builtin.vibe_coding_risk if builtin else None,
+        )
         from chinescan.core.verdict import compute_verdict
 
         verdict_scan = Scan(
@@ -644,6 +792,7 @@ class CodeScanService:
             else "complete",
             failures=failures,
             coverage=coverage,
+            code_assessment=result.code_assessment,
         )
         result.verdict = compute_verdict(verdict_scan, normalized_findings)
         if self.repository is not None:
@@ -665,6 +814,7 @@ class CodeScanService:
                     finding_ids=[finding.finding_id for finding in normalized_findings],
                     failures=failures,
                     coverage=coverage,
+                    code_assessment=result.code_assessment,
                     verdict=result.verdict,
                     scan_options=scan_options,
                 )

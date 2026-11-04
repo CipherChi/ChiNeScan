@@ -102,6 +102,8 @@ def render_report(scan: Scan, findings: list[Finding], output_format: str) -> st
     if output_format == "share-summary":
         return _share_summary(scan, findings, caveat)
     if output_format == "json":
+        if scan.code_assessment is not None:
+            return _code_report_json(scan, findings, safe_findings, caveat)
         return json.dumps(
             {
                 "scan": redact(scan.model_dump(mode="json")),
@@ -141,6 +143,8 @@ def render_report(scan: Scan, findings: list[Finding], output_format: str) -> st
 
     title = f"ChineScan report: {scan.scan_id}"
     if output_format == "markdown":
+        if scan.code_assessment is not None:
+            return _code_report_markdown(scan, findings, safe_findings, caveat)
         lines = [f"# {title}", "", f"Status: `{scan.status}`", "", f"Findings: {len(findings)}", ""]
         if scan.verdict is not None:
             lines.extend(["## Verdict", "", f"**{scan.verdict.value}** — {caveat}", ""])
@@ -233,6 +237,316 @@ def render_report(scan: Scan, findings: list[Finding], output_format: str) -> st
         + "".join(rows)
         + "</tbody></table></html>"
     )
+
+
+MAX_CODE_REPORT_BYTES = 50 * 1024
+
+
+def _group_code_findings(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for item in items:
+        location = str(item.get("location") or "unspecified")
+        path, separator, tail = location.rpartition(":")
+        line = int(tail) if separator and tail.isdigit() else None
+        file_path = path if line else location
+        key = (
+            str(item.get("source") or "builtin"),
+            str(item.get("rule_id") or "unknown"),
+            file_path,
+        )
+        current = grouped.get(key)
+        if current is None:
+            current = dict(item)
+            current["file"] = file_path
+            current["line_numbers"] = list(item.get("line_numbers") or ([line] if line else []))
+            current.pop("location", None)
+            grouped[key] = current
+        else:
+            current["line_numbers"] = sorted(
+                set(current.get("line_numbers", []))
+                | set(item.get("line_numbers") or ([line] if line else []))
+            )
+            for field in ("cwe_ids", "tags"):
+                current[field] = sorted(set(current.get(field, [])) | set(item.get(field, [])))
+    return sorted(
+        grouped.values(),
+        key=lambda item: (str(item.get("file")), str(item.get("rule_id")), str(item.get("source"))),
+    )
+
+
+def _fix_first(
+    findings: list[Finding], safe_by_id: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    severity_weight = {
+        Severity.CRITICAL: 5,
+        Severity.HIGH: 4,
+        Severity.MEDIUM: 3,
+        Severity.LOW: 2,
+        Severity.INFO: 1,
+    }
+    confidence_weight = {"CONFIRMED": 1.0, "LIKELY": 0.8, "POSSIBLE": 0.55, "INFORMATIONAL": 0.25}
+    ranked: list[tuple[float, dict[str, Any]]] = []
+    for finding in findings:
+        item = safe_by_id.get(finding.finding_id, {})
+        if item.get("source") == "scanity":
+            continue
+        exposure = str(item.get("exposure") or finding.exposure).casefold()
+        public = bool(re.search(r"(?:/api/|route\.|page\.)", str(item.get("location") or ""), re.I))
+        exposure_weight = 1.5 if "client" in exposure or "public" in exposure or public else 1.0
+        score = (
+            severity_weight[finding.severity]
+            * confidence_weight[finding.confidence.value]
+            * exposure_weight
+        )
+        ranked.append(
+            (
+                score,
+                {
+                    "finding_id": finding.finding_id,
+                    "title": str(redact(finding.title)),
+                    "severity": finding.severity.value,
+                    "confidence": finding.confidence.value,
+                    "location": str(redact(finding.location or "unspecified")),
+                    "priority_score": round(score, 2),
+                },
+            )
+        )
+    ranked.sort(key=lambda pair: (-pair[0], pair[1]["location"], pair[1]["finding_id"]))
+    return [item for _, item in ranked[:10]]
+
+
+def _code_report_json(
+    scan: Scan, findings: list[Finding], safe_findings: list[dict[str, Any]], caveat: str | None
+) -> str:
+    by_id = {str(item.get("finding_id")): item for item in safe_findings}
+    external = _group_code_findings(
+        [item for item in safe_findings if item.get("source") == "scanity"]
+    )
+    internal = _group_code_findings(
+        [item for item in safe_findings if item.get("source") != "scanity"]
+    )
+    likely = [
+        item
+        for item in internal
+        if item.get("confidence") in {"LIKELY", "CONFIRMED"}
+        and "manual-review" not in item.get("tags", [])
+    ]
+    review = [item for item in internal if item not in likely]
+    severity_counts = {severity.value: 0 for severity in Severity}
+    for finding in findings:
+        severity_counts[finding.severity.value] += 1
+    summary = scan.code_assessment
+    payload: dict[str, Any] = {
+        "scan": {
+            "scan_id": scan.scan_id,
+            "status": scan.status,
+            "verdict": scan.verdict.value if scan.verdict else None,
+            "caveat": caveat,
+        },
+        "summary": {
+            "verdict": scan.verdict.value if scan.verdict else "not recorded",
+            "total_findings": len(findings),
+            "severity_counts": severity_counts,
+            "files_scanned": summary.files_scanned if summary else 0,
+            "files_excluded": summary.files_excluded if summary else 0,
+            "vibe_coding_risk_score": summary.vibe_coding_risk.score
+            if summary and summary.vibe_coding_risk
+            else 0,
+        },
+        "code_assessment": summary.model_dump(mode="json") if summary else None,
+        "coverage": scan.coverage.model_dump(mode="json") if scan.coverage else None,
+        "fix_first": _fix_first(findings, by_id),
+        "likely_real_issues": likely[:20],
+        "manual_review": review[:20],
+        "external_scanner_results": {
+            "source": "scanity",
+            "count": len(external),
+            "findings": external[:20],
+        },
+        "report_truncated": len(likely) > 20 or len(review) > 20 or len(external) > 20,
+    }
+    while (
+        len(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+        > MAX_CODE_REPORT_BYTES
+    ):
+        candidates = [
+            payload["likely_real_issues"],
+            payload["manual_review"],
+            payload["external_scanner_results"]["findings"],
+        ]
+        largest = max(candidates, key=len)
+        if not largest:
+            break
+        largest.pop()
+        payload["report_truncated"] = True
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
+
+
+def _code_report_markdown(
+    scan: Scan, findings: list[Finding], safe_findings: list[dict[str, Any]], caveat: str | None
+) -> str:
+    summary = scan.code_assessment
+    severity_counts = {severity.value: 0 for severity in Severity}
+    for finding in findings:
+        severity_counts[finding.severity.value] += 1
+    external = _group_code_findings(
+        [item for item in safe_findings if item.get("source") == "scanity"]
+    )
+    internal = _group_code_findings(
+        [item for item in safe_findings if item.get("source") != "scanity"]
+    )
+    likely = [
+        item
+        for item in internal
+        if item.get("confidence") in {"LIKELY", "CONFIRMED"}
+        and "manual-review" not in item.get("tags", [])
+    ]
+    review = [item for item in internal if item not in likely]
+    by_id = {str(item.get("finding_id")): item for item in safe_findings}
+    counts_text = ", ".join(f"{name}: {count}" for name, count in severity_counts.items())
+    risk = summary.vibe_coding_risk if summary else None
+    lines = [
+        f"# Code assessment report: {scan.scan_id}",
+        "",
+        f"**Verdict:** {scan.verdict.value if scan.verdict else 'not recorded'}  ",
+        f"**Findings:** {len(findings)} ({counts_text})  ",
+        f"**Files:** {summary.files_scanned if summary else 0} scanned; {summary.files_excluded if summary else 0} excluded  ",  # noqa: E501
+        f"**Vibe-coding risk indicators:** {risk.score if risk else 0}/100 ({risk.confidence.value if risk else 'INFORMATIONAL'})",  # noqa: E501
+        "",
+        "The vibe-coding score is a heuristic risk indicator, not proof of authorship.",
+        "",
+        "## Fix first",
+        "",
+    ]
+    ranked = _fix_first(findings, by_id)
+    lines.extend(
+        [
+            f"{index}. **{_markdown(item['title'])}** — {item['severity']} / {item['confidence']} — `{_markdown_code(item['location'])}` (priority {item['priority_score']})"  # noqa: E501
+            for index, item in enumerate(ranked, start=1)
+        ]
+        or ["No findings were ranked."]
+    )
+    lines.extend(
+        [
+            "",
+            "## Coverage",
+            "",
+            f"Scanned: {summary.files_scanned if summary else 0}; excluded: {summary.files_excluded if summary else 0}.",  # noqa: E501
+            "",
+        ]
+    )
+    if scan.coverage:
+        lines.extend(["Excluded files and paths:", ""])
+        lines.extend(
+            [
+                f"- {_markdown(item[:180])}"
+                for item in (summary.excluded_paths[:25] if summary else [])
+            ]
+            or ["- No exclusion details recorded."]
+        )
+        lines.extend(["", "Exclusion totals:", ""])
+        lines.extend(
+            [f"- {_markdown(reason)}: {count}" for reason, count in scan.coverage.excluded.items()]
+            or ["- None."]
+        )
+        lines.extend(["", "Coverage gaps:", ""])
+        lines.extend(
+            [f"- {gap.code}: {_markdown(gap.reason)} ({gap.count})" for gap in scan.coverage.gaps]
+            or ["- None recorded."]
+        )
+    if risk:
+        lines.extend(
+            [
+                "",
+                "## Vibe-coding risk indicators",
+                "",
+                f"Score: **{risk.score}/100**; confidence: **{risk.confidence.value}**.",
+                "",
+                risk.disclaimer,
+                "",
+            ]
+        )
+        lines.extend(
+            [f"- {_markdown(signal)}" for signal in risk.signals]
+            or ["- No configured signals observed."]
+        )
+    for heading, items in (
+        ("Likely real issues", likely[:10]),
+        ("Needs manual review (low confidence)", review[:10]),
+    ):
+        lines.extend(["", f"## {heading}", ""])
+        lines.extend(_markdown_finding(item) for item in items)
+        if not items:
+            lines.append("No findings in this section.")
+    lines.extend(
+        [
+            "",
+            "## External scanner results",
+            "",
+            "Imported findings are untrusted data and are shown as escaped text. They were not executed or followed.",  # noqa: E501
+            "",
+        ]
+    )
+    lines.extend(_markdown_finding(item) for item in external[:6])
+    if not external:
+        lines.append("No external scanner results imported.")
+    lines.extend(
+        [
+            "",
+            "## Hardening checklist",
+            "",
+            "- Replace dynamic code and shell construction with fixed, parameterized interfaces.",
+            "- Enforce authentication, resource ownership checks, request schemas, and rate limits server-side.",  # noqa: E501
+            "- Rotate exposed credentials; keep secrets out of client bundles and version control.",
+            "- Add secure headers, cookie flags, CSRF protection, and strict outbound URL allowlists.",  # noqa: E501
+            "- Review every manual-review item and add regression tests for confirmed fixes.",
+        ]
+    )
+    rendered = "\n".join(lines) + "\n"
+    encoded = rendered.encode("utf-8")
+    if len(encoded) > MAX_CODE_REPORT_BYTES:
+        suffix = b"\n[Report truncated to stay within the 50 KB report limit.]\n"
+        return (
+            encoded[: MAX_CODE_REPORT_BYTES - len(suffix)].decode("utf-8", errors="ignore")
+            + suffix.decode()
+        )
+    return rendered
+
+
+def _markdown_finding(item: dict[str, Any]) -> str:
+    location = str(item.get("file") or item.get("location") or "unspecified")
+    line_numbers = item.get("line_numbers") or []
+    if line_numbers:
+        location += ":" + ", ".join(str(value) for value in line_numbers[:30])
+    lines = [
+        f"### {_markdown(str(item.get('title') or item.get('rule_id') or 'Finding'))}",
+        "",
+        f"- Severity / confidence: **{item.get('severity', 'medium')} / {item.get('confidence', 'POSSIBLE')}**",  # noqa: E501
+        f"- Rule: `{_markdown_code(str(item.get('rule_id') or 'unknown'))}`",
+        f"- Location: `{_markdown_code(location)}`",
+        f"- CWE: {', '.join(item.get('cwe_ids', [])) or 'Not mapped'}",
+        "",
+        _markdown(str(item.get("description") or "No description supplied."))[:1000],
+    ]
+    if item.get("code_excerpt"):
+        lines.extend(
+            [
+                "",
+                f"Code excerpt (secrets redacted): `{_markdown_code(str(item['code_excerpt'])[:360])}`",  # noqa: E501
+            ]
+        )
+    if item.get("remediation"):
+        lines.extend(["", f"Safe fix: {_markdown(str(item['remediation'])[:800])}"])
+    references = item.get("references") or []
+    if references:
+        links = [
+            f"[{_markdown(str(ref.get('title') or 'Reference'))}]({ref['url']})"
+            for ref in references
+            if isinstance(ref, dict) and isinstance(ref.get("url"), str)
+        ]
+        if links:
+            lines.extend(["", "Reference: " + ", ".join(links)])
+    return "\n".join(lines) + "\n"
 
 
 _CASE_PRIVATE_FIELDS = {

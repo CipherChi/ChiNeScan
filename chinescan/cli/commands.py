@@ -35,6 +35,7 @@ from chinescan.core.orchestration.code_scan import (
     BuiltinRuleScanner,
     CodeScanService,
     FindingScanner,
+    ScanBounds,
     ScannerError,
 )
 from chinescan.core.projects import ProjectError, ProjectFileRegistry, ProjectService
@@ -817,10 +818,13 @@ def code_scan(
         )
         raise typer.Exit(code=2)
 
+    settings = _settings()
     scanners: list[FindingScanner] = []
     for name in selected:
         if name == "builtin":
-            scanners.append(BuiltinRuleScanner())
+            scanners.append(
+                BuiltinRuleScanner(ScanBounds(excluded_paths=tuple(settings.code_excluded_paths)))
+            )
         elif name == "semgrep":
             scanners.append(
                 SemgrepScanner(config_path=semgrep_rules, timeout_seconds=timeout_seconds)
@@ -835,7 +839,6 @@ def code_scan(
             scanners.append(IndicatorScanner(indicator_files or []))
         else:
             scanners.append(NpmAuditScanner(timeout_seconds))
-    settings = _settings()
     repository = SQLiteRepository(settings.database_path)
     try:
         result = CodeScanService(scanners, repository).scan(target)

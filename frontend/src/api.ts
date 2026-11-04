@@ -53,6 +53,7 @@ export const api = {
     return request<Page<Scan>>(`/api/scans?${query}`);
   },
   scan: (id: string) => request<Scan & { finding_ids: string[] }>(`/api/scans/${encodeURIComponent(id)}`),
+  importScanityReport: (id: string, reportText: string) => request<{ scan_id: string; imported: number; source: 'scanity' }>(`/api/scans/${encodeURIComponent(id)}/external-reports`, { method: 'POST', body: reportText }),
   findings: (offset: number, severity: string) => {
     const query = new URLSearchParams({ limit: '20', offset: String(offset), sort: 'severity', order: 'desc' });
     if (severity) query.set('severity', severity);

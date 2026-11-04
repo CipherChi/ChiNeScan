@@ -18,7 +18,8 @@ export type Scan = {
   verdict?: 'leads_found' | 'no_matches_with_gaps' | 'no_matches_in_scope' | 'scan_failed' | null;
   coverage_gap_count?: number;
   finding_ids?: string[];
-  coverage?: { examined: Record<string, number>; gaps: Array<{ code: string; reason: string; count: number }> } | null;
+  coverage?: { examined: Record<string, number>; excluded?: Record<string, number>; gaps: Array<{ code: string; reason: string; count: number }> } | null;
+  code_assessment?: { files_scanned: number; files_excluded: number; excluded_paths: string[]; vibe_coding_risk?: { score: number; confidence: string; signals: string[]; disclaimer: string } | null } | null;
   failures?: Record<string, string>;
 };
 export type Finding = {
@@ -31,6 +32,12 @@ export type Finding = {
   rule_id: string;
   description?: string;
   location?: string | null;
+  line_numbers?: number[];
+  code_excerpt?: string | null;
+  remediation?: string | null;
+  cwe_ids?: string[];
+  exposure?: string;
+  source?: string;
   tags?: string[];
 };
 export type Page<T> = { items: T[]; total: number; limit: number; offset: number };
