@@ -457,19 +457,22 @@ def timestamped_credential_backup(path: Path) -> Path:
     return backup
 
 
-@dataclass(frozen=True)
+@dataclass
 class Session:
     email: str
     csrf_token: str
     expires_at: float
     auth_epoch: str
+    created_at: float = 0.0
+    last_seen_at: float = 0.0
 
 
 class SessionStore:
     """Opaque, process-local sessions; restarting or password reset invalidates sessions."""
 
-    def __init__(self, ttl_seconds: int = 1800) -> None:
+    def __init__(self, ttl_seconds: int = 1800, idle_ttl_seconds: int | None = None) -> None:
         self.ttl_seconds = ttl_seconds
+        self.idle_ttl_seconds = idle_ttl_seconds or ttl_seconds
         self._sessions: dict[str, Session] = {}
         self._lock = threading.RLock()
 
@@ -479,11 +482,16 @@ class SessionStore:
 
     def create(self, email: str, auth_epoch: str) -> tuple[str, Session]:
         token = secrets.token_urlsafe(32)
+        now = time.time()
         session = Session(
-            email, secrets.token_urlsafe(32), time.time() + self.ttl_seconds, auth_epoch
+            email,
+            secrets.token_urlsafe(32),
+            now + self.ttl_seconds,
+            auth_epoch,
+            created_at=now,
+            last_seen_at=now,
         )
         with self._lock:
-            now = time.time()
             expired = [key for key, value in self._sessions.items() if value.expires_at <= now]
             for key in expired:
                 del self._sessions[key]
@@ -499,9 +507,15 @@ class SessionStore:
         key = self._key(token)
         with self._lock:
             session = self._sessions.get(key)
-            if session and session.expires_at <= time.time():
+            now = time.time()
+            if session and (
+                session.expires_at <= now
+                or session.last_seen_at + self.idle_ttl_seconds <= now
+            ):
                 del self._sessions[key]
                 return None
+            if session:
+                session.last_seen_at = now
             return session
 
     def revoke(self, token: str | None) -> None:

@@ -503,7 +503,8 @@ def create_app(
     configure_logging()
     repository = SQLiteRepository(database_path)
     db_lock = threading.RLock()
-    sessions = SessionStore(session_ttl_seconds)
+    idle_ttl_seconds = settings.session_idle_ttl_seconds if settings else 900
+    sessions = SessionStore(session_ttl_seconds, idle_ttl_seconds)
     credentials = Path(credential_path)
     try:
         migrate_legacy_operator(credentials)

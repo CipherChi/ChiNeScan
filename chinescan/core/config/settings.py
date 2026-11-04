@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     malware_managed_directory: Path | None = None
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     api_token: str | None = Field(default=None, repr=False)
+    session_idle_ttl_seconds: int = Field(default=900, ge=60, le=86_400)
     allowed_roots: list[Path] = Field(default_factory=list)
     extra_denied_paths: list[Path] = Field(default_factory=list)
     allow_soft_denied: bool = False
