@@ -1,3 +1,5 @@
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -30,14 +32,53 @@ def test_enrollment_expiry_single_use_replay_and_recovery_codes(tmp_path: Path) 
     code = generate_totp_code(secret, now=now)
     recovery_codes = confirm_totp_enrollment(credential, code, now=now)
     assert len(recovery_codes) >= 8
+    stored_after_enrollment = credential.read_text(encoding="utf-8")
+    for recovery_code in recovery_codes:
+        plain_sha256 = hashlib.sha256(recovery_code.encode("ascii")).hexdigest()
+        assert plain_sha256 not in stored_after_enrollment
+    assert hashlib.sha256(code.encode("ascii")).hexdigest() not in stored_after_enrollment
     assert not confirm_totp_enrollment(credential, code, now=now)
     next_code = generate_totp_code(secret, now=now + 30)
     assert verify_operator_totp(credential, next_code, now=now + 30) is True
+    stored_after_totp = json.loads(credential.read_text(encoding="utf-8"))
+    assert stored_after_totp["totp_last_counter"] == (now + 30) // 30
     assert verify_operator_totp(credential, next_code, now=now + 30) is False
     assert verify_operator_totp(credential, recovery_codes[0], now=now + 30) is True
     assert verify_operator_totp(credential, recovery_codes[0], now=now + 30) is False
     disable_code = generate_totp_code(secret, now=now + 60)
     assert disable_operator_totp(credential, disable_code, now=now + 60)
+
+
+def test_totp_wrong_recovery_code_fails_without_consuming_valid_code(tmp_path: Path) -> None:
+    credential = tmp_path / "operator.json"
+    create_operator(credential, "totp@example.test", "Synthetic secure passphrase 71!")
+    now = 1_700_000_000
+    secret = start_totp_enrollment(credential, now=now)
+    recovery_codes = confirm_totp_enrollment(
+        credential, generate_totp_code(secret, now=now), now=now
+    )
+    assert recovery_codes
+    assert not verify_operator_totp(credential, "wrong-recovery-code", now=now + 30)
+    assert verify_operator_totp(credential, recovery_codes[0], now=now + 30)
+
+
+def test_legacy_sha256_recovery_hash_is_rejected_without_migration(tmp_path: Path) -> None:
+    credential = tmp_path / "operator.json"
+    create_operator(credential, "totp@example.test", "Synthetic secure passphrase 71!")
+    now = 1_700_000_000
+    secret = start_totp_enrollment(credential, now=now)
+    recovery_codes = confirm_totp_enrollment(
+        credential, generate_totp_code(secret, now=now), now=now
+    )
+    legacy_code = recovery_codes[0]
+    legacy_digest = hashlib.sha256(legacy_code.encode("ascii")).hexdigest()
+    data = json.loads(credential.read_text(encoding="utf-8"))
+    data["totp_recovery_code_hashes"] = [legacy_digest]
+    credential.write_text(json.dumps(data), encoding="utf-8")
+
+    assert not verify_operator_totp(credential, legacy_code, now=now + 30)
+    after_rejection = json.loads(credential.read_text(encoding="utf-8"))
+    assert after_rejection["totp_recovery_code_hashes"] == [legacy_digest]
 
 
 def test_expired_enrollment_cannot_be_confirmed(tmp_path: Path) -> None:

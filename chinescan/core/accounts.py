@@ -43,6 +43,7 @@ _COMMON_PASSWORDS = frozenset(
     if line.strip() and not line.lstrip().startswith("#")
 )
 _DUMMY_HASH = PasswordHasher().hash("Chinescan dummy verification only")
+_TOTP_RECOVERY_HASHER = PasswordHasher()
 
 
 class CredentialError(ValueError):
@@ -623,15 +624,27 @@ def _verify_totp_in_data(
         data["totp_last_counter"] = matched
         data["totp_verify_failed_at"] = []
         return True, matched
-    code_digest = hashlib.sha256(code.strip().upper().encode("ascii", errors="ignore")).hexdigest()
     recovery = data.get("totp_recovery_code_hashes", [])
+    matched_recovery_index: int | None = None
     if isinstance(recovery, list):
         for index, digest in enumerate(recovery):
-            if isinstance(digest, str) and hmac.compare_digest(digest, code_digest):
-                recovery.pop(index)
-                data["totp_recovery_code_hashes"] = recovery
-                data["totp_verify_failed_at"] = []
-                return True, None
+            # Legacy unsalted SHA-256 values are rejected; re-enrollment creates
+            # fresh Argon2 hashes. Never upgrade old values during verification.
+            if not isinstance(digest, str) or not digest.startswith("$argon2id$"):
+                continue
+            try:
+                valid_recovery_code: bool = _TOTP_RECOVERY_HASHER.verify(
+                    digest, code.strip().upper()
+                )
+            except (InvalidHashError, VerificationError):
+                valid_recovery_code = False
+            if valid_recovery_code:
+                matched_recovery_index = index
+        if matched_recovery_index is not None:
+            recovery.pop(matched_recovery_index)
+            data["totp_recovery_code_hashes"] = recovery
+            data["totp_verify_failed_at"] = []
+            return True, None
     failures.append(int(now))
     data["totp_verify_failed_at"] = failures
     return False, None
@@ -667,7 +680,7 @@ def confirm_totp_enrollment(
         data["totp_secret"] = secret
         data["totp_last_counter"] = matched
         data["totp_recovery_code_hashes"] = [
-            hashlib.sha256(value.encode("ascii")).hexdigest() for value in recovery_codes
+            _TOTP_RECOVERY_HASHER.hash(value) for value in recovery_codes
         ]
         data["totp_verify_failed_at"] = []
         data.pop("totp_pending_secret", None)
