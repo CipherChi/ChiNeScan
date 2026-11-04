@@ -206,13 +206,19 @@ Graph JSON contains `scan_id`, `chain`, `nodes` (`address`, hop `depth`, optiona
 
 `GET /api/diagnostics` and `chinescan doctor --json` include `chain_network_enabled` and the boolean `chain_provider_key_configured`. Offline readiness remains passing while network tracing is disabled; enabled network tracing without a key is reported as a warning.
 
-Sessions have a 30-minute absolute expiry and a 15-minute idle expiry by default; the idle limit
-is configurable with `CHINESCAN_SESSION_IDLE_TTL_SECONDS` (60–86400). They are held only in
-process memory. Logout revokes the current session; a process restart discards all sessions. Run
-one application worker. The included server
-uses plain HTTP with `Secure` cookies disabled. Setting `Secure` on an HTTP cookie would prevent
-normal browsers from sending it. HTTPS termination is not configured. Forwarded client addresses
-are ignored unless `trusted_proxy = true`; this setting only changes the limiter's client key.
+Sessions have a 30-minute absolute expiry and a 10-minute idle expiry by default. Configure these
+with `session_absolute_ttl_seconds` and `session_idle_ttl_seconds` (60–86400). They are held only
+in process memory. Logout revokes the current session; a process restart discards all sessions.
+Run one application worker. The included server uses plain HTTP with `Secure` cookies disabled.
+Setting `Secure` on an HTTP cookie would prevent normal browsers from sending it. HTTPS termination
+is not configured. Forwarded client addresses are ignored unless `trusted_proxy = true`; this
+setting only changes the limiter's client key.
+
+Operator TOTP is disabled by default. On the local terminal, `chinescan web totp-enroll` starts
+an enrollment that expires after 10 minutes; confirmation and each later code are single-use.
+Failed verifications are rate limited. `chinescan web totp-disable` disables it after verifying
+a current authenticator or unused recovery code. The secret is stored in the operator credential
+file and is not returned by web endpoints.
 # API versioning and transport headers
 
 `/api/v1/*` is an alias for the corresponding `/api/*` route. Both prefixes use the

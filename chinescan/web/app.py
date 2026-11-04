@@ -84,8 +84,10 @@ from chinescan.web.auth import (
     operator_auth_epoch,
     operator_status,
     perform_dummy_verification,
+    operator_totp_enabled,
     reset_operator_password,
     verify_operator,
+    verify_operator_totp,
 )
 from chinescan.web.chain_trace_jobs import ChainTraceJobManager
 from chinescan.web.code_jobs import CodeJobManager, ProjectConfigurationError, ProjectRegistry
@@ -101,6 +103,7 @@ class LoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=1024)
+    totp_code: str | None = Field(default=None, max_length=128)
 
     @field_validator("email")
     @classmethod
@@ -1111,6 +1114,10 @@ def create_app(
             raise lockout_response(retry)
         try:
             valid = verify_operator(credentials, payload.email, payload.password)
+            if valid and operator_totp_enabled(credentials):
+                valid = bool(payload.totp_code) and verify_operator_totp(
+                    credentials, payload.totp_code or ""
+                )
         except Exception:
             valid = False
         if not valid:
