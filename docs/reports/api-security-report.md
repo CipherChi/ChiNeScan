@@ -28,7 +28,7 @@ on every read, write, export, and job-control route before adding additional acc
 | --- | --- |
 | `ruff check .` | PASS — `All checks passed!` |
 | `mypy --strict chinescan` | PASS — `Success: no issues found in 84 source files` |
-| `py -3.12 -m pytest -q --run-real-scanners --basetemp=C:\t` | PASS — `592 passed, 5 skipped, 0 deselected, 3 warnings in 241.70s` |
+| `py -3.12 -m pytest -q --run-real-scanners --basetemp=C:\t-final` | PASS — `592 passed, 5 skipped, 0 deselected, 3 warnings in 275.36s` |
 | `npm run typecheck` (`frontend/`) | PASS |
 | `npm test -- --run` (`frontend/`) | PASS — 12 files, 57 tests |
 | `npm test -- --run src/ui/ProjectsWorkspace.test.tsx` (`frontend/`) | Not rerun in isolation; full Vitest passed all 57 tests. |
