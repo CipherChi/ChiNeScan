@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import tempfile
@@ -136,6 +137,44 @@ def test_sql_injection_inputs_cannot_change_record_queries(tmp_path: Path, paylo
         assert before == app.state.repository.count_records("scan") + app.state.repository.count_records(
             "finding"
         )
+    finally:
+        client.close()
+
+
+def test_get_routes_do_not_expose_settings_or_credential_secrets(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    from fastapi.routing import APIRoute
+
+    sentinel = "sentinel-secret-value-for-response-test"
+    database = tmp_path / "records.sqlite3"
+    credential = tmp_path / "private" / "operator.json"
+    create_operator(credential, "analyst@example.test", sentinel)
+    app = create_app(
+        database,
+        credential,
+        settings=Settings(api_token=sentinel),
+        serve_frontend=False,
+    )
+    client = TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 50000))
+    try:
+        login = _login(client, password=sentinel)
+        assert login.status_code == 200
+        headers = {
+            "Origin": "http://127.0.0.1",
+            "X-CSRF-Token": login.json()["csrf_token"],
+        }
+        for route in app.routes:
+            if not isinstance(route, APIRoute) or not route.path.startswith("/api/"):
+                continue
+            if "GET" not in (route.methods or set()):
+                continue
+            path = re.sub(r"\{[^}:]+(?::path)?\}", "missing-id", route.path)
+            response = client.get(path, headers=headers)
+            assert sentinel not in response.text, route.path
+            assert not re.search(r"\$argon2(?:id|i|d)\$", response.text), route.path
+        assert sentinel not in caplog.text
+        assert not re.search(r"\$argon2(?:id|i|d)\$", caplog.text)
     finally:
         client.close()
 
