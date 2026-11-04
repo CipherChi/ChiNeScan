@@ -305,12 +305,11 @@ def folder_approval_decision(
     """Validate a user-selected directory before it can become an approved project."""
     candidate = Path(value).expanduser()
     raw_candidate = str(value)
-    if os.name == "nt":
-        drive, tail = ntpath.splitdrive(raw_candidate)
-        if drive and tail and not tail.startswith(("\\", "/")):
-            return PathDecision(False, "hard", "drive_relative")
-        if raw_candidate.startswith(("\\\\", "//")):
-            return PathDecision(False, "hard", "network_path")
+    drive, tail = ntpath.splitdrive(raw_candidate)
+    if drive and tail and not tail.startswith(("\\", "/")):
+        return PathDecision(False, "hard", "drive_relative")
+    if raw_candidate.startswith(("\\\\", "//")):
+        return PathDecision(False, "hard", "network_path")
     if not candidate.is_absolute():
         return PathDecision(False, "hard", "absolute_path_required")
     decision = decide_path(

@@ -402,7 +402,7 @@ class BuiltinRuleScanner:
                     target=profile.root,
                     scanner=self.name,
                     rule_id="ENV-FILE-PRESENT",
-                    title="Environment file present",
+                    title="Environment file may contain secrets",
                     severity=Severity.MEDIUM,
                     confidence="POSSIBLE",
                     location=f"{relative_env}:1",
@@ -412,7 +412,11 @@ class BuiltinRuleScanner:
                     update={
                         "source": "builtin",
                         "line_numbers": [1],
-                        "remediation": "Keep real environment files out of version control; commit a placeholder-only example instead.",  # noqa: E501
+                        "remediation": (
+                            "Keep real environment files out of version control.\n"
+                            "Before: commit .env containing credentials\n"
+                            "After: ignore .env and commit a placeholder-only .env.example"
+                        ),
                         "cwe_ids": ["CWE-312"],
                         "references": [],
                     }

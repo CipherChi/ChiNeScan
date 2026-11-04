@@ -12,16 +12,19 @@ from chinescan.core.external_reports import (
     ExternalReportError,
     parse_scanity_export,
 )
+from chinescan.core.models.common import Confidence, Severity
+from chinescan.core.models.finding import Finding
 from chinescan.core.models.investigation import Scan
 from chinescan.core.orchestration.code_rules import RULES, analyze_source
 from chinescan.core.orchestration.code_scan import BuiltinRuleScanner, ScanBounds, detect_project
-from chinescan.core.reporting import render_report
+from chinescan.core.reporting import _fix_first, _markdown, render_report
 
 
 def test_rule_inventory_has_unique_ids_and_remediation() -> None:
     assert len({rule.rule_id for rule in RULES}) == len(RULES)
     assert all(rule.pattern.pattern and rule.cwe.startswith("CWE-") for rule in RULES)
     assert all(rule.remediation for rule in RULES)
+    assert all(rule.title and rule.example_before and rule.example_after for rule in RULES)
 
 
 def test_code_scan_excludes_generated_gitignored_and_long_lines(tmp_path: Path) -> None:
@@ -164,3 +167,48 @@ def test_code_report_groups_and_separates_external_findings(tmp_path: Path) -> N
     assert "External scanner results" in markdown
     assert "Likely real issues" in markdown
     assert "not-a-real-secret" not in markdown
+
+
+def test_markdown_leaves_plain_punctuation_and_escapes_untrusted_markup() -> None:
+    assert _markdown(".next folder (coverage)") == ".next folder (coverage)"
+    unsafe = _markdown("<script>[open](https://invalid.example)</script>", untrusted=True)
+    assert "<script>" not in unsafe
+    assert "[open](https://invalid.example)" not in unsafe
+
+
+def test_fix_first_breaks_ties_by_exposure_then_path() -> None:
+    findings = [
+        Finding(
+            finding_id="z-server",
+            title="Server",
+            severity=Severity.HIGH,
+            confidence=Confidence.LIKELY,
+            fingerprint="z-server-fingerprint",
+            location="z/server.py:1",
+            exposure="server",
+        ),
+        Finding(
+            finding_id="b-client",
+            title="Client",
+            severity=Severity.HIGH,
+            confidence=Confidence.LIKELY,
+            fingerprint="b-client-fingerprint",
+            location="b/client.ts:1",
+            exposure="client",
+        ),
+        Finding(
+            finding_id="a-client",
+            title="Earlier client path",
+            severity=Severity.HIGH,
+            confidence=Confidence.LIKELY,
+            fingerprint="a-client-fingerprint",
+            location="a/client.ts:1",
+            exposure="client",
+        ),
+    ]
+    safe = {item.finding_id: item.model_dump(mode="json") for item in findings}
+    assert [item["finding_id"] for item in _fix_first(findings, safe)] == [
+        "a-client",
+        "b-client",
+        "z-server",
+    ]

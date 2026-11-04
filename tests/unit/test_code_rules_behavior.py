@@ -175,3 +175,35 @@ def test_rule_has_positive_and_negative_behavioral_fixture(tmp_path: Path, rule_
 
 def test_behavior_fixture_table_covers_every_rule() -> None:
     assert set(CASES) == {rule.rule_id for rule in RULES}
+
+
+def test_direct_flows_are_likely_with_full_redacted_source_line(tmp_path: Path) -> None:
+    path = tmp_path / "src" / "Preview.tsx"
+    path.parent.mkdir()
+    source = (
+        "return <div dangerouslySetInnerHTML={{ __html: request.body.html }} />; "
+        '// password="example-realistic-secret"'
+    )
+    findings = analyze_source(tmp_path, path, source, is_test=False)
+    finding = next(item for item in findings if item.rule_id == "XSS-DANGEROUS-HTML")
+    assert finding.confidence.value == "LIKELY"
+    assert finding.title == "Cross-site scripting (XSS)"
+    assert finding.code_excerpt is not None
+    assert "return <div" in finding.code_excerpt
+    assert len(finding.code_excerpt) <= 160
+    assert "example-realistic-secret" not in finding.code_excerpt
+    assert "Before: " in (finding.remediation or "")
+    assert "After: " in (finding.remediation or "")
+
+
+def test_context_dependent_match_stays_possible(tmp_path: Path) -> None:
+    path = tmp_path / "src" / "api" / "route.ts"
+    path.parent.mkdir(parents=True)
+    findings = analyze_source(
+        tmp_path,
+        path,
+        "export async function GET(request) { return Response.json({}); }",
+        is_test=False,
+    )
+    finding = next(item for item in findings if item.rule_id == "API-AUTH-MISSING")
+    assert finding.confidence.value == "POSSIBLE"

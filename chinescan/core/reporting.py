@@ -285,7 +285,7 @@ def _fix_first(
         Severity.INFO: 1,
     }
     confidence_weight = {"CONFIRMED": 1.0, "LIKELY": 0.8, "POSSIBLE": 0.55, "INFORMATIONAL": 0.25}
-    ranked: list[tuple[float, dict[str, Any]]] = []
+    ranked: list[tuple[int, float, float, str, str, dict[str, Any]]] = []
     for finding in findings:
         item = safe_by_id.get(finding.finding_id, {})
         if item.get("source") == "scanity":
@@ -298,21 +298,26 @@ def _fix_first(
             * confidence_weight[finding.confidence.value]
             * exposure_weight
         )
+        location = str(redact(finding.location or "unspecified"))
         ranked.append(
             (
-                score,
+                severity_weight[finding.severity],
+                confidence_weight[finding.confidence.value],
+                exposure_weight,
+                location.casefold(),
+                finding.finding_id,
                 {
                     "finding_id": finding.finding_id,
                     "title": str(redact(finding.title)),
                     "severity": finding.severity.value,
                     "confidence": finding.confidence.value,
-                    "location": str(redact(finding.location or "unspecified")),
+                    "location": location,
                     "priority_score": round(score, 2),
                 },
             )
         )
-    ranked.sort(key=lambda pair: (-pair[0], pair[1]["location"], pair[1]["finding_id"]))
-    return [item for _, item in ranked[:10]]
+    ranked.sort(key=lambda pair: (-pair[0], -pair[1], -pair[2], pair[3], pair[4]))
+    return [item for *_, item in ranked[:10]]
 
 
 def _code_report_json(
@@ -487,7 +492,7 @@ def _code_report_markdown(
             "",
         ]
     )
-    lines.extend(_markdown_finding(item) for item in external[:6])
+    lines.extend(_markdown_finding(item, untrusted=True) for item in external[:6])
     if not external:
         lines.append("No external scanner results imported.")
     lines.extend(
@@ -513,34 +518,69 @@ def _code_report_markdown(
     return rendered
 
 
-def _markdown_finding(item: dict[str, Any]) -> str:
+def _markdown_finding(item: dict[str, Any], *, untrusted: bool = False) -> str:
+    def escape(value: str) -> str:
+        return _markdown(value, untrusted=untrusted)
+
     location = str(item.get("file") or item.get("location") or "unspecified")
     line_numbers = item.get("line_numbers") or []
     if line_numbers:
         location += ":" + ", ".join(str(value) for value in line_numbers[:30])
     lines = [
-        f"### {_markdown(str(item.get('title') or item.get('rule_id') or 'Finding'))}",
+        f"### {escape(str(item.get('title') or item.get('rule_id') or 'Finding'))}",
         "",
         f"- Severity / confidence: **{item.get('severity', 'medium')} / {item.get('confidence', 'POSSIBLE')}**",  # noqa: E501
         f"- Rule: `{_markdown_code(str(item.get('rule_id') or 'unknown'))}`",
         f"- Location: `{_markdown_code(location)}`",
         f"- CWE: {', '.join(item.get('cwe_ids', [])) or 'Not mapped'}",
         "",
-        _markdown(str(item.get("description") or "No description supplied."))[:1000],
+        escape(str(item.get("description") or "No description supplied."))[:1000],
     ]
     if item.get("code_excerpt"):
+        excerpt = str(item["code_excerpt"])[:160]
+        rendered_excerpt = _markdown_code(escape(excerpt)) if untrusted else _markdown_code(excerpt)
         lines.extend(
             [
                 "",
-                f"Code excerpt (secrets redacted): `{_markdown_code(str(item['code_excerpt'])[:360])}`",  # noqa: E501
+                f"Code excerpt (secrets redacted): `{rendered_excerpt}`",
             ]
         )
     if item.get("remediation"):
-        lines.extend(["", f"Safe fix: {_markdown(str(item['remediation'])[:800])}"])
+        remediation_lines = str(item["remediation"]).splitlines()
+        before = next(
+            (
+                line.removeprefix("Before: ")
+                for line in remediation_lines
+                if line.startswith("Before: ")
+            ),
+            None,
+        )
+        after = next(
+            (
+                line.removeprefix("After: ")
+                for line in remediation_lines
+                if line.startswith("After: ")
+            ),
+            None,
+        )
+        prose = " ".join(
+            line for line in remediation_lines if not line.startswith(("Before: ", "After: "))
+        )
+        lines.extend(["", f"Safe fix: {escape(prose[:800])}"])
+        if before is not None and after is not None:
+            before_code = escape(before[:160]) if untrusted else before[:160]
+            after_code = escape(after[:160]) if untrusted else after[:160]
+            lines.extend(
+                [
+                    "",
+                    f"Before: `{_markdown_code(before_code)}`  ",
+                    f"After: `{_markdown_code(after_code)}`",
+                ]
+            )
     references = item.get("references") or []
     if references:
         links = [
-            f"[{_markdown(str(ref.get('title') or 'Reference'))}]({ref['url']})"
+            f"[{escape(str(ref.get('title') or 'Reference'))}]({ref['url']})"
             for ref in references
             if isinstance(ref, dict) and isinstance(ref.get("url"), str)
         ]
@@ -1124,10 +1164,15 @@ def _share_summary(scan: Scan, findings: list[Finding], caveat: str | None) -> s
     return str(redact("\n".join(lines))) + "\n"
 
 
-def _markdown(value: str) -> str:
-    """Escape raw HTML and common Markdown metacharacters in untrusted text."""
+def _markdown(value: str, *, untrusted: bool = False) -> str:
+    """Escape Markdown syntax that could change how supplied text renders."""
+    if untrusted:
+        value = re.sub(r"(?i)\bhttps?://\S+|\bwww\.\S+", "[external URL omitted]", value)
     escaped = html.escape(value, quote=False)
-    return re.sub(r"([\\`*_{}\[\]()#+.!|>~-])", r"\\\1", escaped)
+    pattern = r"([\\`*_{}\[\]#+!|>])"
+    if untrusted:
+        pattern = r"([\\`*_{}\[\]()#+!|>~-])"
+    return re.sub(pattern, r"\\\1", escaped)
 
 
 def _csv_safe(value: object) -> object:

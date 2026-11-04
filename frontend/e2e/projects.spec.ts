@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { basename, parse, relative, resolve, sep } from 'node:path';
 
 type Fixture = { url: string; email: string; password: string };
 function fixtures(): Record<string, Fixture> {
@@ -20,6 +20,40 @@ async function capture(page: import('@playwright/test').Page, filename: string) 
   if (!directory) throw new Error('Project E2E screenshot directory was not configured.');
   mkdirSync(directory, { recursive: true });
   await page.screenshot({ path: resolve(directory, filename), fullPage: true });
+}
+
+async function approveProjectFolder(
+  page: import('@playwright/test').Page,
+  projectName: string,
+  targetPath?: string,
+) {
+  await page.getByRole('button', { name: 'Add project' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toHaveAccessibleName('Select a project folder');
+  await expect(dialog).toBeVisible();
+  if (targetPath) {
+    const response = await page.evaluate(async () => {
+      const result = await fetch('/api/fs/picker-roots');
+      return { ok: result.ok, body: await result.json() as { items: Array<{ name: string }> } };
+    });
+    expect(response.ok).toBeTruthy();
+    const roots = response.body.items;
+    expect(roots.length).toBeGreaterThan(0);
+    await dialog.getByRole('button', { name: `Open ${roots[0].name}`, exact: true }).click();
+    const parts = relative(parse(roots[0].name).root, targetPath).split(sep).filter(Boolean);
+    for (const part of parts.slice(0, -1)) {
+      await dialog.getByRole('button', { name: `Open ${part}`, exact: true }).click();
+    }
+    const targetItem = dialog.getByRole('listitem').filter({ hasText: basename(targetPath) });
+    await targetItem.getByRole('button', { name: 'Select this folder' }).click();
+  } else {
+    await dialog.getByRole('button', { name: 'Select this folder' }).first().click();
+  }
+  await dialog.getByRole('button', { name: 'Review folder' }).click();
+  await expect(dialog.getByText('Approve this folder for assessment?')).toBeVisible();
+  if (targetPath) await expect(dialog.getByText(targetPath, { exact: true })).toBeVisible();
+  await dialog.getByLabel('Project name').fill(projectName);
+  await dialog.getByRole('button', { name: 'Approve folder' }).click();
 }
 
 async function folderHash(directory: string): Promise<string> {
@@ -50,14 +84,8 @@ test('add project, assess code, create linked case and remove record without tou
   const originalFolderHash = await folderHash(projectFolder!);
   await signIn(page, fixture);
   await page.getByRole('button', { name: 'Projects', exact: true }).click();
-  await page.getByRole('button', { name: 'Add project' }).click();
-  await expect(page.getByRole('dialog', { name: 'Add a local project' })).toBeVisible();
+  await approveProjectFolder(page, 'E2E code project');
   await capture(page, 'picker.png');
-  const rootButton = page.getByRole('button', { name: 'Approved folder 1' }).first();
-  await rootButton.click();
-  await page.getByRole('button', { name: 'Select this folder' }).last().click();
-  await page.getByLabel('Project name').fill('E2E code project');
-  await page.getByRole('button', { name: 'Add project' }).last().click();
   await expect(page.getByRole('heading', { name: 'E2E code project' })).toBeVisible();
   await capture(page, 'project-page.png');
   await page.getByRole('button', { name: 'Assess code' }).click();
@@ -84,23 +112,21 @@ test('add project, assess code, create linked case and remove record without tou
   expect(await folderHash(projectFolder!)).toBe(originalFolderHash);
 });
 
-test('project picker explains the valid empty allowed-roots state', async ({ page }) => {
-  await signIn(page, fixtures().emptyRoots);
+test('project picker shows local folders when allowed-roots is empty', async ({ page }) => {
+  const fixture = fixtures().emptyRoots;
+  await signIn(page, fixture);
   await page.getByRole('button', { name: 'Projects', exact: true }).click();
   await page.getByRole('button', { name: 'Add project' }).click();
-  await expect(page.getByRole('heading', { name: 'No allowed roots' })).toBeVisible();
-  await expect(page.getByText("allowed_roots = ['C:\\src']")).toBeVisible();
+  const dialog = page.getByRole('dialog', { name: 'Select a project folder' });
+  await expect(dialog.getByRole('heading', { name: 'Local drives and allowed roots' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /^Open / }).first()).toBeVisible();
 });
 
 test('project malware acknowledgement gates scanning, shows partial findings, and cancel starts nothing', async ({ page }) => {
   const fixture = fixtures().standard;
   await signIn(page, fixture);
   await page.getByRole('button', { name: 'Projects', exact: true }).click();
-  await page.getByRole('button', { name: 'Add project' }).click();
-  await page.getByRole('button', { name: 'Approved folder 1' }).first().click();
-  await page.getByRole('button', { name: 'Select this folder' }).first().click();
-  await page.getByLabel('Project name').fill('E2E malware project');
-  await page.getByRole('button', { name: 'Add project' }).last().click();
+  await approveProjectFolder(page, 'E2E malware project');
   await expect(page.getByRole('heading', { name: 'E2E malware project' })).toBeVisible();
 
   const startedJobs: string[] = [];
@@ -137,11 +163,7 @@ test('project log suggestions and analysis work twice and removal preserves file
 
   for (let run = 1; run <= 2; run += 1) {
     await page.getByRole('button', { name: 'Projects', exact: true }).click();
-    await page.getByRole('button', { name: 'Add project' }).click();
-    await page.getByRole('button', { name: 'Approved folder 1' }).first().click();
-    await page.getByRole('button', { name: 'Select this folder' }).first().click();
-    await page.getByLabel('Project name').fill(`E2E log project ${run}`);
-    await page.getByRole('button', { name: 'Add project' }).last().click();
+    await approveProjectFolder(page, `E2E log project ${run}`);
     await expect(page.getByRole('heading', { name: `E2E log project ${run}` })).toBeVisible();
     await capture(page, `project-log-locations-${run}.png`);
 

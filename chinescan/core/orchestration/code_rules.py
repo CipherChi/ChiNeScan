@@ -12,16 +12,170 @@ from chinescan.core.models.common import Confidence, Severity
 from chinescan.core.models.finding import Finding, Reference
 from chinescan.core.orchestration.code_scan import make_finding
 
+RULE_COPY: dict[str, tuple[str, str, str]] = {
+    "DYNAMIC-EVAL": ("Dynamic code evaluation", "eval(request.code)", "parseData(request.code)"),
+    "NODE-EXEC-INTERPOLATION": (
+        "Command injection",
+        "exec(`tool ${request.input}`)",
+        "spawn('tool', [validatedInput])",
+    ),
+    "PY-SHELL": (
+        "Shell command execution",
+        "subprocess.run(cmd, shell=True)",
+        "subprocess.run([tool, arg], shell=False)",
+    ),
+    "SQL-INJECTION": (
+        "SQL injection",
+        "query('... ' + request.id)",
+        "query('... WHERE id = ?', [request.id])",
+    ),
+    "NOSQL-OPERATOR-INJECTION": (
+        "NoSQL operator injection",
+        "find({ $where: request.body })",
+        "find({ active: true })",
+    ),
+    "PATH-TRAVERSAL": (
+        "Path traversal",
+        "readFile(request.query.path)",
+        "readFile(resolve(SAFE_ROOT, validatedName))",
+    ),
+    "XSS-DANGEROUS-HTML": (
+        "Cross-site scripting (XSS)",
+        "element.innerHTML = userInput",
+        "element.textContent = userInput",
+    ),
+    "API-AUTH-MISSING": (
+        "API route missing authentication",
+        "export async function GET() { return data; }",
+        "export async function GET() { await requireUser(); return data; }",
+    ),
+    "IDOR-RESOURCE-ID": (
+        "Resource authorization (IDOR)",
+        "findById(request.params.id)",
+        "findOwnedById(user.id, request.params.id)",
+    ),
+    "JWT-ALG-NONE": (
+        "JWT accepts an unsecured algorithm",
+        "verify(token, key, { algorithm: 'none' })",
+        "verify(token, key, { algorithms: ['HS256'] })",
+    ),
+    "JWT-NO-EXPIRY": (
+        "JWT without an expiry",
+        "jwt.sign(payload, key)",
+        "jwt.sign(payload, key, { expiresIn: '10m' })",
+    ),
+    "COOKIE-FLAGS": (
+        "Cookie security flags",
+        "res.cookie('session', token)",
+        "res.cookie('session', token, { httpOnly: true, secure: true, sameSite: 'strict' })",
+    ),
+    "CSRF-DISABLED": (
+        "CSRF protection disabled",
+        "csrfProtection = false",
+        "csrfProtection = true",
+    ),
+    "HARDCODED-CREDENTIAL": (
+        "Hardcoded credential",
+        "setting = literal_value",
+        "setting = read_secret_store()",
+    ),
+    "NEXT-PUBLIC-SECRET": (
+        "Secret exposed to the Next.js client",
+        "NEXT_PUBLIC_API_KEY",
+        "SERVER_API_KEY",
+    ),
+    "CORS-WILDCARD-CREDENTIALS": (
+        "Credentialed wildcard CORS",
+        "origin: '*', credentials: true",
+        "origin: TRUSTED_ORIGINS, credentials: true",
+    ),
+    "MISSING-SECURITY-HEADERS": (
+        "Missing web security headers",
+        "app = express()",
+        "app.use(helmet())",
+    ),
+    "TLS-VERIFY-DISABLED": (
+        "TLS certificate verification disabled",
+        "rejectUnauthorized: false",
+        "rejectUnauthorized: true",
+    ),
+    "VERBOSE-ERROR-EXPOSURE": (
+        "Internal error details exposed",
+        "res.json(error.stack)",
+        "res.json({ error: 'Request failed' })",
+    ),
+    "OPEN-REDIRECT": (
+        "Unvalidated redirect",
+        "redirect(request.query.next)",
+        "redirect(allowlistedPath(request.query.next))",
+    ),
+    "SSRF-USER-URL": (
+        "Server-side request forgery (SSRF)",
+        "fetch(request.query.url)",
+        "fetch(allowlistedUrl(request.query.url))",
+    ),
+    "REQUEST-NO-SCHEMA": (
+        "Request input without schema validation",
+        "const body = request.body",
+        "const body = schema.parse(request.body)",
+    ),
+    "LOGIN-NO-RATE-LIMIT": (
+        "Login or contact route without rate limiting",
+        "async function login(req) { ... }",
+        "async function login(req) { await limiter.check(req); ... }",
+    ),
+    "UPLOAD-NO-CHECKS": (
+        "File upload without type or size checks",
+        "multer()",
+        "multer({ limits: { fileSize: MAX }, fileFilter })",
+    ),
+    "EMPTY-CATCH": (
+        "Exception silently discarded",
+        "try { work(); } catch (error) {}",
+        "try { work(); } catch (error) { reportSafe(error); }",
+    ),
+    "SWALLOWED-PROMISE": (
+        "Promise rejection silently discarded",
+        "task.catch(() => {})",
+        "task.catch((error) => reportSafe(error))",
+    ),
+    "ASYNC-ROUTE-ERROR": (
+        "Async route needs error handling",
+        "export async function GET() { return work(); }",
+        "export async function GET() { try { return work(); } catch { return safeError(); } }",
+    ),
+    "SENSITIVE-CONSOLE-LOG": (
+        "Sensitive value written to console",
+        "console.log(token)",
+        "console.log('request completed')",
+    ),
+    "SECURITY-TODO": (
+        "Unresolved security TODO",
+        "// TODO add auth check",
+        "// Authentication enforced by requireUser()",
+    ),
+    "CLIENT-COMPONENT-SECRET": (
+        "Secret used in a client component",
+        "'use client'; process.env.APP_SECRET",
+        "// Read APP_SECRET in a server-only module",
+    ),
+}
+
+RULE_TITLES = {rule_id: copy[0] for rule_id, copy in RULE_COPY.items()}
+
 
 @dataclass(frozen=True)
 class Rule:
     rule_id: str
+    title: str
     pattern: re.Pattern[str]
     severity: Severity
     confidence: Confidence
     cwe: str
     description: str
     remediation: str
+    example_before: str
+    example_after: str
     exposure: str = "server"
     review: bool = False
 
@@ -39,16 +193,20 @@ def _rule(
     flags: int = re.IGNORECASE,
     review: bool = False,
 ) -> Rule:
+    title, before, after = RULE_COPY[rule_id]
     return Rule(
-        rule_id,
-        re.compile(pattern, flags),
-        severity,
-        confidence,
-        cwe,
-        description,
-        remediation,
-        exposure,
-        review,
+        rule_id=rule_id,
+        title=title,
+        pattern=re.compile(pattern, flags),
+        severity=severity,
+        confidence=confidence,
+        cwe=cwe,
+        description=description,
+        remediation=remediation,
+        example_before=before,
+        example_after=after,
+        exposure=exposure,
+        review=review,
     )
 
 
@@ -332,7 +490,47 @@ RULES: tuple[Rule, ...] = (
 
 def _excerpt(line: str) -> str:
     cleaned = str(redact(line.strip()))
-    return cleaned[:240]
+    return cleaned[:160]
+
+
+def _source_line(text: str, number: int) -> str:
+    lines = text.splitlines()
+    return _excerpt(lines[number - 1]) if 1 <= number <= len(lines) else ""
+
+
+def _match_confidence(rule: Rule, snippets: list[str], *, is_test: bool) -> Confidence:
+    if is_test and rule.rule_id == "HARDCODED-CREDENTIAL":
+        return Confidence.POSSIBLE
+    if rule.rule_id == "HARDCODED-CREDENTIAL":
+        return Confidence.LIKELY
+    combined = "\n".join(snippets)
+    if rule.rule_id == "DYNAMIC-EVAL":
+        if re.search(r"eval\s*\(\s*(?:request|req|user|input|body|query|params)\b", combined, re.I):
+            return Confidence.LIKELY
+        return Confidence.POSSIBLE
+    if rule.rule_id == "XSS-DANGEROUS-HTML":
+        if re.search(
+            r"\.innerHTML\s*=\s*(?:req|request|user|input|data|response)\w*", combined, re.I
+        ):
+            return Confidence.LIKELY
+        if re.search(r"__html\s*:\s*(?!['\"`])[A-Za-z_$][\w$]*", combined):
+            return Confidence.LIKELY
+        return Confidence.POSSIBLE
+    direct_flow_rules = {
+        "NODE-EXEC-INTERPOLATION",
+        "XSS-DANGEROUS-HTML",
+        "OPEN-REDIRECT",
+        "SSRF-USER-URL",
+    }
+    if rule.rule_id in direct_flow_rules and re.search(
+        r"(?:request|req|user|input|body|query|params|searchParams)", combined, re.I
+    ):
+        return Confidence.LIKELY
+    if rule.rule_id == "SQL-INJECTION" and re.search(
+        r"(?:request|req|user|input|body|query|params)", combined, re.I
+    ):
+        return Confidence.LIKELY
+    return Confidence.POSSIBLE if rule.review else rule.confidence
 
 
 def analyze_source(root: Path, path: Path, text: str, *, is_test: bool) -> list[Finding]:
@@ -420,15 +618,13 @@ def analyze_source(root: Path, path: Path, text: str, *, is_test: bool) -> list[
         matched.pop("CLIENT-COMPONENT-SECRET", None)
 
     findings: list[Finding] = []
-    for rule, line_numbers, snippets in matched.values():
+    for rule, line_numbers, _matched_tokens in matched.values():
+        line_numbers = sorted(set(line_numbers))
+        snippets = [_source_line(text, number) for number in line_numbers]
         severity = (
             Severity.MEDIUM if is_test and rule.rule_id == "HARDCODED-CREDENTIAL" else rule.severity
         )
-        confidence = (
-            Confidence.POSSIBLE
-            if rule.review or (is_test and rule.rule_id == "HARDCODED-CREDENTIAL")
-            else rule.confidence
-        )
+        confidence = _match_confidence(rule, snippets, is_test=is_test)
         excerpt = " | ".join(dict.fromkeys(_excerpt(item) for item in snippets))[:360]
         if is_test and rule.rule_id == "HARDCODED-CREDENTIAL":
             description = (
@@ -440,24 +636,23 @@ def analyze_source(root: Path, path: Path, text: str, *, is_test: bool) -> list[
             target=root,
             scanner="builtin",
             rule_id=rule.rule_id,
-            title=rule.rule_id.replace("-", " ").title(),
+            title=rule.title,
             severity=severity,
             category="SAST",
             confidence=confidence.value,
             location=f"{relative}:{line_numbers[0]}",
             description=description,
             tags=["heuristic", "local"]
-            + (
-                ["manual-review"]
-                if rule.review or is_test and rule.rule_id == "HARDCODED-CREDENTIAL"
-                else []
-            ),
+            + (["manual-review"] if confidence == Confidence.POSSIBLE else []),
         ).model_copy(
             update={
                 "source": "builtin",
                 "line_numbers": sorted(set(line_numbers)),
                 "code_excerpt": excerpt,
-                "remediation": rule.remediation,
+                "remediation": (
+                    f"{rule.remediation}\nBefore: {rule.example_before}\n"
+                    f"After: {rule.example_after}"
+                ),
                 "cwe_ids": [rule.cwe],
                 "exposure": rule.exposure,
                 "references": [
@@ -508,7 +703,11 @@ def dependency_findings(root: Path, *, is_test: bool = False) -> list[Finding]:
             "source": "builtin",
             "line_numbers": [1],
             "code_excerpt": "Dependencies: " + ", ".join(floating[:12]),
-            "remediation": "Pin reviewed versions and commit a lockfile.",
+            "remediation": (
+                "Pin reviewed versions and commit a lockfile.\n"
+                'Before: "package": "*"\n'
+                'After: "package": "1.2.3" with a committed lockfile'
+            ),
             "cwe_ids": ["CWE-1104"],
             "exposure": "build",
             "references": [

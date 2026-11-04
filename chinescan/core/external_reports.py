@@ -155,8 +155,13 @@ def _map_record(item: dict[str, Any], target: Path, project_id: str | None) -> F
             item.get("remediation") or item.get("fix") or item.get("recommendation"),
             MAX_EXTERNAL_TEXT,
         )
-        or None
+        or "Review the imported evidence and apply a context-appropriate fix."
     )
+    if "Before: " not in remediation or "After: " not in remediation:
+        remediation += (
+            "\nBefore: Imported pattern requires review"
+            "\nAfter: Apply a reviewed, validated correction"
+        )
     fingerprint = hashlib.sha256(
         f"scanity\0{rule_id.casefold()}\0{location.casefold()}\0{title.casefold()}".encode()
     ).hexdigest()
