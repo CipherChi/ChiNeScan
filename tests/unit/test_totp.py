@@ -54,9 +54,7 @@ def test_totp_verification_is_rate_limited(tmp_path: Path) -> None:
     create_operator(credential, "totp@example.test", "Synthetic secure passphrase 71!")
     now = 1_700_000_000
     secret = start_totp_enrollment(credential, now=now)
-    assert confirm_totp_enrollment(
-        credential, generate_totp_code(secret, now=now), now=now
-    )
+    assert confirm_totp_enrollment(credential, generate_totp_code(secret, now=now), now=now)
     for _ in range(5):
         assert not verify_operator_totp(credential, "000000", now=now)
     valid_next_code = generate_totp_code(secret, now=now + 30)
@@ -79,9 +77,7 @@ def test_login_requires_single_use_totp_and_keeps_failures_generic(tmp_path: Pat
     credential = tmp_path / "operator.json"
     create_operator(credential, "totp@example.test", "Synthetic secure passphrase 71!")
     secret = start_totp_enrollment(credential)
-    assert confirm_totp_enrollment(
-        credential, generate_totp_code(secret), now=None
-    )
+    assert confirm_totp_enrollment(credential, generate_totp_code(secret), now=None)
     client = TestClient(
         create_app(tmp_path / "db.sqlite3", credential, serve_frontend=False),
         base_url="http://127.0.0.1",
@@ -101,13 +97,9 @@ def test_login_requires_single_use_totp_and_keeps_failures_generic(tmp_path: Pat
 
         future_now = int(__import__("time").time()) + 30
         code = generate_totp_code(secret, now=future_now)
-        success = client.post(
-            "/api/auth/login", json=body | {"totp_code": code}, headers=headers
-        )
+        success = client.post("/api/auth/login", json=body | {"totp_code": code}, headers=headers)
         assert success.status_code == 200
-        replay = client.post(
-            "/api/auth/login", json=body | {"totp_code": code}, headers=headers
-        )
+        replay = client.post("/api/auth/login", json=body | {"totp_code": code}, headers=headers)
         assert replay.status_code == 401
         assert replay.json() == no_code.json()
         assert secret not in success.text

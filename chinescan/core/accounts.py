@@ -524,8 +524,7 @@ class SessionStore:
             session = self._sessions.get(key)
             now = self._clock()
             if session and (
-                session.expires_at <= now
-                or session.last_seen_at + self.idle_ttl_seconds <= now
+                session.expires_at <= now or session.last_seen_at + self.idle_ttl_seconds <= now
             ):
                 del self._sessions[key]
                 return None
@@ -543,9 +542,7 @@ class SessionStore:
             self._sessions.clear()
 
 
-def totp_code_at(
-    secret: bytes, timestamp: int | float, *, step: int = 30, digits: int = 6
-) -> str:
+def totp_code_at(secret: bytes, timestamp: int | float, *, step: int = 30, digits: int = 6) -> str:
     """Calculate an RFC 6238 code using HMAC-SHA1 and dynamic truncation."""
     counter = int(timestamp) // step
     digest = hmac.new(secret, counter.to_bytes(8, "big"), hashlib.sha1).digest()
@@ -599,11 +596,15 @@ def start_totp_enrollment(path: Path, *, now: int | float | None = None) -> str:
 
 def _totp_rate_limited(data: dict[str, Any], now: int | float) -> tuple[list[int], bool]:
     raw = data.get("totp_verify_failed_at", [])
-    failures = [
-        int(stamp)
-        for stamp in raw
-        if isinstance(stamp, (int, float)) and stamp > now - TOTP_VERIFICATION_WINDOW_SECONDS
-    ] if isinstance(raw, list) else []
+    failures = (
+        [
+            int(stamp)
+            for stamp in raw
+            if isinstance(stamp, (int, float)) and stamp > now - TOTP_VERIFICATION_WINDOW_SECONDS
+        ]
+        if isinstance(raw, list)
+        else []
+    )
     return failures, len(failures) >= TOTP_VERIFICATION_MAX_ATTEMPTS
 
 
@@ -675,9 +676,7 @@ def confirm_totp_enrollment(
         return recovery_codes
 
 
-def verify_operator_totp(
-    path: Path, code: str, *, now: int | float | None = None
-) -> bool:
+def verify_operator_totp(path: Path, code: str, *, now: int | float | None = None) -> bool:
     timestamp = time.time() if now is None else now
     with _CREDENTIAL_LOCK:
         try:
@@ -698,9 +697,7 @@ def operator_totp_enabled(path: Path) -> bool:
         return False
 
 
-def disable_operator_totp(
-    path: Path, code: str, *, now: int | float | None = None
-) -> bool:
+def disable_operator_totp(path: Path, code: str, *, now: int | float | None = None) -> bool:
     timestamp = time.time() if now is None else now
     with _CREDENTIAL_LOCK:
         try:
@@ -723,4 +720,3 @@ def disable_operator_totp(
             data.pop(key, None)
         _write_atomic(path, data)
         return True
-

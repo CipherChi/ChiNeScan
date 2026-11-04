@@ -183,11 +183,14 @@ def test_successful_login_resets_backoff_and_failures_are_generic(tmp_path: Path
         assert known.status_code == unknown.status_code == 401
         assert known.json() == unknown.json()
         for _ in range(2):
-            assert client.post(
-                "/api/auth/login",
-                json={"email": "known@example.test", "password": "wrong"},
-                headers=headers,
-            ).status_code == 401
+            assert (
+                client.post(
+                    "/api/auth/login",
+                    json={"email": "known@example.test", "password": "wrong"},
+                    headers=headers,
+                ).status_code
+                == 401
+            )
         success = client.post(
             "/api/auth/login",
             json={"email": "known@example.test", "password": "Synthetic secure passphrase 71!"},
