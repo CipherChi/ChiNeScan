@@ -142,6 +142,74 @@ def test_sql_injection_inputs_cannot_change_record_queries(tmp_path: Path, paylo
         client.close()
 
 
+def test_mutating_body_models_reject_privileged_fields_from_route_inventory(
+    tmp_path: Path,
+) -> None:
+    from fastapi.routing import APIRoute
+    from pydantic import BaseModel
+    from sqlalchemy import func, select
+
+    from chinescan.core.storage.sqlite import records
+
+    app, client, *_ = _fixture(tmp_path)
+    try:
+        csrf_headers = _import_session(client)
+        no_csrf_headers = {"Origin": "http://127.0.0.1"}
+        mutations = {"POST", "PUT", "PATCH", "DELETE"}
+        privileged_fields = ("role", "is_admin", "permissions", "owner_id")
+        routes = [
+            route
+            for route in app.routes
+            if isinstance(route, APIRoute)
+            and route.path.startswith("/api/")
+            and (route.methods or set()).intersection(mutations)
+        ]
+        assert routes
+        with app.state.repository.engine.connect() as connection:
+            before = connection.execute(select(func.count()).select_from(records)).scalar_one()
+
+        for route in routes:
+            method = next(iter((route.methods or set()).intersection(mutations)))
+            path = re.sub(r"\{[^}:]+(?::path)?\}", "unknown-id", route.path)
+            models = []
+            for body_field in route.dependant.body_params:
+                annotation = body_field.field_info.annotation
+                assert isinstance(annotation, type) and issubclass(annotation, BaseModel), (
+                    route.path,
+                    annotation,
+                )
+                assert annotation.model_config.get("extra") == "forbid", route.path
+                models.append(annotation)
+
+            if not models:
+                response = client.request(
+                    method, path, headers=no_csrf_headers, json={"role": "admin"}
+                )
+                assert response.status_code in {401, 403}, (route.path, response.status_code)
+                continue
+
+            for field_name in privileged_fields:
+                response = client.request(
+                    method,
+                    path,
+                    headers=csrf_headers,
+                    json={field_name: "admin"},
+                )
+                assert response.status_code == 422, (route.path, field_name, response.status_code)
+                assert any(
+                    isinstance(error, dict)
+                    and error.get("type") == "extra_forbidden"
+                    and error.get("loc", [])[-1:] == [field_name]
+                    for error in response.json().get("detail", [])
+                ), (route.path, field_name, response.json())
+
+        with app.state.repository.engine.connect() as connection:
+            after = connection.execute(select(func.count()).select_from(records)).scalar_one()
+        assert after == before
+    finally:
+        client.close()
+
+
 def test_get_routes_do_not_expose_settings_or_credential_secrets(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
