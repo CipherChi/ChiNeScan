@@ -206,10 +206,13 @@ Graph JSON contains `scan_id`, `chain`, `nodes` (`address`, hop `depth`, optiona
 
 `GET /api/diagnostics` and `chinescan doctor --json` include `chain_network_enabled` and the boolean `chain_provider_key_configured`. Offline readiness remains passing while network tracing is disabled; enabled network tracing without a key is reported as a warning.
 
-Sessions expire after 30 minutes and are held only in process memory. Logout revokes the current
-session; a process restart discards all sessions. Run one application worker. The included server
+Sessions have a 30-minute absolute expiry and a 15-minute idle expiry by default; the idle limit
+is configurable with `CHINESCAN_SESSION_IDLE_TTL_SECONDS` (60–86400). They are held only in
+process memory. Logout revokes the current session; a process restart discards all sessions. Run
+one application worker. The included server
 uses plain HTTP with `Secure` cookies disabled. Setting `Secure` on an HTTP cookie would prevent
-normal browsers from sending it. HTTPS termination and trusted proxy headers are not configured.
+normal browsers from sending it. HTTPS termination is not configured. Forwarded client addresses
+are ignored unless `trusted_proxy = true`; this setting only changes the limiter's client key.
 # API versioning and transport headers
 
 `/api/v1/*` is an alias for the corresponding `/api/*` route. Both prefixes use the
@@ -224,4 +227,9 @@ with a published removal date. Rate-limit failures use HTTP 429, a `Retry-After`
 and the usual `{"detail":{"code":"...","message":"..."}}` error form where the
 limiter generates the response. Authentication lockouts return a generic response and
 apply a temporary increasing delay to the operator account and client address.
+
+The in-process limiter uses one-minute windows by default. `CHINESCAN_AUTH_RATE_LIMIT` defaults
+to 60 requests per client, job starts to 120, exports to 240, and reads to 1000. Limits and window
+length can be adjusted through settings; a single-process deployment is required for consistent
+in-memory limits. The process caps active buckets and evicts expired or oldest entries.
 
