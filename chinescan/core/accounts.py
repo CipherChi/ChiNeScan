@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -25,6 +27,12 @@ from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatc
 EMAIL_RE = re.compile(r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}$")
 RESET_TOKEN_TTL_SECONDS = 15 * 60
 RESET_RATE_LIMIT_SECONDS = 60
+SESSION_ABSOLUTE_TTL_SECONDS = 30 * 60
+SESSION_IDLE_TTL_SECONDS = 10 * 60
+TOTP_ENROLLMENT_TTL_SECONDS = 10 * 60
+TOTP_VERIFICATION_WINDOW_SECONDS = 5 * 60
+TOTP_VERIFICATION_MAX_ATTEMPTS = 5
+TOTP_RECOVERY_CODE_COUNT = 10
 _CREDENTIAL_LOCK = threading.RLock()
 _COMMON_PASSWORDS = frozenset(
     line.strip().casefold()
@@ -35,6 +43,7 @@ _COMMON_PASSWORDS = frozenset(
     if line.strip() and not line.lstrip().startswith("#")
 )
 _DUMMY_HASH = PasswordHasher().hash("Chinescan dummy verification only")
+_TOTP_RECOVERY_HASHER = PasswordHasher()
 
 
 class CredentialError(ValueError):
@@ -457,19 +466,29 @@ def timestamped_credential_backup(path: Path) -> Path:
     return backup
 
 
-@dataclass(frozen=True)
+@dataclass
 class Session:
     email: str
     csrf_token: str
     expires_at: float
     auth_epoch: str
+    created_at: float = 0.0
+    last_seen_at: float = 0.0
 
 
 class SessionStore:
     """Opaque, process-local sessions; restarting or password reset invalidates sessions."""
 
-    def __init__(self, ttl_seconds: int = 1800) -> None:
+    def __init__(
+        self,
+        ttl_seconds: int = SESSION_ABSOLUTE_TTL_SECONDS,
+        idle_ttl_seconds: int = SESSION_IDLE_TTL_SECONDS,
+        *,
+        clock: Any = time.time,
+    ) -> None:
         self.ttl_seconds = ttl_seconds
+        self.idle_ttl_seconds = idle_ttl_seconds
+        self._clock = clock
         self._sessions: dict[str, Session] = {}
         self._lock = threading.RLock()
 
@@ -479,11 +498,16 @@ class SessionStore:
 
     def create(self, email: str, auth_epoch: str) -> tuple[str, Session]:
         token = secrets.token_urlsafe(32)
+        now = self._clock()
         session = Session(
-            email, secrets.token_urlsafe(32), time.time() + self.ttl_seconds, auth_epoch
+            email,
+            secrets.token_urlsafe(32),
+            now + self.ttl_seconds,
+            auth_epoch,
+            created_at=now,
+            last_seen_at=now,
         )
         with self._lock:
-            now = time.time()
             expired = [key for key, value in self._sessions.items() if value.expires_at <= now]
             for key in expired:
                 del self._sessions[key]
@@ -499,9 +523,14 @@ class SessionStore:
         key = self._key(token)
         with self._lock:
             session = self._sessions.get(key)
-            if session and session.expires_at <= time.time():
+            now = self._clock()
+            if session and (
+                session.expires_at <= now or session.last_seen_at + self.idle_ttl_seconds <= now
+            ):
                 del self._sessions[key]
                 return None
+            if session:
+                session.last_seen_at = now
             return session
 
     def revoke(self, token: str | None) -> None:
@@ -512,3 +541,195 @@ class SessionStore:
     def revoke_all(self) -> None:
         with self._lock:
             self._sessions.clear()
+
+
+def totp_code_at(secret: bytes, timestamp: int | float, *, step: int = 30, digits: int = 6) -> str:
+    """Calculate an RFC 6238 code using HMAC-SHA1 and dynamic truncation."""
+    counter = int(timestamp) // step
+    digest = hmac.new(secret, counter.to_bytes(8, "big"), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    binary = int.from_bytes(digest[offset : offset + 4], "big") & 0x7FFFFFFF
+    return str(binary % (10**digits)).zfill(digits)
+
+
+def generate_totp_secret() -> str:
+    """Return a new 160-bit Base32 authenticator secret."""
+    return base64.b32encode(secrets.token_bytes(20)).decode("ascii").rstrip("=")
+
+
+def generate_totp_code(secret: str, *, now: int | float | None = None) -> str:
+    padded = secret + "=" * ((8 - len(secret) % 8) % 8)
+    decoded = base64.b32decode(padded, casefold=True)
+    return totp_code_at(decoded, time.time() if now is None else now)
+
+
+def _matching_totp_counter(
+    secret: str, code: str, now: int | float, last_counter: int
+) -> int | None:
+    try:
+        padded = secret + "=" * ((8 - len(secret) % 8) % 8)
+        decoded = base64.b32decode(padded, casefold=True)
+    except (ValueError, binascii.Error):
+        return None
+    current = int(now) // 30
+    for counter in range(max(0, current - 1), current + 2):
+        expected = totp_code_at(decoded, counter * 30)
+        if counter > last_counter and hmac.compare_digest(expected, code):
+            return counter
+    return None
+
+
+def start_totp_enrollment(path: Path, *, now: int | float | None = None) -> str:
+    """Store a temporary secret for ten minutes; only the local CLI displays it."""
+    timestamp = time.time() if now is None else now
+    with _CREDENTIAL_LOCK:
+        data = _read(path)
+        if data.get("totp_enabled"):
+            raise CredentialError("Authenticator verification is already enabled.")
+        secret = generate_totp_secret()
+        data["totp_pending_secret"] = secret
+        data["totp_enrollment_expires_at"] = int(timestamp) + TOTP_ENROLLMENT_TTL_SECONDS
+        data["totp_last_counter"] = -1
+        data["totp_verify_failed_at"] = []
+        _write_atomic(path, data)
+        return secret
+
+
+def _totp_rate_limited(data: dict[str, Any], now: int | float) -> tuple[list[int], bool]:
+    raw = data.get("totp_verify_failed_at", [])
+    failures = (
+        [
+            int(stamp)
+            for stamp in raw
+            if isinstance(stamp, (int, float)) and stamp > now - TOTP_VERIFICATION_WINDOW_SECONDS
+        ]
+        if isinstance(raw, list)
+        else []
+    )
+    return failures, len(failures) >= TOTP_VERIFICATION_MAX_ATTEMPTS
+
+
+def _verify_totp_in_data(
+    data: dict[str, Any], code: str, now: int | float
+) -> tuple[bool, int | None]:
+    failures, limited = _totp_rate_limited(data, now)
+    if limited:
+        return False, None
+    secret = data.get("totp_secret")
+    if not isinstance(secret, str):
+        return False, None
+    last_counter = int(data.get("totp_last_counter", -1))
+    matched = _matching_totp_counter(secret, code.strip(), now, last_counter)
+    if matched is not None:
+        data["totp_last_counter"] = matched
+        data["totp_verify_failed_at"] = []
+        return True, matched
+    recovery = data.get("totp_recovery_code_hashes", [])
+    matched_recovery_index: int | None = None
+    if isinstance(recovery, list):
+        for index, digest in enumerate(recovery):
+            # Legacy unsalted SHA-256 values are rejected; re-enrollment creates
+            # fresh Argon2 hashes. Never upgrade old values during verification.
+            if not isinstance(digest, str) or not digest.startswith("$argon2id$"):
+                continue
+            try:
+                valid_recovery_code: bool = _TOTP_RECOVERY_HASHER.verify(
+                    digest, code.strip().upper()
+                )
+            except (InvalidHashError, VerificationError):
+                valid_recovery_code = False
+            if valid_recovery_code:
+                matched_recovery_index = index
+        if matched_recovery_index is not None:
+            recovery.pop(matched_recovery_index)
+            data["totp_recovery_code_hashes"] = recovery
+            data["totp_verify_failed_at"] = []
+            return True, None
+    failures.append(int(now))
+    data["totp_verify_failed_at"] = failures
+    return False, None
+
+
+def confirm_totp_enrollment(
+    path: Path, code: str, *, now: int | float | None = None
+) -> list[str] | None:
+    """Enable authenticator verification after a live code and return recovery codes once."""
+    timestamp = time.time() if now is None else now
+    with _CREDENTIAL_LOCK:
+        data = _read(path)
+        secret = data.get("totp_pending_secret")
+        expires = data.get("totp_enrollment_expires_at")
+        if data.get("totp_enabled") or not isinstance(secret, str) or not isinstance(expires, int):
+            return None
+        if int(timestamp) >= expires:
+            data.pop("totp_pending_secret", None)
+            data.pop("totp_enrollment_expires_at", None)
+            _write_atomic(path, data)
+            return None
+        failures, limited = _totp_rate_limited(data, timestamp)
+        if limited:
+            return None
+        matched = _matching_totp_counter(secret, code.strip(), timestamp, -1)
+        if matched is None:
+            failures.append(int(timestamp))
+            data["totp_verify_failed_at"] = failures
+            _write_atomic(path, data)
+            return None
+        recovery_codes = [secrets.token_hex(5).upper() for _ in range(TOTP_RECOVERY_CODE_COUNT)]
+        data["totp_enabled"] = True
+        data["totp_secret"] = secret
+        data["totp_last_counter"] = matched
+        data["totp_recovery_code_hashes"] = [
+            _TOTP_RECOVERY_HASHER.hash(value) for value in recovery_codes
+        ]
+        data["totp_verify_failed_at"] = []
+        data.pop("totp_pending_secret", None)
+        data.pop("totp_enrollment_expires_at", None)
+        _write_atomic(path, data)
+        return recovery_codes
+
+
+def verify_operator_totp(path: Path, code: str, *, now: int | float | None = None) -> bool:
+    timestamp = time.time() if now is None else now
+    with _CREDENTIAL_LOCK:
+        try:
+            data = _read(path)
+        except CredentialError:
+            return False
+        if not data.get("totp_enabled"):
+            return False
+        valid, _counter = _verify_totp_in_data(data, code, timestamp)
+        _write_atomic(path, data)
+        return valid
+
+
+def operator_totp_enabled(path: Path) -> bool:
+    try:
+        return _read(path).get("totp_enabled") is True
+    except CredentialError:
+        return False
+
+
+def disable_operator_totp(path: Path, code: str, *, now: int | float | None = None) -> bool:
+    timestamp = time.time() if now is None else now
+    with _CREDENTIAL_LOCK:
+        try:
+            data = _read(path)
+        except CredentialError:
+            return False
+        if not data.get("totp_enabled"):
+            return False
+        valid, _counter = _verify_totp_in_data(data, code, timestamp)
+        if not valid:
+            _write_atomic(path, data)
+            return False
+        for key in (
+            "totp_enabled",
+            "totp_secret",
+            "totp_last_counter",
+            "totp_recovery_code_hashes",
+            "totp_verify_failed_at",
+        ):
+            data.pop(key, None)
+        _write_atomic(path, data)
+        return True

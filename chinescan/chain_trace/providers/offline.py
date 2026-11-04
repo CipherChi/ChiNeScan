@@ -23,7 +23,10 @@ class OfflineProvider:
         if len(text.encode()) > MAX_IMPORT_BYTES:
             raise ValueError("import exceeds 2 MB")
         self.gaps: list[str] = []
-        rows = csv.DictReader(StringIO(text)) if format == "csv" else json.loads(text)
+        try:
+            rows = csv.DictReader(StringIO(text)) if format == "csv" else json.loads(text)
+        except (json.JSONDecodeError, RecursionError) as exc:
+            raise ValueError("import JSON is malformed or too deeply nested") from exc
         if format != "csv" and isinstance(rows, dict):
             rows = rows.get("transfers", rows.get("data", []))
         self.items: list[Transfer] = []

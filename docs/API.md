@@ -206,7 +206,36 @@ Graph JSON contains `scan_id`, `chain`, `nodes` (`address`, hop `depth`, optiona
 
 `GET /api/diagnostics` and `chinescan doctor --json` include `chain_network_enabled` and the boolean `chain_provider_key_configured`. Offline readiness remains passing while network tracing is disabled; enabled network tracing without a key is reported as a warning.
 
-Sessions expire after 30 minutes and are held only in process memory. Logout revokes the current
-session; a process restart discards all sessions. Run one application worker. The included server
-uses plain HTTP with `Secure` cookies disabled. Setting `Secure` on an HTTP cookie would prevent
-normal browsers from sending it. HTTPS termination and trusted proxy headers are not configured.
+Sessions have a 30-minute absolute expiry and a 10-minute idle expiry by default. Configure these
+with `session_absolute_ttl_seconds` and `session_idle_ttl_seconds` (60–86400). They are held only
+in process memory. Logout revokes the current session; a process restart discards all sessions.
+Run one application worker. The included server uses plain HTTP with `Secure` cookies disabled.
+Setting `Secure` on an HTTP cookie would prevent normal browsers from sending it. HTTPS termination
+is not configured. Forwarded client addresses are ignored unless `trusted_proxy = true`; this
+setting only changes the limiter's client key.
+
+Operator TOTP is disabled by default. On the local terminal, `chinescan web totp-enroll` starts
+an enrollment that expires after 10 minutes; confirmation and each later code are single-use.
+Failed verifications are rate limited. `chinescan web totp-disable` disables it after verifying
+a current authenticator or unused recovery code. The secret is stored in the operator credential
+file and is not returned by web endpoints.
+# API versioning and transport headers
+
+`/api/v1/*` is an alias for the corresponding `/api/*` route. Both prefixes use the
+same cookie session, CSRF, authorization, and in-process throttles. Existing `/api/*`
+paths remain supported. Responses include `X-API-Version: 1`; standard security headers
+include CSP, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and
+`Referrer-Policy: no-referrer`. API responses are private and non-cacheable.
+
+Changes within v1 are additive. Breaking request or response changes require `/api/v2`.
+When a route is deprecated, responses will include `Deprecation` and `Sunset` headers
+with a published removal date. Rate-limit failures use HTTP 429, a `Retry-After` header,
+and the usual `{"detail":{"code":"...","message":"..."}}` error form where the
+limiter generates the response. Authentication lockouts return a generic response and
+apply a temporary increasing delay to the operator account and client address.
+
+The in-process limiter uses one-minute windows by default. `CHINESCAN_AUTH_RATE_LIMIT` defaults
+to 60 requests per client, job starts to 120, exports to 240, and reads to 1000. Limits and window
+length can be adjusted through settings; a single-process deployment is required for consistent
+in-memory limits. The process caps active buckets and evicts expired or oldest entries.
+

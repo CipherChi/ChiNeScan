@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import tempfile
@@ -97,6 +98,170 @@ def test_external_report_import_requires_authentication(tmp_path: Path) -> None:
         )
         assert response.status_code == 401
         assert "Authentication required" in response.text
+    finally:
+        client.close()
+
+
+def test_v1_api_alias_uses_existing_auth_and_reports_version(tmp_path: Path) -> None:
+    _, client, *_ = _fixture(tmp_path)
+    try:
+        legacy = client.get("/api/scans")
+        versioned = client.get("/api/v1/scans")
+        assert legacy.status_code == versioned.status_code == 401
+        assert legacy.json() == versioned.json()
+        assert versioned.headers["X-API-Version"] == "1"
+        unknown = client.get("/api/v2/scans")
+        assert unknown.status_code == 404
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize("payload", ["' OR 1=1 --", ";DROP TABLE records"])
+def test_sql_injection_inputs_cannot_change_record_queries(tmp_path: Path, payload: str) -> None:
+    app, client, *_ = _fixture(tmp_path)
+    try:
+        headers = _import_session(client)
+        before = app.state.repository.count_records("scan") + app.state.repository.count_records(
+            "finding"
+        )
+        path_id = client.get(f"/api/scans/{payload}", headers=headers)
+        assert path_id.status_code in {404, 422}
+        search = client.get("/api/scans", params={"scanner": payload}, headers=headers)
+        assert search.status_code in {200, 422}
+        if search.status_code == 200:
+            assert search.json()["items"] == []
+        sort = client.get("/api/findings", params={"sort": payload}, headers=headers)
+        filter_result = client.get("/api/findings", params={"severity": payload}, headers=headers)
+        assert sort.status_code == 422
+        assert filter_result.status_code == 422
+        after = app.state.repository.count_records("scan") + app.state.repository.count_records(
+            "finding"
+        )
+        assert before == after
+    finally:
+        client.close()
+
+
+def test_mutating_body_models_reject_privileged_fields_from_route_inventory(
+    tmp_path: Path,
+) -> None:
+    from fastapi.routing import APIRoute
+    from pydantic import BaseModel
+    from sqlalchemy import func, select
+
+    from chinescan.core.storage.sqlite import records
+
+    app, client, *_ = _fixture(tmp_path)
+    try:
+        csrf_headers = _import_session(client)
+        no_csrf_headers = {"Origin": "http://127.0.0.1"}
+        mutations = {"POST", "PUT", "PATCH", "DELETE"}
+        privileged_fields = ("role", "is_admin", "permissions", "owner_id")
+        routes = [
+            route
+            for route in app.routes
+            if isinstance(route, APIRoute)
+            and route.path.startswith("/api/")
+            and (route.methods or set()).intersection(mutations)
+        ]
+        assert routes
+        with app.state.repository.engine.connect() as connection:
+            before = connection.execute(select(func.count()).select_from(records)).scalar_one()
+
+        for route in routes:
+            method = next(iter((route.methods or set()).intersection(mutations)))
+            path = re.sub(r"\{[^}:]+(?::path)?\}", "unknown-id", route.path)
+            models = []
+            for body_field in route.dependant.body_params:
+                annotation = body_field.field_info.annotation
+                assert isinstance(annotation, type) and issubclass(annotation, BaseModel), (
+                    route.path,
+                    annotation,
+                )
+                assert annotation.model_config.get("extra") == "forbid", route.path
+                models.append(annotation)
+
+            if not models:
+                response = client.request(
+                    method, path, headers=no_csrf_headers, json={"role": "admin"}
+                )
+                assert response.status_code in {401, 403}, (route.path, response.status_code)
+                continue
+
+            for field_name in privileged_fields:
+                response = client.request(
+                    method,
+                    path,
+                    headers=csrf_headers,
+                    json={field_name: "admin"},
+                )
+                assert response.status_code == 422, (route.path, field_name, response.status_code)
+                assert any(
+                    isinstance(error, dict)
+                    and error.get("type") == "extra_forbidden"
+                    and error.get("loc", [])[-1:] == [field_name]
+                    for error in response.json().get("detail", [])
+                ), (route.path, field_name, response.json())
+
+        with app.state.repository.engine.connect() as connection:
+            after = connection.execute(select(func.count()).select_from(records)).scalar_one()
+        assert after == before
+    finally:
+        client.close()
+
+
+def test_get_routes_do_not_expose_settings_or_credential_secrets(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    from fastapi.routing import APIRoute
+
+    sentinel = "sentinel-secret-value-for-response-test"
+    database = tmp_path / "records.sqlite3"
+    credential = tmp_path / "private" / "operator.json"
+    create_operator(credential, "analyst@example.test", sentinel)
+    app = create_app(
+        database,
+        credential,
+        settings=Settings(api_token=sentinel),
+        serve_frontend=False,
+    )
+    client = TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 50000))
+    try:
+        login = _login(client, password=sentinel)
+        assert login.status_code == 200
+        headers = {
+            "Origin": "http://127.0.0.1",
+            "X-CSRF-Token": login.json()["csrf_token"],
+        }
+        for route in app.routes:
+            if not isinstance(route, APIRoute) or not route.path.startswith("/api/"):
+                continue
+            if "GET" not in (route.methods or set()):
+                continue
+            path = re.sub(r"\{[^}:]+(?::path)?\}", "missing-id", route.path)
+            response = client.get(path, headers=headers)
+            assert sentinel not in response.text, route.path
+            assert not re.search(r"\$argon2(?:id|i|d)\$", response.text), route.path
+        assert sentinel not in caplog.text
+        assert not re.search(r"\$argon2(?:id|i|d)\$", caplog.text)
+    finally:
+        client.close()
+
+
+def test_security_headers_are_present_on_api_and_downloads(tmp_path: Path) -> None:
+    _, client, *_ = _fixture(tmp_path)
+    try:
+        headers = _import_session(client)
+        for path in ("/api/scans", "/api/scans/scan-1/report/html"):
+            response = client.get(path, headers=headers)
+            assert response.status_code == 200
+            assert "default-src 'self'" in response.headers["content-security-policy"]
+            assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+            assert response.headers["x-content-type-options"] == "nosniff"
+            assert response.headers["x-frame-options"] == "DENY"
+            assert response.headers["referrer-policy"] == "no-referrer"
+        download = client.get("/api/scans/scan-1/report/html", headers=headers)
+        assert download.headers["content-disposition"].startswith("attachment;")
     finally:
         client.close()
 

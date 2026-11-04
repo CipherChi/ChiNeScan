@@ -74,7 +74,9 @@ from chinescan.scanners.indicators import IndicatorScanner
 from chinescan.web.app import create_app
 from chinescan.web.auth import (
     CredentialError,
+    confirm_totp_enrollment,
     create_operator,
+    disable_operator_totp,
     issue_reset_token,
     migrate_legacy_operator,
     migrate_operator_email_for_reset,
@@ -82,6 +84,7 @@ from chinescan.web.auth import (
     operator_identity_summary,
     operator_status,
     set_operator_password,
+    start_totp_enrollment,
     timestamped_credential_backup,
 )
 
@@ -172,6 +175,45 @@ def web_operator_status(
     """Report only the local operator credential state."""
     state = operator_status(_operator_credential_path(credential_file))
     typer.echo(json.dumps({"status": state}) if json_output else state)
+
+
+@web_app.command("totp-enroll")
+def web_totp_enroll(
+    credential_file: Path | None = typer.Option(None, "--credential-file"),  # noqa: B008
+) -> None:
+    """Enroll authenticator-based MFA from this local terminal."""
+    try:
+        path = _operator_credential_path(credential_file)
+        secret = start_totp_enrollment(path)
+    except CredentialError as exc:
+        typer.echo(str(redact(str(exc))), err=True)
+        raise typer.Exit(code=2) from None
+    typer.echo("Add this key to your authenticator now; it is not shown again:")
+    typer.echo(secret)
+    code = getpass("Enter the current six-digit authenticator code: ")
+    recovery_codes = confirm_totp_enrollment(path, code)
+    if recovery_codes is None:
+        typer.echo("Authenticator enrollment failed or expired.", err=True)
+        raise typer.Exit(code=2)
+    typer.echo("Recovery codes (each works once; store them securely):")
+    for recovery_code in recovery_codes:
+        typer.echo(recovery_code)
+
+
+@web_app.command("totp-disable")
+def web_totp_disable(
+    credential_file: Path | None = typer.Option(None, "--credential-file"),  # noqa: B008
+) -> None:
+    """Disable authenticator-based MFA from this local terminal."""
+    try:
+        path = _operator_credential_path(credential_file)
+        code = getpass("Enter an unused authenticator or recovery code: ")
+        if not disable_operator_totp(path, code):
+            raise CredentialError("Authenticator verification could not be completed.")
+    except CredentialError as exc:
+        typer.echo(str(redact(str(exc))), err=True)
+        raise typer.Exit(code=2) from None
+    typer.echo("Authenticator verification disabled.")
 
 
 @web_app.command("recover-operator")

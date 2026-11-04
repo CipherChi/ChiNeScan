@@ -73,7 +73,7 @@ def load_iocs(path: Path | None) -> tuple[list[Indicator], list[str]]:
                     rows.append({"kind": kind, "value": value.strip()})
                 else:
                     rows.append({"value": value})
-    except (json.JSONDecodeError, csv.Error, ValueError):
+    except (json.JSONDecodeError, csv.Error, ValueError, RecursionError):
         return [], [f"{path}: malformed indicator file"]
     indicators: dict[tuple[str, str], Indicator] = {}
     errors: list[str] = []

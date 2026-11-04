@@ -10,6 +10,8 @@ import tomli_w
 from chinescan.core.config.settings import Settings, default_config_path
 from chinescan.core.errors import ConfigurationError
 
+MAX_CONFIG_BYTES = 1_048_576
+
 
 def init_config(path: Path | None = None) -> Path:
     target = path or default_config_path()
@@ -43,6 +45,8 @@ def load_settings(
     try:
         if (config_path is not None or configured_path is not None) and not target.is_file():
             raise OSError("selected config file does not exist")
+        if target.exists() and target.stat().st_size > MAX_CONFIG_BYTES:
+            raise OSError("configuration exceeds size limit")
         data = tomllib.loads(target.read_text(encoding="utf-8")) if target.exists() else {}
         for key in Settings.model_fields:
             env_name = f"CHINESCAN_{key.upper()}"
@@ -50,8 +54,10 @@ def load_settings(
                 data[key] = os.environ[env_name]
         data.update(cli_overrides or {})
         return Settings(_env_file=None, **data)
-    except (OSError, ValueError, TypeError) as exc:
+    except (OSError, ValueError, TypeError, RecursionError) as exc:
         detail = "check the file and setting values."
+        if isinstance(exc, RecursionError):
+            detail = "configuration nesting exceeds the supported depth."
         if isinstance(exc, tomllib.TOMLDecodeError):
             location = re.search(r"\(at line (\d+), column (\d+)\)$", str(exc))
             if location is not None:
