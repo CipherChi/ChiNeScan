@@ -8,6 +8,11 @@ from typing import Literal, cast
 from pydantic import Field, PrivateAttr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from chinescan.core.accounts import (
+    SESSION_ABSOLUTE_TTL_SECONDS,
+    SESSION_IDLE_TTL_SECONDS,
+)
+
 
 def default_config_path() -> Path:
     return Path.home() / ".config" / "chinescan" / "config.toml"
@@ -28,7 +33,10 @@ class Settings(BaseSettings):
     malware_managed_directory: Path | None = None
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     api_token: str | None = Field(default=None, repr=False)
-    session_idle_ttl_seconds: int = Field(default=900, ge=60, le=86_400)
+    session_absolute_ttl_seconds: int = Field(
+        default=SESSION_ABSOLUTE_TTL_SECONDS, ge=60, le=86_400
+    )
+    session_idle_ttl_seconds: int = Field(default=SESSION_IDLE_TTL_SECONDS, ge=60, le=86_400)
     auth_rate_limit: int = Field(default=60, ge=1, le=10_000)
     job_start_rate_limit: int = Field(default=120, ge=1, le=10_000)
     export_rate_limit: int = Field(default=240, ge=1, le=10_000)

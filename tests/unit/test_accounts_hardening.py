@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from chinescan.core.accounts import (
     CredentialError,
+    SessionStore,
     create_operator,
     issue_reset_token,
     migrate_legacy_operator,
@@ -127,6 +128,79 @@ def test_unknown_login_response_matches_known_failure_shape(tmp_path: Path) -> N
     assert known.json() == unknown.json()
     assert known.headers["content-type"] == unknown.headers["content-type"]
     assert known.headers["cache-control"] == unknown.headers["cache-control"]
+
+
+def test_session_idle_and_absolute_expiry_use_independent_fake_clock() -> None:
+    now = [1_000.0]
+    clock = lambda: now[0]
+    store = SessionStore(ttl_seconds=50, idle_ttl_seconds=10, clock=clock)
+    idle_token, _ = store.create("known@example.test", "epoch")
+    now[0] += 9
+    assert store.get(idle_token) is not None
+    now[0] += 10
+    assert store.get(idle_token) is None
+
+    now[0] = 2_000.0
+    absolute_token, _ = store.create("known@example.test", "epoch")
+    for _ in range(5):
+        now[0] += 9
+        assert store.get(absolute_token) is not None
+    now[0] += 5
+    assert store.get(absolute_token) is None
+
+
+def test_session_lifetime_settings_have_ten_minute_idle_default() -> None:
+    from chinescan.core.config.settings import Settings
+
+    settings = Settings(_env_file=None)
+    assert settings.session_idle_ttl_seconds == 600
+    assert settings.session_absolute_ttl_seconds == 1800
+
+
+def test_successful_login_resets_backoff_and_failures_are_generic(tmp_path: Path) -> None:
+    credential = tmp_path / "operator.json"
+    create_operator(credential, "known@example.test", "Synthetic secure passphrase 71!")
+    client = TestClient(
+        create_app(tmp_path / "db.sqlite3", credential, serve_frontend=False),
+        base_url="http://127.0.0.1",
+        client=("127.0.0.1", 50000),
+    )
+    headers = {"Origin": "http://127.0.0.1"}
+    try:
+        known = client.post(
+            "/api/auth/login",
+            json={"email": "known@example.test", "password": "wrong"},
+            headers=headers,
+        )
+        unknown = client.post(
+            "/api/auth/login",
+            json={"email": "unknown@example.test", "password": "wrong"},
+            headers=headers,
+        )
+        assert known.status_code == unknown.status_code == 401
+        assert known.json() == unknown.json()
+        for _ in range(2):
+            assert client.post(
+                "/api/auth/login",
+                json={"email": "known@example.test", "password": "wrong"},
+                headers=headers,
+            ).status_code == 401
+        success = client.post(
+            "/api/auth/login",
+            json={"email": "known@example.test", "password": "Synthetic secure passphrase 71!"},
+            headers=headers,
+        )
+        assert success.status_code == 200
+        for _ in range(4):
+            response = client.post(
+                "/api/auth/login",
+                json={"email": "known@example.test", "password": "wrong"},
+                headers=headers,
+            )
+            assert response.status_code == 401
+            assert response.json() == known.json()
+    finally:
+        client.close()
 
 
 def test_legacy_identity_migration_and_needs_migration_backups(tmp_path: Path) -> None:

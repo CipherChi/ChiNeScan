@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import base64
+import binascii
 import json
 import os
 import re
@@ -25,6 +27,12 @@ from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatc
 EMAIL_RE = re.compile(r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}$")
 RESET_TOKEN_TTL_SECONDS = 15 * 60
 RESET_RATE_LIMIT_SECONDS = 60
+SESSION_ABSOLUTE_TTL_SECONDS = 30 * 60
+SESSION_IDLE_TTL_SECONDS = 10 * 60
+TOTP_ENROLLMENT_TTL_SECONDS = 10 * 60
+TOTP_VERIFICATION_WINDOW_SECONDS = 5 * 60
+TOTP_VERIFICATION_MAX_ATTEMPTS = 5
+TOTP_RECOVERY_CODE_COUNT = 10
 _CREDENTIAL_LOCK = threading.RLock()
 _COMMON_PASSWORDS = frozenset(
     line.strip().casefold()
@@ -470,9 +478,16 @@ class Session:
 class SessionStore:
     """Opaque, process-local sessions; restarting or password reset invalidates sessions."""
 
-    def __init__(self, ttl_seconds: int = 1800, idle_ttl_seconds: int | None = None) -> None:
+    def __init__(
+        self,
+        ttl_seconds: int = SESSION_ABSOLUTE_TTL_SECONDS,
+        idle_ttl_seconds: int = SESSION_IDLE_TTL_SECONDS,
+        *,
+        clock: Any = time.time,
+    ) -> None:
         self.ttl_seconds = ttl_seconds
-        self.idle_ttl_seconds = idle_ttl_seconds or ttl_seconds
+        self.idle_ttl_seconds = idle_ttl_seconds
+        self._clock = clock
         self._sessions: dict[str, Session] = {}
         self._lock = threading.RLock()
 
@@ -482,7 +497,7 @@ class SessionStore:
 
     def create(self, email: str, auth_epoch: str) -> tuple[str, Session]:
         token = secrets.token_urlsafe(32)
-        now = time.time()
+        now = self._clock()
         session = Session(
             email,
             secrets.token_urlsafe(32),
@@ -507,7 +522,7 @@ class SessionStore:
         key = self._key(token)
         with self._lock:
             session = self._sessions.get(key)
-            now = time.time()
+            now = self._clock()
             if session and (
                 session.expires_at <= now
                 or session.last_seen_at + self.idle_ttl_seconds <= now

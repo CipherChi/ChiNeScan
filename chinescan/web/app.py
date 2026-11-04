@@ -491,7 +491,7 @@ def create_app(
     database_path: Path | str,
     credential_path: Path | str,
     *,
-    session_ttl_seconds: int = 1800,
+    session_ttl_seconds: int | None = None,
     secure_cookie: bool = False,
     serve_frontend: bool = True,
     projects_path: Path | str | None = None,
@@ -502,10 +502,16 @@ def create_app(
 ) -> FastAPI:
     """Create an application instance; sessions and throttling live in this process."""
     configure_logging()
+    active_settings = settings or Settings(_env_file=None)
     repository = SQLiteRepository(database_path)
     db_lock = threading.RLock()
-    idle_ttl_seconds = settings.session_idle_ttl_seconds if settings else 900
-    sessions = SessionStore(session_ttl_seconds, idle_ttl_seconds)
+    absolute_ttl_seconds = (
+        session_ttl_seconds
+        if session_ttl_seconds is not None
+        else active_settings.session_absolute_ttl_seconds
+    )
+    idle_ttl_seconds = active_settings.session_idle_ttl_seconds
+    sessions = SessionStore(absolute_ttl_seconds, idle_ttl_seconds)
     credentials = Path(credential_path)
     try:
         migrate_legacy_operator(credentials)
@@ -538,7 +544,6 @@ def create_app(
     malware_diagnostic = (
         "Execution unavailable: configure managed storage and an operator registry."
     )
-    active_settings = settings or Settings(_env_file=None)
     rate_limiter = InProcessRateLimiter(
         {
             "auth": (active_settings.auth_rate_limit, active_settings.rate_limit_window_seconds),
@@ -1123,7 +1128,7 @@ def create_app(
             httponly=True,
             secure=secure_cookie,
             samesite="strict",
-            max_age=session_ttl_seconds,
+            max_age=absolute_ttl_seconds,
             path="/",
         )
         return {"email": session.email, "csrf_token": session.csrf_token}
@@ -1151,7 +1156,7 @@ def create_app(
             httponly=True,
             secure=secure_cookie,
             samesite="strict",
-            max_age=session_ttl_seconds,
+            max_age=absolute_ttl_seconds,
             path="/",
         )
         return {"email": session.email, "csrf_token": session.csrf_token}
