@@ -5,8 +5,8 @@ import pytest
 from chinescan.chain_trace.providers.offline import MAX_IMPORT_BYTES, OfflineProvider
 from chinescan.core.config.io import load_config
 from chinescan.core.errors import ConfigurationError
-from chinescan.log_analysis.ioc_matching import load_iocs
 from chinescan.log_analysis.ingest import ingest_path
+from chinescan.log_analysis.ioc_matching import load_iocs
 
 
 def test_ioc_json_deep_nesting_returns_bounded_error(tmp_path: Path) -> None:

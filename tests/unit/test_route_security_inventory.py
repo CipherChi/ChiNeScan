@@ -65,8 +65,11 @@ def test_mutating_routes_reject_missing_csrf_and_wrong_typed_record_ids(tmp_path
                 continue
             if route.path in auth_mutations:
                 continue
+            method = next(
+                iter((route.methods or set()).intersection({"POST", "PUT", "PATCH", "DELETE"}))
+            )
             response = client.request(
-                next(iter((route.methods or set()).intersection({"POST", "PUT", "PATCH", "DELETE"}))),
+                method,
                 _route_url(route.path),
                 headers=headers,
                 json={},

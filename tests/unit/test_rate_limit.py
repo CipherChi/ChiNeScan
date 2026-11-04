@@ -33,8 +33,9 @@ def test_auth_route_limit_returns_retry_after_error_shape(tmp_path: Path) -> Non
     client = TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 50000))
     headers = {"Origin": "http://127.0.0.1"}
     try:
-        first = client.post("/api/auth/login", json={"email": "x@example.test", "password": "wrong"}, headers=headers)
-        limited = client.post("/api/auth/login", json={"email": "x@example.test", "password": "wrong"}, headers=headers)
+        body = {"email": "x@example.test", "password": "wrong"}
+        first = client.post("/api/auth/login", json=body, headers=headers)
+        limited = client.post("/api/auth/login", json=body, headers=headers)
         assert first.status_code == 401
         assert limited.status_code == 429
         assert int(limited.headers["retry-after"]) >= 1

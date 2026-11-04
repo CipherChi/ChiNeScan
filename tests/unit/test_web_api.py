@@ -134,9 +134,10 @@ def test_sql_injection_inputs_cannot_change_record_queries(tmp_path: Path, paylo
         filter_result = client.get("/api/findings", params={"severity": payload}, headers=headers)
         assert sort.status_code == 422
         assert filter_result.status_code == 422
-        assert before == app.state.repository.count_records("scan") + app.state.repository.count_records(
+        after = app.state.repository.count_records("scan") + app.state.repository.count_records(
             "finding"
         )
+        assert before == after
     finally:
         client.close()
 
