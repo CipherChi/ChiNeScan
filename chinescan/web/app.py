@@ -698,6 +698,12 @@ def create_app(
     async def loopback_and_origin_guard(
         request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
+        # The version prefix is an alias only; all existing route dependencies,
+        # authentication checks, and response filtering remain shared.
+        if request.url.path.startswith("/api/v1/"):
+            rewritten = "/api/" + request.url.path[len("/api/v1/") :]
+            request.scope["path"] = rewritten
+            request.scope["raw_path"] = rewritten.encode("ascii", errors="ignore")
         request_id = str(uuid4())
         request.state.request_id = request_id
         started = time.monotonic()
@@ -767,6 +773,7 @@ def create_app(
                 return result
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
+        response.headers["X-API-Version"] = "1"
         route = request.scope.get("route")
         if response.status_code >= 400 and request.url.path.startswith("/api/"):
             error_ring = application.state.diagnostic_errors

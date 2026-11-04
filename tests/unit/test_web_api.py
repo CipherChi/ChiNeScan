@@ -101,6 +101,20 @@ def test_external_report_import_requires_authentication(tmp_path: Path) -> None:
         client.close()
 
 
+def test_v1_api_alias_uses_existing_auth_and_reports_version(tmp_path: Path) -> None:
+    _, client, *_ = _fixture(tmp_path)
+    try:
+        legacy = client.get("/api/scans")
+        versioned = client.get("/api/v1/scans")
+        assert legacy.status_code == versioned.status_code == 401
+        assert legacy.json() == versioned.json()
+        assert versioned.headers["X-API-Version"] == "1"
+        unknown = client.get("/api/v2/scans")
+        assert unknown.status_code == 404
+    finally:
+        client.close()
+
+
 def test_external_report_import_rejects_non_loopback(tmp_path: Path) -> None:
     app, *_ = _fixture(tmp_path)
     client = TestClient(app, base_url="http://127.0.0.1", client=("192.0.2.10", 50000))
