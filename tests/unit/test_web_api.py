@@ -115,6 +115,31 @@ def test_v1_api_alias_uses_existing_auth_and_reports_version(tmp_path: Path) -> 
         client.close()
 
 
+@pytest.mark.parametrize("payload", ["' OR 1=1 --", ";DROP TABLE records"])
+def test_sql_injection_inputs_cannot_change_record_queries(tmp_path: Path, payload: str) -> None:
+    app, client, *_ = _fixture(tmp_path)
+    try:
+        headers = _import_session(client)
+        before = app.state.repository.count_records("scan") + app.state.repository.count_records(
+            "finding"
+        )
+        path_id = client.get(f"/api/scans/{payload}", headers=headers)
+        assert path_id.status_code in {404, 422}
+        search = client.get("/api/scans", params={"scanner": payload}, headers=headers)
+        assert search.status_code in {200, 422}
+        if search.status_code == 200:
+            assert search.json()["items"] == []
+        sort = client.get("/api/findings", params={"sort": payload}, headers=headers)
+        filter_result = client.get("/api/findings", params={"severity": payload}, headers=headers)
+        assert sort.status_code == 422
+        assert filter_result.status_code == 422
+        assert before == app.state.repository.count_records("scan") + app.state.repository.count_records(
+            "finding"
+        )
+    finally:
+        client.close()
+
+
 def test_external_report_import_rejects_non_loopback(tmp_path: Path) -> None:
     app, *_ = _fixture(tmp_path)
     client = TestClient(app, base_url="http://127.0.0.1", client=("192.0.2.10", 50000))
