@@ -51,3 +51,18 @@ The authenticated external report import accepted up to 2 MiB and `external_repo
 ### R1 remediation status — 2026-11-06
 
 The risk described above was remediated in the subsequent R1 pass. Redaction now uses a forward delimiter scan, external text is clipped before retained content is redacted, and shared per-operation limits fail closed. Synthetic canary tests verify CLI/API failures do not return the original unredacted input. See [the R1 remediation report](reports/redaction-remediation-2026-11-06.md) and [release closure validation](reports/release-closure-2026-11-06.md). This resolves the reproduced redaction-work pattern for the documented operation bounds; it is not a formal complexity proof, load test, or guarantee against all resource exhaustion.
+
+## Container scan remediation follow-up — 2026-11-07
+
+The release container scan reported HIGH findings for apt/libapt-pkg7.0 and
+zlib1g. The image now uses digest-pinned Python 3.12.16 slim Trixie, which
+provides apt and libapt-pkg7.0 3.0.4, and installs the Trixie security update
+of zlib1g (`1:1.3.dfsg+really1.3.1-1+deb13u1`). Local package inspection
+confirmed those versions. The runtime image also includes the Alembic
+configuration and migration files needed for SQLite initialization. A local
+image build and loopback `/api/health` check succeeded. The local Trivy
+rescan did not complete: vulnerability database downloads from the official
+registries were throttled to tens of KiB/s, so no local scan result is
+claimed. The pull request's equivalent container scan must complete
+successfully before merge. This is a narrow container remediation record,
+not a general security certification.

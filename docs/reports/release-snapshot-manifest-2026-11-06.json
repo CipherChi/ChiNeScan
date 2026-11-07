@@ -3,15 +3,15 @@
   "snapshot_name": "unpublished-local-release-candidate-2026-11-06",
   "base_commit": "2ad86b05ca82181da78b3eb6bfee5598d63dc8af",
   "working_tree_state": {
-    "branch": "main",
-    "head_commit": "2ad86b05ca82181da78b3eb6bfee5598d63dc8af",
+    "branch": "release/v0.1.0",
+    "head_commit": "57ca72a1a19a0f16d5199815fe0c909f6472d481",
     "is_clean": false,
     "files_in_manifest": 297,
-    "modified": 42,
+    "modified": 43,
     "added": 8,
-    "unchanged": 246,
+    "unchanged": 245,
     "removed": 1,
-    "staged_path_count": 52,
+    "staged_path_count": 53,
     "unstaged_path_count": 0,
     "untracked_path_count": 5,
     "deleted_path_count": 1,
@@ -32,6 +32,7 @@
       "chinescan/core/storage/sqlite.py",
       "chinescan/domain_assessment/probe.py",
       "chinescan/web/app.py",
+      "docker/Dockerfile",
       "docs/API.md",
       "docs/ChiNeScan-improvements.md",
       "docs/ChiNeScan-security-review.md",
@@ -80,7 +81,10 @@
     "deleted_paths": [
       "docs/reports/phase-1-report.md"
     ],
-    "identity_note": "Release candidate is identified by the base commit plus the staged Git tree and this self-excluded manifest. The Phase 1 report is removed from the release tree while its local working copy and excluded inventory reports remain untracked."
+    "identity_note": "Release candidate is identified by the base commit plus the staged Git tree and this self-excluded manifest. The Phase 1 report is removed from the release tree while its local working copy and excluded inventory reports remain untracked.",
+    "staged_deleted_paths": [
+      "docs/reports/phase-1-report.md"
+    ]
   },
   "scope_note": "Release-candidate tree relative to base commit 2ad86b05ca82181da78b3eb6bfee5598d63dc8af. File hashes use Git-normalized blob contents from the staged index; the removed Phase 1 report carries its base-tree blob hash. Includes all unchanged tracked files and approved modified/added files, except that report and the four excluded internal implementation-inventory artifacts. The manifest is self-excluded and does not embed its own hash. Ignored local secrets, databases, virtual environments, dependencies, generated build/test/cache output, and other ignored state are excluded. No production data is included.",
   "excluded_categories": [
@@ -729,8 +733,8 @@
     },
     {
       "path": "docker/Dockerfile",
-      "sha256": "c5ce2aee6dd9f7eeff294568231abbc024ab47368e16a2a4ca095fb908b7347a",
-      "status": "unchanged",
+      "sha256": "4ffcf8bbc6d65cf1a46684f778bf7bd48dc14b114c07f1832610d2c9b0931fdc",
+      "status": "modified",
       "purpose": "Local container build/run metadata; not remote deployment authorization."
     },
     {
@@ -753,7 +757,7 @@
     },
     {
       "path": "docs/ChiNeScan-security-review.md",
-      "sha256": "10429e737fdb6024b84f21043f5a08c0d99f27016a18c2817ff068d4f5c3552f",
+      "sha256": "834f671a1f846659ce022e446740db0e0561eda1df687c33b567bdbffd77ad92",
       "status": "added",
       "purpose": "User, developer, security, or operations documentation for the supported profile."
     },
@@ -771,7 +775,7 @@
     },
     {
       "path": "docs/DEPLOYMENT.md",
-      "sha256": "f2c95a5e1490e4c7727e5fc1635429b618b02d80346db122bd3078c70d2b6a7d",
+      "sha256": "9c01f32785f620dbc40e1edbc0cc374a0290148b2b32181f969689ae58c0216e",
       "status": "modified",
       "purpose": "User, developer, security, or operations documentation for the supported profile."
     },
@@ -1887,7 +1891,7 @@
     "docs/reports/implementation-inventory-r1-2026-11-06.json"
   ],
   "self_excluded_path": "docs/reports/release-snapshot-manifest-2026-11-06.json",
-  "release_stage_path_count": 52,
+  "release_stage_path_count": 53,
   "release_stage_paths": [
     "README.md",
     "chinescan/__init__.py",
@@ -1905,6 +1909,7 @@
     "chinescan/core/storage/sqlite.py",
     "chinescan/domain_assessment/probe.py",
     "chinescan/web/app.py",
+    "docker/Dockerfile",
     "docs/API.md",
     "docs/ChiNeScan-improvements.md",
     "docs/ChiNeScan-security-review.md",

@@ -7,6 +7,18 @@ through the explicit `chinescan web serve` command, which binds one worker to `1
 Docker Compose remains a local one-shot CLI runner; its default `--help` command exits and never
 starts the dashboard.
 
+## Local container image
+
+The local container uses the digest-pinned Python 3.12.16 slim Trixie image
+which provides apt and libapt-pkg7.0 3.0.4, and installs the Trixie security
+revision of `zlib1g` (`1:1.3.dfsg+really1.3.1-1+deb13u1`). The image also carries the Alembic
+configuration and migrations required to initialize its SQLite database.
+The supported container use remains local; the explicit web command binds
+to loopback, and the image is not a remote or multi-user deployment
+configuration. Rebuild and scan the image with current advisory data when
+maintaining it; a package pin and a successful scan are time-specific
+evidence, not a guarantee that the image is vulnerability-free.
+
 ### Reverse proxy example for an explicitly approved remote deployment
 
 The default bind remains `127.0.0.1`. Do not expose the dashboard publicly without a TLS
