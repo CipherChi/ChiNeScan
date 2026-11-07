@@ -39,6 +39,181 @@
       "title": "FindingCategory",
       "type": "string"
     },
+    "FindingExplanation": {
+      "additionalProperties": false,
+      "description": "Versioned, evidence-bounded explanation for a finding.\n\nEmpty or unavailable fields are intentionally omitted rather than filled with\nretrospective claims for legacy findings.",
+      "properties": {
+        "attack_prerequisites": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Attack Prerequisites",
+          "type": "array"
+        },
+        "classification_policy_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Classification Policy Version"
+        },
+        "conditional_impact": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conditional Impact"
+        },
+        "confidence_rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence Rationale"
+        },
+        "controls_considered": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Controls Considered",
+          "type": "array"
+        },
+        "established": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Established",
+          "type": "array"
+        },
+        "exposure_rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exposure Rationale"
+        },
+        "false_positive_considerations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "False Positive Considerations",
+          "type": "array"
+        },
+        "inferred": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Inferred",
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "match_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Match Reason"
+        },
+        "observed": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed"
+        },
+        "remediation_rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Remediation Rationale"
+        },
+        "ruleset_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ruleset Version"
+        },
+        "schema_version": {
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "severity_rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Severity Rationale"
+        },
+        "verification_steps": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Verification Steps",
+          "type": "array"
+        },
+        "version": {
+          "default": "1.0",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "title": "FindingExplanation",
+      "type": "object"
+    },
     "Reference": {
       "additionalProperties": false,
       "properties": {
@@ -91,9 +266,35 @@
       "$ref": "#/$defs/FindingCategory",
       "default": "SAST"
     },
+    "code_excerpt": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Code Excerpt"
+    },
     "confidence": {
       "$ref": "#/$defs/Confidence",
       "default": "POSSIBLE"
+    },
+    "contributing_rule_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Contributing Rule Ids",
+      "type": "array"
+    },
+    "cwe_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Cwe Ids",
+      "type": "array"
     },
     "description": {
       "default": "",
@@ -111,6 +312,22 @@
       ],
       "default": null
     },
+    "explanation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FindingExplanation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "exposure": {
+      "default": "unknown",
+      "title": "Exposure",
+      "type": "string"
+    },
     "finding_id": {
       "title": "Finding Id",
       "type": "string"
@@ -119,6 +336,13 @@
       "minLength": 1,
       "title": "Fingerprint",
       "type": "string"
+    },
+    "line_numbers": {
+      "items": {
+        "type": "integer"
+      },
+      "title": "Line Numbers",
+      "type": "array"
     },
     "location": {
       "anyOf": [
@@ -132,12 +356,41 @@
       "default": null,
       "title": "Location"
     },
+    "project_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Project Id"
+    },
+    "project_removed": {
+      "default": false,
+      "title": "Project Removed",
+      "type": "boolean"
+    },
     "references": {
       "items": {
         "$ref": "#/$defs/Reference"
       },
       "title": "References",
       "type": "array"
+    },
+    "remediation": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Remediation"
     },
     "rule_id": {
       "default": "unknown",
@@ -157,6 +410,11 @@
     "severity": {
       "$ref": "#/$defs/Severity",
       "default": "info"
+    },
+    "source": {
+      "default": "builtin",
+      "title": "Source",
+      "type": "string"
     },
     "tags": {
       "items": {

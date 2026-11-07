@@ -1,6 +1,6 @@
 # Operations and deployment status
 
-Chinetscan has no configured production or staging host, image registry, release credentials, or
+ChiNeScan has no configured production or staging host, image registry, release credentials, or
 health-check endpoint. The CI container job builds locally for verification and does not publish
 the image. Public/remote deployment is disabled. The authenticated dashboard is available only
 through the explicit `chinescan web serve` command, which binds one worker to `127.0.0.1`.
@@ -85,7 +85,7 @@ an entry is considered managed. Invalid bundles, symlinks, arbitrary files, and 
 are listed as skipped. Entries marked `remove` are proposals only; this stage never deletes backups
 or prunes database records, and it creates no scheduled cleanup.
 
-A future active-database cutover remains operator-controlled: stop every ChineScan process using the
+A future active-database cutover remains operator-controlled: stop every ChiNeScan process using the
 database, make and verify a separate backup, restore to a new path, check the recovered records and
 reports, then update the configured database path while no writer is running. Preserve the original
 until the new path is confirmed. This release does not replace the active database automatically.
@@ -118,7 +118,7 @@ If a host or database may be compromised, stop scans and preserve the database a
 logs as evidence. Limit access to those copies, record who handled them, and follow the
 organization's incident process for containment and notification. Rotate any credentials that
 could have been exposed through the control plane that issued them; do not paste secrets or raw
-investigation records into issues or chat. ChineScan has no built-in incident-response workflow.
+investigation records into issues or chat. ChiNeScan has no built-in incident-response workflow.
 
 ## Requirements before production deployment
 

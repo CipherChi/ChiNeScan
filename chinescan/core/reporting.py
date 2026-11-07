@@ -2,11 +2,13 @@
 
 import csv
 import getpass
+import hashlib
 import html
 import io
 import json
 import re
 import uuid
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, cast
 
@@ -33,7 +35,10 @@ _CHAIN_HEX_IDENTIFIER = re.compile(
 def _redact_finding(finding: Finding, *, chain_scan: bool) -> dict[str, Any]:
     payload = finding.model_dump(mode="json")
     if not chain_scan:
-        return cast(dict[str, Any], redact(payload))
+        safe_payload = redact(payload)
+        if not isinstance(safe_payload, dict):
+            raise ReportingError("Finding exceeds safe redaction limits; no report was generated.")
+        return cast(dict[str, Any], safe_payload)
 
     protected: dict[str, str] = {}
     marker_prefix = f"<CHAINHEX:{uuid.uuid4().hex}:"
@@ -56,6 +61,8 @@ def _redact_finding(finding: Finding, *, chain_scan: bool) -> dict[str, Any]:
         return value
 
     safe = redact(shield(payload))
+    if not isinstance(safe, dict):
+        raise ReportingError("Finding exceeds safe redaction limits; no report was generated.")
 
     marker_pattern = re.compile(re.escape(marker_prefix) + r"(\d{8})>")
 
@@ -75,6 +82,11 @@ def _redact_finding(finding: Finding, *, chain_scan: bool) -> dict[str, Any]:
     return cast(dict[str, Any], restored) if isinstance(restored, dict) else {}
 
 
+def redact_finding_payload(finding: Finding, *, chain_scan: bool = False) -> dict[str, Any]:
+    """Return one bounded, redacted finding for paged/streaming consumers."""
+    return _redact_finding(finding, chain_scan=chain_scan)
+
+
 def scan_data(repository: Repository, scan_id: str) -> tuple[Scan, list[Finding]]:
     """Load and validate the scan and its normalized findings."""
     payload = repository.get("scan", scan_id)
@@ -92,21 +104,106 @@ def scan_data(repository: Repository, scan_id: str) -> tuple[Scan, list[Finding]
     return scan, findings
 
 
+def iter_scan_findings_jsonl(repository: Repository, scan_id: str) -> Iterator[str]:
+    """Yield a bounded, redacted JSONL export; completion record verifies delivery."""
+    stored = repository.get("scan", scan_id)
+    if stored is None:
+        raise ReportingError(f"Scan not found: {scan_id}")
+    scan = Scan.model_validate(stored)
+    finding_ids = list(scan.finding_ids)
+    if len(finding_ids) != len(set(finding_ids)):
+        raise ReportingError("Scan contains duplicate finding IDs; export was not started.")
+    chain_scan = "chain" in scan.project_types or scan.scanner == "chain_trace"
+    yield (
+        json.dumps(
+            {
+                "type": "manifest",
+                "schema": "chinescan.findings/1",
+                "scan_id": scan_id,
+                "total_findings": len(finding_ids),
+                "ordering": "scan.finding_ids order",
+                "consistency": "scan ID list captured at export start",
+                "processing_failure_count": len(scan.failures),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    digest = hashlib.sha256()
+    returned = 0
+    for start in range(0, len(finding_ids), 100):
+        ids = finding_ids[start : start + 100]
+        records = repository.get_many("finding", ids)
+        if len(records) != len(ids):
+            raise ReportingError(
+                "A stored finding is unavailable; export stopped without a completion record."
+            )
+        for finding_id in ids:
+            finding = Finding.model_validate(records[finding_id])
+            line = json.dumps(
+                {
+                    "type": "finding",
+                    "finding": redact_finding_payload(finding, chain_scan=chain_scan),
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            digest.update((line + "\n").encode("utf-8"))
+            returned += 1
+            yield line + "\n"
+    yield (
+        json.dumps(
+            {"type": "complete", "returned_findings": returned, "sha256": digest.hexdigest()},
+            sort_keys=True,
+        )
+        + "\n"
+    )
+
+
 def render_report(scan: Scan, findings: list[Finding], output_format: str) -> str:
     """Render one scan using JSON, Markdown, HTML, CSV, or SARIF 2.1.0."""
-    if output_format not in {"json", "markdown", "html", "csv", "sarif", "share-summary"}:
+    if output_format not in {
+        "json",
+        "full-json",
+        "detail",
+        "markdown",
+        "html",
+        "csv",
+        "sarif",
+        "share-summary",
+    }:
         raise ReportingError("Unsupported report format.")
     chain_scan = "chain" in scan.project_types or scan.scanner == "chain_trace"
     safe_findings = [_redact_finding(item, chain_scan=chain_scan) for item in findings]
     caveat = VERDICT_CAVEAT.get(scan.verdict) if scan.verdict is not None else None
     if output_format == "share-summary":
         return _share_summary(scan, findings, caveat)
+    if output_format == "full-json":
+        if len(findings) > MAX_COMPLETE_FINDINGS:
+            raise ReportingError(
+                f"Complete JSON report exceeds the {MAX_COMPLETE_FINDINGS} finding limit; use a smaller scan."  # noqa: E501
+            )
+        payload = _complete_report_json(scan, findings, safe_findings, caveat)
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
+        if len(encoded.encode("utf-8")) > MAX_COMPLETE_JSON_BYTES:
+            raise ReportingError(
+                "Complete JSON report exceeds the 20 MB export limit; export a smaller scan."
+            )
+        return encoded
     if output_format == "json":
+        if scan.code_assessment is not None:
+            return _code_report_json(scan, findings, safe_findings, caveat)
+        safe_scan = redact(scan.model_dump(mode="json"))
+        if not isinstance(safe_scan, dict):
+            raise ReportingError(
+                "Scan metadata exceeds safe redaction limits; no report was generated."
+            )
         if scan.code_assessment is not None:
             return _code_report_json(scan, findings, safe_findings, caveat)
         return json.dumps(
             {
-                "scan": redact(scan.model_dump(mode="json")),
+                "scan": safe_scan,
                 "findings": safe_findings,
                 "verdict": scan.verdict.value if scan.verdict else None,
                 "caveat": caveat,
@@ -141,8 +238,8 @@ def render_report(scan: Scan, findings: list[Finding], output_format: str) -> st
     if output_format == "sarif":
         return _sarif(findings)
 
-    title = f"ChineScan report: {scan.scan_id}"
-    if output_format == "markdown":
+    title = f"ChiNeScan report: {scan.scan_id}"
+    if output_format in {"markdown", "detail"}:
         if scan.code_assessment is not None:
             return _code_report_markdown(scan, findings, safe_findings, caveat)
         lines = [f"# {title}", "", f"Status: `{scan.status}`", "", f"Findings: {len(findings)}", ""]
@@ -181,9 +278,9 @@ def render_report(scan: Scan, findings: list[Finding], output_format: str) -> st
                 ]
             )
         return "\n".join(lines)
-    rows = []
+    html_rows: list[str] = []
     for item in safe_findings:
-        rows.append(
+        html_rows.append(
             "<tr>"
             + "".join(
                 f"<td>{html.escape(str(item.get(key) or ''))}</td>"
@@ -234,12 +331,14 @@ def render_report(scan: Scan, findings: list[Finding], output_format: str) -> st
             "<th>Title</th><th>Rule</th><th>Location</th><th>Description</th>"
             "<th>Evidence</th></tr></thead><tbody>"
         )
-        + "".join(rows)
+        + "".join(html_rows)
         + "</tbody></table></html>"
     )
 
 
 MAX_CODE_REPORT_BYTES = 50 * 1024
+MAX_COMPLETE_JSON_BYTES = 20 * 1024 * 1024
+MAX_COMPLETE_FINDINGS = 10_000
 
 
 def _group_code_findings(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -259,9 +358,11 @@ def _group_code_findings(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             current = dict(item)
             current["file"] = file_path
             current["line_numbers"] = list(item.get("line_numbers") or ([line] if line else []))
+            current["occurrence_count"] = 1
             current.pop("location", None)
             grouped[key] = current
         else:
+            current["occurrence_count"] = int(current.get("occurrence_count", 1)) + 1
             current["line_numbers"] = sorted(
                 set(current.get("line_numbers", []))
                 | set(item.get("line_numbers") or ([line] if line else []))
@@ -341,6 +442,13 @@ def _code_report_json(
     for finding in findings:
         severity_counts[finding.severity.value] += 1
     summary = scan.code_assessment
+    grouped_totals = {
+        "likely_real_issues": len(likely),
+        "manual_review": len(review),
+        "external": len(external),
+    }
+    group_cap_omissions = sum(max(0, count - 20) for count in grouped_totals.values())
+    byte_cap_omissions = 0
     payload: dict[str, Any] = {
         "scan": {
             "scan_id": scan.scan_id,
@@ -351,16 +459,28 @@ def _code_report_json(
         "summary": {
             "verdict": scan.verdict.value if scan.verdict else "not recorded",
             "total_findings": len(findings),
+            "total_stored_findings": len(scan.finding_ids),
+            "available_finding_records": len(findings),
+            "processing_failure_count": len(scan.failures),
             "severity_counts": severity_counts,
             "files_scanned": summary.files_scanned if summary else 0,
             "files_excluded": summary.files_excluded if summary else 0,
             "vibe_coding_risk_score": summary.vibe_coding_risk.score
             if summary and summary.vibe_coding_risk
             else 0,
+            "grouped_findings": sum(grouped_totals.values()),
+            "grouped_issue_total": sum(grouped_totals.values()),
+            "returned_grouped_findings": min(len(likely), 20)
+            + min(len(review), 20)
+            + min(len(external), 20),
         },
         "code_assessment": summary.model_dump(mode="json") if summary else None,
         "coverage": scan.coverage.model_dump(mode="json") if scan.coverage else None,
         "fix_first": _fix_first(findings, by_id),
+        "classification_labels": {
+            "likely_real_issues": "Rule-supported candidates (not independently verified; legacy key)",  # noqa: E501
+            "manual_review": "Candidates requiring analyst review",
+        },
         "likely_real_issues": likely[:20],
         "manual_review": review[:20],
         "external_scanner_results": {
@@ -369,6 +489,15 @@ def _code_report_json(
             "findings": external[:20],
         },
         "report_truncated": len(likely) > 20 or len(review) > 20 or len(external) > 20,
+        "report_omissions": {
+            "reason": "group cap and/or byte cap",
+            "omitted_by_group_cap": group_cap_omissions,
+            "omitted_by_byte_cap": 0,
+            "omitted_grouped_findings": max(0, grouped_totals["likely_real_issues"] - 20)
+            + max(0, grouped_totals["manual_review"] - 20)
+            + max(0, grouped_totals["external"] - 20),
+            "retrieval": f"Use /api/scans/{scan.scan_id}/findings.jsonl or `chinescan report {scan.scan_id} --format jsonl` for bounded complete retrieval; full-json remains capped.",  # noqa: E501
+        },
     }
     while (
         len(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
@@ -384,7 +513,87 @@ def _code_report_json(
             break
         largest.pop()
         payload["report_truncated"] = True
+        payload["report_omissions"]["omitted_grouped_findings"] += 1
+        byte_cap_omissions += 1
+    returned_grouped = (
+        len(payload["likely_real_issues"])
+        + len(payload["manual_review"])
+        + len(payload["external_scanner_results"]["findings"])
+    )
+    payload["summary"]["returned_grouped_findings"] = returned_grouped
+    omitted = int(payload["report_omissions"]["omitted_grouped_findings"])
+    payload["report_omissions"]["omitted_by_byte_cap"] = byte_cap_omissions
+    returned_occurrences = sum(
+        int(group.get("occurrence_count", 0))
+        for group in (
+            payload["likely_real_issues"]
+            + payload["manual_review"]
+            + payload["external_scanner_results"]["findings"]
+        )
+    )
+    payload["report_omissions"]["omitted_preview_groups"] = omitted
+    payload["report_omissions"]["omitted_preview_occurrences"] = max(
+        0, len(findings) - returned_occurrences
+    )
+    reasons = []
+    if group_cap_omissions:
+        reasons.append("per-category group cap (20)")
+    if byte_cap_omissions:
+        reasons.append("50 KiB JSON preview byte cap")
+    payload["report_omissions"]["reason"] = "; ".join(reasons) if reasons else "none"
+    payload["report_truncated"] = omitted > 0
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
+
+
+def _complete_report_json(
+    scan: Scan,
+    findings: list[Finding],
+    safe_findings: list[dict[str, Any]],
+    caveat: str | None,
+) -> dict[str, Any]:
+    counts = {severity.value: 0 for severity in Severity}
+    for finding in findings:
+        counts[finding.severity.value] += 1
+    rulesets = sorted(
+        {
+            str(finding.explanation.ruleset_version)
+            for finding in findings
+            if finding.explanation and finding.explanation.ruleset_version
+        }
+    )
+    return {
+        "scan": {
+            "scan_id": scan.scan_id,
+            "status": scan.status,
+            "verdict": scan.verdict.value if scan.verdict else None,
+            "caveat": caveat,
+        },
+        "provenance": {
+            "product_version": __version__,
+            "ruleset_versions": rulesets,
+            "scanner_names": scan.scanner.split(",") if scan.scanner else [],
+            "configuration": "Secrets and local paths omitted; complete scan options remain in the authenticated scan record.",  # noqa: E501
+        },
+        "summary": {
+            "total_findings": len(findings),
+            "total_stored_findings": len(scan.finding_ids),
+            "available_finding_records": len(findings),
+            "processing_failure_count": len(scan.failures),
+            "severity_counts": counts,
+            "returned_findings": len(safe_findings),
+            "omitted_findings": 0,
+            "grouped_findings": len(_group_code_findings(safe_findings)),
+            "grouped_issue_total": len(_group_code_findings(safe_findings)),
+            "report_truncated": False,
+            "export_status": "complete",
+            "truncation_reason": None,
+        },
+        "code_assessment": scan.code_assessment.model_dump(mode="json")
+        if scan.code_assessment
+        else None,
+        "coverage": scan.coverage.model_dump(mode="json") if scan.coverage else None,
+        "findings": safe_findings,
+    }
 
 
 def _code_report_markdown(
@@ -411,14 +620,15 @@ def _code_report_markdown(
     counts_text = ", ".join(f"{name}: {count}" for name, count in severity_counts.items())
     risk = summary.vibe_coding_risk if summary else None
     lines = [
-        f"# Code assessment report: {scan.scan_id}",
+        f"# ChiNeScan code assessment report: {scan.scan_id}",
         "",
         f"**Verdict:** {scan.verdict.value if scan.verdict else 'not recorded'}  ",
         f"**Findings:** {len(findings)} ({counts_text})  ",
+        "**Detail scope:** up to 10 candidates per category; use `chinescan report <scan-id> --format full-json` for the complete bounded record set.  ",  # noqa: E501
         f"**Files:** {summary.files_scanned if summary else 0} scanned; {summary.files_excluded if summary else 0} excluded  ",  # noqa: E501
-        f"**Vibe-coding risk indicators:** {risk.score if risk else 0}/100 ({risk.confidence.value if risk else 'INFORMATIONAL'})",  # noqa: E501
+        f"**Code pattern risk:** {risk.score if risk else 0}/100 ({risk.confidence.value if risk else 'INFORMATIONAL'}; algorithm `{risk.algorithm_version if risk else 'legacy/unavailable'}`)",  # noqa: E501
         "",
-        "The vibe-coding score is a heuristic risk indicator, not proof of authorship.",
+        "This code-pattern score is a heuristic indicator, not proof of authorship or a vulnerability verdict.",  # noqa: E501
         "",
         "## Fix first",
         "",
@@ -463,9 +673,11 @@ def _code_report_markdown(
         lines.extend(
             [
                 "",
-                "## Vibe-coding risk indicators",
+                "## Code pattern risk",
                 "",
                 f"Score: **{risk.score}/100**; confidence: **{risk.confidence.value}**.",
+                "",
+                f"Algorithm: `{risk.algorithm_version or 'legacy/unavailable'}`. {risk.direction}",
                 "",
                 risk.disclaimer,
                 "",
@@ -475,8 +687,20 @@ def _code_report_markdown(
             [f"- {_markdown(signal)}" for signal in risk.signals]
             or ["- No configured signals observed."]
         )
+        lines.extend(
+            [
+                "",
+                "| Signal | Raw | Effective | Weight | Adjustment | Contribution |",
+                "| --- | ---: | ---: | ---: | --- | ---: |",
+            ]
+        )
+        lines.extend(
+            f"| {_markdown(item.description)} | {item.raw_count} | {item.effective_count} | {item.weight} | {_markdown(item.adjustment)} | {item.contribution} |"  # noqa: E501
+            for item in risk.contributions
+        )
+        lines.extend(["", f"**Final score:** {risk.score}/100", ""])
     for heading, items in (
-        ("Likely real issues", likely[:10]),
+        ("Rule-supported candidates (not independently verified)", likely[:10]),
         ("Needs manual review (low confidence)", review[:10]),
     ):
         lines.extend(["", f"## {heading}", ""])
@@ -536,6 +760,33 @@ def _markdown_finding(item: dict[str, Any], *, untrusted: bool = False) -> str:
         "",
         escape(str(item.get("description") or "No description supplied."))[:1000],
     ]
+    explanation = item.get("explanation")
+    if isinstance(explanation, dict):
+        for label, key in (
+            ("Observed", "observed"),
+            ("Why it matched", "match_reason"),
+            ("Severity rationale", "severity_rationale"),
+            ("Confidence rationale", "confidence_rationale"),
+            ("Exposure rationale", "exposure_rationale"),
+            ("Conditional impact", "conditional_impact"),
+            ("Remediation rationale", "remediation_rationale"),
+        ):
+            value = explanation.get(key)
+            if isinstance(value, str) and value:
+                lines.extend(["", f"**{label}:** {escape(value)}"])
+        for label, key in (
+            ("Established", "established"),
+            ("Inferred, not verified", "inferred"),
+            ("Attack prerequisites", "attack_prerequisites"),
+            ("Verification steps", "verification_steps"),
+            ("False-positive considerations", "false_positive_considerations"),
+            ("Analysis limitations", "limitations"),
+        ):
+            values = explanation.get(key)
+            if isinstance(values, list) and values:
+                lines.extend(
+                    ["", f"**{label}:**", *[f"- {escape(str(value))}" for value in values]]
+                )
     if item.get("code_excerpt"):
         excerpt = str(item["code_excerpt"])[:160]
         rendered_excerpt = _markdown_code(escape(excerpt)) if untrusted else _markdown_code(excerpt)
@@ -1057,7 +1308,7 @@ def _sarif(findings: list[Finding]) -> str:
         "version": "2.1.0",
         "runs": [
             {
-                "tool": {"driver": {"name": "ChineScan", "rules": list(rules.values())}},
+                "tool": {"driver": {"name": "ChiNeScan", "rules": list(rules.values())}},
                 "results": results,
             }
         ],
@@ -1101,7 +1352,7 @@ def _share_summary(scan: Scan, findings: list[Finding], caveat: str | None) -> s
         return str(redact(cleaned))
 
     lines = [
-        f"# ChineScan share summary — {share_text(scan.scan_id)}",
+        f"# ChiNeScan share summary — {share_text(scan.scan_id)}",
         "",
         f"- Tool version: {__version__}",
         f"- Verdict: {scan.verdict.value if scan.verdict else 'not recorded'}",

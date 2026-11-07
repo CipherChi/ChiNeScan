@@ -109,9 +109,9 @@ export function GitHubImportDialog({ onClose, onUnauthorized, onFinished }: Prop
   return <div className="project-dialog-backdrop"><div className="project-dialog" role="dialog" aria-modal="true" aria-labelledby="github-import-title" ref={dialog}>
     <h2 id="github-import-title">Import from GitHub</h2>
     {!capabilities && !error && <p role="status">Checking GitHub import settings…</p>}
-    {capabilities && !capabilities.enabled && <section role="status"><h3>GitHub import is disabled</h3><p>Add this example to your local config.toml and restart ChineScan. The setting is not changed here.</p><pre>{enableExample}</pre></section>}
+    {capabilities && !capabilities.enabled && <section role="status"><h3>GitHub import is disabled</h3><p>Add this example to your local config.toml and restart ChiNeScan. The setting is not changed here.</p><pre>{enableExample}</pre></section>}
     {capabilities?.enabled && !job && <>
-      {!capabilities.git_available && <p role="alert">Git is missing. Install Git and restart ChineScan before importing.</p>}
+      {!capabilities.git_available && <p role="alert">Git is missing. Install Git and restart ChiNeScan before importing.</p>}
       <label htmlFor="github-import-url">Public GitHub repository URL</label><input id="github-import-url" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://github.com/owner/repository" maxLength={300} />
       <label htmlFor="github-import-ref">Optional branch, tag, or commit</label><input id="github-import-ref" value={ref} onChange={(event) => setRef(event.target.value)} maxLength={100} />
       <div className="project-actions"><button className="secondary-button" onClick={onClose}>Close</button><button className="primary-button" disabled={busy || !url.trim() || !capabilities.git_available} onClick={() => void createPreview()}>Preview</button></div>

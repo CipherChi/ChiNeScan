@@ -459,7 +459,7 @@ def build_report(
     )
     report: dict[str, Any] = {
         "status": "ok",
-        "app_name": "ChineScan",
+        "app_name": "ChiNeScan",
         "version": __version__,
         "python_version": platform.python_version(),
         "platform": platform.system(),
@@ -650,7 +650,7 @@ def health_report(*, started_at: float, bind_address: str = "127.0.0.1") -> dict
 
     return {
         "status": "ok",
-        "app_name": "ChineScan",
+        "app_name": "ChiNeScan",
         "version": __version__,
         "uptime_seconds": max(0, int(time.monotonic() - started_at)),
         "bind_address": bind_address,

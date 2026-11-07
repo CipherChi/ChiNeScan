@@ -4,7 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from chinescan.core.logging.redaction import REDACTED, redact
+from chinescan.core.logging.redaction import (
+    MAX_REDACT_DEPTH,
+    MAX_REDACT_STRING_CHARS,
+    REDACTED,
+    REDACTION_LIMIT_MARKER,
+    redact,
+)
 from chinescan.core.logging.structured import configure_logging
 
 
@@ -27,6 +33,13 @@ def test_redacts_sensitive_key_forms(text: str) -> None:
     output = redact(text)
     assert REDACTED in output
     assert "value" not in output
+
+
+def test_redacts_sensitive_assignment_with_long_key_name() -> None:
+    secret = "synthetic-long-key-canary"
+    output = redact("prefix " + ("x" * 1_000) + "_secret=" + secret)
+    assert secret not in output
+    assert output.endswith("[REDACTED]")
 
 
 @pytest.mark.parametrize(
@@ -93,6 +106,63 @@ def test_redactor_never_raises_on_unusual_values() -> None:
 
     assert redact(Broken()) is not None
     assert redact(BrokenMapping()) == REDACTED
+
+
+def test_long_benign_and_sensitive_strings_are_processed_without_leaking() -> None:
+    benign = "ordinary-text-" * 2_000
+    secret = "SyntheticCanaryValue-1234567890"
+    output = redact("x" * 2_000 + " password=" + secret + " " + "y" * 2_000)
+    assert output.startswith("x" * 2_000)
+    assert secret not in output
+    assert REDACTED in output
+    benign_output = redact(benign)
+    assert benign_output != REDACTION_LIMIT_MARKER
+    assert len(benign_output) <= len(benign)
+
+
+def test_redaction_string_limit_is_inclusive_and_fails_closed() -> None:
+    below_limit = "x" * (MAX_REDACT_STRING_CHARS - 1)
+    at_limit = "x" * MAX_REDACT_STRING_CHARS
+    assert len(redact(below_limit)) == len(below_limit)
+    assert redact(at_limit) == at_limit
+    over_limit = "x" * (MAX_REDACT_STRING_CHARS + 1)
+    assert redact(over_limit) == REDACTION_LIMIT_MARKER
+    sensitive_over_limit = "password=synthetic-canary " + "x" * (
+        MAX_REDACT_STRING_CHARS - len("password=synthetic-canary ") + 1
+    )
+    output = redact(sensitive_over_limit)
+    assert output == REDACTION_LIMIT_MARKER
+    assert "synthetic-canary" not in output
+
+
+def test_redaction_nesting_and_node_limits_fail_closed(monkeypatch) -> None:
+    at_depth = "safe"
+    for _ in range(MAX_REDACT_DEPTH):
+        at_depth = [at_depth]
+    assert redact(at_depth) == at_depth
+
+    over_depth = [at_depth]
+    assert redact(over_depth) == REDACTION_LIMIT_MARKER
+
+    monkeypatch.setattr("chinescan.core.logging.redaction.MAX_REDACT_NODES", 5)
+    assert redact(["safe"] * 2) == ["safe"] * 2
+    assert redact(["safe"] * 4) == ["safe"] * 4  # root + four children = five nodes
+    assert redact(["safe"] * 5) == REDACTION_LIMIT_MARKER
+
+
+def test_redaction_total_character_budget_is_inclusive(monkeypatch) -> None:
+    monkeypatch.setattr("chinescan.core.logging.redaction.MAX_REDACT_TOTAL_CHARS", 10)
+    assert redact(["1234", "56789"]) == ["1234", "56789"]
+    assert redact(["12345", "67890"]) == ["12345", "67890"]
+    assert redact(["123456", "78901"]) == REDACTION_LIMIT_MARKER
+
+
+def test_repeated_values_are_redacted_in_large_bounded_collections() -> None:
+    values = [{"description": "password=synthetic-canary", "note": "safe"} for _ in range(2_000)]
+    output = redact(values)
+    assert len(output) == len(values)
+    assert all(item["description"] == "password=[REDACTED]" for item in output)
+    assert "synthetic-canary" not in repr(output)
 
 
 def test_record_factory_redacts_uvicorn_and_third_party_logs_and_tracebacks(

@@ -8,15 +8,13 @@ from collections.abc import Mapping
 from typing import Any
 
 REDACTED = "[REDACTED]"
+REDACTION_LIMIT_MARKER = "[REDACTED: safe processing limit exceeded]"
 _SENSITIVE_KEY = re.compile(
     r"(?i)(?:password|passwd|pwd|hash|token|secret|api[_-]?key|apikey|authorization|"
     r"cookie|session|csrf|credential)"
 )
-_KEY_ASSIGNMENT = re.compile(
-    r"(?i)(?P<prefix>[\"']?(?=[A-Za-z0-9_.-]*(?:password|passwd|pwd|hash|token|secret|"
-    r"api[_-]?key|apikey|authorization|cookie|session|csrf|credential))"
-    r"[A-Za-z_][A-Za-z0-9_.-]*[\"']?\s*[:=]\s*)"
-    r"(?P<value>\"(?:\\.|[^\"\\\r\n])*\"|'(?:\\.|[^'\\\r\n])*'|<[^>]*>|[^\s,;}\]]+)"
+_ASSIGNMENT_VALUE = re.compile(
+    r'"(?:\\.|[^"\\\r\n])*"|\'(?:\\.|[^\'\\\r\n])*\'|<[^>]*>|[^\s,;}\]]+'
 )
 _ARGON = re.compile(r"\$argon2(?:id|i|d)\$[^\s\"';}]+", re.IGNORECASE)
 _BEARER = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*")
@@ -29,22 +27,21 @@ _POSIX_PATH = re.compile(
     r"[^\s\"'<>`,;)}\]]+"
 )
 
+# Bounds apply to one top-level redaction operation. Exceeding any bound fails
+# closed with an actionable marker; callers never receive a partial value.
+MAX_REDACT_STRING_CHARS = 1_000_000
+MAX_REDACT_TOTAL_CHARS = 8_000_000
+MAX_REDACT_DEPTH = 32
+MAX_REDACT_NODES = 100_000
+
+
+class _RedactionLimitExceeded(Exception):
+    pass
+
 
 def _redact_string(value: str) -> str:
     try:
-
-        def assignment(match: re.Match[str]) -> str:
-            prefix = match.group("prefix")
-            raw = match.group("value")
-            if raw[:1] in {"'", '"'} and raw[-1:] == raw[:1]:
-                marker = f"{raw[0]}{REDACTED}{raw[0]}"
-            elif raw.startswith("<") and raw.endswith(">"):
-                marker = f"<{REDACTED}>"
-            else:
-                marker = REDACTED
-            return prefix + marker
-
-        value = _KEY_ASSIGNMENT.sub(assignment, value)
+        value = _redact_assignments(value)
         value = _ARGON.sub(REDACTED, value)
         value = _BEARER.sub("Bearer " + REDACTED, value)
         for env_name in (
@@ -83,21 +80,117 @@ def _redact_string(value: str) -> str:
         return REDACTED
 
 
+def _redact_assignments(value: str) -> str:
+    """Redact sensitive key assignments with a forward delimiter scan.
+
+    Walking backward only across the key immediately before each delimiter
+    avoids regex retries from every character in long untrusted strings while
+    retaining support for key names of any length.
+    """
+    output: list[str] = []
+    cursor = 0
+    search_from = 0
+    value_length = len(value)
+    while search_from < value_length:
+        colon = value.find(":", search_from)
+        equals = value.find("=", search_from)
+        if colon < 0:
+            delimiter = equals
+        elif equals < 0:
+            delimiter = colon
+        else:
+            delimiter = min(colon, equals)
+        if delimiter < 0:
+            break
+
+        key_end = delimiter
+        while key_end > search_from and value[key_end - 1].isspace():
+            key_end -= 1
+        closing_quote = value[key_end - 1] if key_end > search_from else ""
+        if closing_quote in {"'", '"'}:
+            key_end -= 1
+        key_start = key_end
+        while key_start > search_from and (
+            value[key_start - 1].isalnum() or value[key_start - 1] in "_.-"
+        ):
+            key_start -= 1
+        key = value[key_start:key_end]
+        valid_start = bool(key) and (key[0].isalpha() or key[0] == "_")
+        if valid_start and _SENSITIVE_KEY.search(key):
+            value_start = delimiter + 1
+            while value_start < value_length and value[value_start].isspace():
+                value_start += 1
+            match = _ASSIGNMENT_VALUE.match(value, value_start)
+            if match:
+                raw = match.group(0)
+                if raw[:1] in {"'", '"'} and raw[-1:] == raw[:1]:
+                    marker = f"{raw[0]}{REDACTED}{raw[0]}"
+                elif raw.startswith("<") and raw.endswith(">"):
+                    marker = f"<{REDACTED}>"
+                else:
+                    marker = REDACTED
+                output.extend((value[cursor:value_start], marker))
+                cursor = match.end()
+                search_from = cursor
+                continue
+        search_from = delimiter + 1
+    if not output:
+        return value
+    output.append(value[cursor:])
+    return "".join(output)
+
+
 def redact(value: Any) -> Any:
-    """Redact sensitive fields and values recursively; safe for arbitrary inputs."""
+    """Redact recursively within explicit resource bounds; fail closed on overflow."""
+    budget = [0, 0]
+    try:
+        return _redact(value, budget, 0)
+    except _RedactionLimitExceeded:
+        return REDACTION_LIMIT_MARKER
+    except Exception:
+        return REDACTED
+
+
+def _redact(value: Any, budget: list[int], depth: int) -> Any:
+    if depth > MAX_REDACT_DEPTH:
+        raise _RedactionLimitExceeded
+    budget[0] += 1
+    if budget[0] > MAX_REDACT_NODES:
+        raise _RedactionLimitExceeded
+    if isinstance(value, str) and len(value) > MAX_REDACT_STRING_CHARS:
+        raise _RedactionLimitExceeded
+    if isinstance(value, bytes) and len(value) > MAX_REDACT_STRING_CHARS:
+        raise _RedactionLimitExceeded
+    if isinstance(value, (str, bytes)):
+        budget[1] += len(value)
+        if budget[1] > MAX_REDACT_TOTAL_CHARS:
+            raise _RedactionLimitExceeded
     try:
         if isinstance(value, Mapping):
             output: dict[Any, Any] = {}
             for key, item in value.items():
+                budget[0] += 1
+                if budget[0] > MAX_REDACT_NODES:
+                    raise _RedactionLimitExceeded
+                if isinstance(key, str) and len(key) > MAX_REDACT_STRING_CHARS:
+                    raise _RedactionLimitExceeded
+                if isinstance(key, str):
+                    budget[1] += len(key)
+                    if budget[1] > MAX_REDACT_TOTAL_CHARS:
+                        raise _RedactionLimitExceeded
                 safe_key = _redact_string(key) if isinstance(key, str) else key
-                output[safe_key] = REDACTED if _SENSITIVE_KEY.search(str(key)) else redact(item)
+                output[safe_key] = (
+                    REDACTED
+                    if _SENSITIVE_KEY.search(str(key))
+                    else _redact(item, budget, depth + 1)
+                )
             return output
         if isinstance(value, list):
-            return [redact(item) for item in value]
+            return [_redact(item, budget, depth + 1) for item in value]
         if isinstance(value, tuple):
-            return tuple(redact(item) for item in value)
+            return tuple(_redact(item, budget, depth + 1) for item in value)
         if isinstance(value, set):
-            return {redact(item) for item in value}
+            return {_redact(item, budget, depth + 1) for item in value}
         if isinstance(value, str):
             return _redact_string(value)
         if isinstance(value, bytes):
@@ -107,4 +200,4 @@ def redact(value: Any) -> Any:
                 return REDACTED
         return value
     except Exception:
-        return REDACTED
+        raise

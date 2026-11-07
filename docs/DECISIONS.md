@@ -20,7 +20,7 @@ The built-in heuristic scanner is the default and runs without subprocesses or n
 
 ## ADR-005: Safe local Sigma rule parsing
 
-Add PyYAML for local Sigma YAML rule files. Its `safe_load` APIs construct only standard YAML values and reject arbitrary Python object constructors, which fits untrusted local rule content better than a hand-written YAML parser. ChineScan bounds file size and rule count and evaluates a documented condition/selector subset without `eval`; it does not claim full Sigma compatibility. See the [PyYAML safe loading documentation](https://pyyaml.org/wiki/PyYAMLDocumentation).
+Add PyYAML for local Sigma YAML rule files. Its `safe_load` APIs construct only standard YAML values and reject arbitrary Python object constructors, which fits untrusted local rule content better than a hand-written YAML parser. ChiNeScan bounds file size and rule count and evaluates a documented condition/selector subset without `eval`; it does not claim full Sigma compatibility. See the [PyYAML safe loading documentation](https://pyyaml.org/wiki/PyYAMLDocumentation).
 
 ## ADR-006: Ephemeral malware static triage
 

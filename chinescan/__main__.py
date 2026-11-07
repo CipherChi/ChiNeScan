@@ -1,4 +1,4 @@
-"""Run ChineScan with ``python -m chinescan``."""
+"""Run ChiNeScan with ``python -m chinescan``."""
 
 from chinescan.cli.app import main
 

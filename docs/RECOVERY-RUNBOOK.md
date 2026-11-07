@@ -5,7 +5,7 @@ path. It does not replace or merge the active database.
 
 ## Preflight
 
-1. Stop scheduled ChineScan jobs and every other process that can write to the original database.
+1. Stop scheduled ChiNeScan jobs and every other process that can write to the original database.
    An application lock cannot prove that no unrelated process has it open.
 2. Record the original database path and choose a different, nonexistent restored path. Check that
    both refer to the intended local files and preserve the original.
@@ -64,7 +64,8 @@ Run the synthetic recovery drill in a temporary directory with Python 3.12 and t
 environment:
 
 ```powershell
-$env:PYTHONPATH='C:\src\Chinescan;.venv\Lib\site-packages'
+$RepoRoot = (Resolve-Path .).Path
+$env:PYTHONPATH = "$RepoRoot;$RepoRoot\.venv\Lib\site-packages"
 py -3.12 scripts/recovery_acceptance.py
 ```
 

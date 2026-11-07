@@ -1,0 +1,1954 @@
+{
+  "product": "ChiNeScan",
+  "snapshot_name": "unpublished-local-release-candidate-2026-11-06",
+  "base_commit": "2ad86b05ca82181da78b3eb6bfee5598d63dc8af",
+  "working_tree_state": {
+    "branch": "main",
+    "head_commit": "2ad86b05ca82181da78b3eb6bfee5598d63dc8af",
+    "is_clean": false,
+    "files_in_manifest": 297,
+    "modified": 42,
+    "added": 8,
+    "unchanged": 246,
+    "removed": 1,
+    "staged_path_count": 52,
+    "unstaged_path_count": 0,
+    "untracked_path_count": 5,
+    "deleted_path_count": 1,
+    "staged_paths": [
+      "README.md",
+      "chinescan/__init__.py",
+      "chinescan/__main__.py",
+      "chinescan/cli/commands.py",
+      "chinescan/core/diagnostics.py",
+      "chinescan/core/external_reports.py",
+      "chinescan/core/logging/redaction.py",
+      "chinescan/core/models/finding.py",
+      "chinescan/core/models/investigation.py",
+      "chinescan/core/orchestration/code_rules.py",
+      "chinescan/core/orchestration/code_scan.py",
+      "chinescan/core/reporting.py",
+      "chinescan/core/storage/repository.py",
+      "chinescan/core/storage/sqlite.py",
+      "chinescan/domain_assessment/probe.py",
+      "chinescan/web/app.py",
+      "docs/API.md",
+      "docs/ChiNeScan-improvements.md",
+      "docs/ChiNeScan-security-review.md",
+      "docs/DECISIONS.md",
+      "docs/DEPLOYMENT.md",
+      "docs/DEVELOPMENT.md",
+      "docs/RECOVERY-RUNBOOK.md",
+      "docs/RESPONSIBLE_USE.md",
+      "docs/SCANNING-ANOTHER-PROJECT.md",
+      "docs/reports/phase-1-report.md",
+      "docs/reports/redaction-remediation-2026-11-06.md",
+      "docs/reports/release-closure-2026-11-06.md",
+      "docs/reports/release-handover-2026-11-06.md",
+      "docs/reports/release-notes-handover-2026-11-06.md",
+      "docs/reports/release-snapshot-manifest-2026-11-06.json",
+      "docs/reports/release-validation-2026-11-06.md",
+      "frontend/e2e/dashboard.spec.ts",
+      "frontend/index.html",
+      "frontend/package.json",
+      "frontend/src/test-fixtures/report-parity.json",
+      "frontend/src/types.ts",
+      "frontend/src/ui/App.test.tsx",
+      "frontend/src/ui/App.tsx",
+      "frontend/src/ui/GitHubImportDialog.tsx",
+      "frontend/src/ui/ProjectsWorkspace.tsx",
+      "frontend/src/ui/SystemStatus.test.tsx",
+      "frontend/src/ui/SystemStatus.tsx",
+      "frontend/src/ui/styles.css",
+      "schemas/finding.schema.json",
+      "schemas/investigation.schema.json",
+      "scripts/start-dashboard.ps1",
+      "tests/unit/test_code_actionability.py",
+      "tests/unit/test_code_rules_behavior.py",
+      "tests/unit/test_redaction.py",
+      "tests/unit/test_reporting.py",
+      "tests/unit/test_web_api.py"
+    ],
+    "unstaged_paths": [],
+    "untracked_paths": [
+      "docs/reports/implementation-inventory-2026-11-06.json",
+      "docs/reports/implementation-inventory-closure-2026-11-06.json",
+      "docs/reports/implementation-inventory-handover-2026-11-06.json",
+      "docs/reports/implementation-inventory-r1-2026-11-06.json",
+      "docs/reports/phase-1-report.md"
+    ],
+    "deleted_paths": [
+      "docs/reports/phase-1-report.md"
+    ],
+    "identity_note": "Release candidate is identified by the base commit plus the staged Git tree and this self-excluded manifest. The Phase 1 report is removed from the release tree while its local working copy and excluded inventory reports remain untracked."
+  },
+  "scope_note": "Release-candidate tree relative to base commit 2ad86b05ca82181da78b3eb6bfee5598d63dc8af. File hashes use Git-normalized blob contents from the staged index; the removed Phase 1 report carries its base-tree blob hash. Includes all unchanged tracked files and approved modified/added files, except that report and the four excluded internal implementation-inventory artifacts. The manifest is self-excluded and does not embed its own hash. Ignored local secrets, databases, virtual environments, dependencies, generated build/test/cache output, and other ignored state are excluded. No production data is included.",
+  "excluded_categories": [
+    ".git metadata",
+    ".env except .env.example",
+    "SQLite/database files",
+    "virtual environments and dependency directories",
+    "generated build/test/cache output",
+    "other Git-ignored local state"
+  ],
+  "required_implementation_check": {
+    "required_files_checked": 209,
+    "missing_from_current_manifest": [],
+    "missing_from_handover_inventory": []
+  },
+  "files": [
+    {
+      "path": ".dockerignore",
+      "sha256": "b3a3e8cb81f33a961f2c96fa426521b0dbfaecca8af2f65a82d47bed5c947b29",
+      "status": "unchanged",
+      "purpose": "Local container build/run metadata; not remote deployment authorization."
+    },
+    {
+      "path": ".env.example",
+      "sha256": "f62930cf3e7b6a8a308c80e2db8c2e88c0ced69f60305d6077e49c18e04ecf77",
+      "status": "unchanged",
+      "purpose": "Secret-free configuration template with empty/placeholder values."
+    },
+    {
+      "path": ".gitattributes",
+      "sha256": "23302dd90b8bb74b44d365fafef8df20f809b61cb347023951ecf60a88a29651",
+      "status": "unchanged",
+      "purpose": "Project file .gitattributes; included as part of the tracked/unignored current repository snapshot."
+    },
+    {
+      "path": ".github/dependabot.yml",
+      "sha256": "56e66042198386a837aefa75bf54a733643f478f311d7b108bd499f441a6554b",
+      "status": "unchanged",
+      "purpose": "Repository CI/dependency automation configuration for release validation."
+    },
+    {
+      "path": ".github/workflows/benchmarks.yml",
+      "sha256": "3b710922ca57582b4853ae3ae5f92fd273c0d6a50841bd637cf8f288fc0e82b8",
+      "status": "unchanged",
+      "purpose": "Repository CI/dependency automation configuration for release validation."
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "e33a7012a993aadb0c66c9e1cf3bee04c560c382ec9ef71f924624edbb220a1e",
+      "status": "unchanged",
+      "purpose": "Repository CI/dependency automation configuration for release validation."
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "e45917b89b8667c7f16b8e23cb55cc6bfc7072624ccaab5cbeb5b052c0f57774",
+      "status": "unchanged",
+      "purpose": "Project file .gitignore; included as part of the tracked/unignored current repository snapshot."
+    },
+    {
+      "path": ".gitlab-ci.yml",
+      "sha256": "8eb01e9ab81286a28c7aee80135b3a71b672cd48908cb0d5380238db30491e5c",
+      "status": "unchanged",
+      "purpose": "Project file .gitlab-ci.yml; included as part of the tracked/unignored current repository snapshot."
+    },
+    {
+      "path": ".gitleaks.toml",
+      "sha256": "abbcee0ee51b523e2f8808f34e961e0312ea761efbd2e5a1afca32d32a7f114d",
+      "status": "unchanged",
+      "purpose": "Project file .gitleaks.toml; included as part of the tracked/unignored current repository snapshot."
+    },
+    {
+      "path": ".gitleaksignore",
+      "sha256": "14435eb8190dcab884ce557ba510953dfefbc5f666633c2c41c47a4cbf8a1ea7",
+      "status": "unchanged",
+      "purpose": "Project file .gitleaksignore; included as part of the tracked/unignored current repository snapshot."
+    },
+    {
+      "path": ".python-version",
+      "sha256": "7b55f8e67b5623c4bef3fa691288da9437d79d3aba156de48d481db32ac7d16d",
+      "status": "unchanged",
+      "purpose": "Project file .python-version; included as part of the tracked/unignored current repository snapshot."
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "97ebfe65398358503f7e898759ec9ff9ecc31d0a667f0caa0add90566b0e944e",
+      "status": "unchanged",
+      "purpose": "Project setup, repository policy, legal, or security entry-point documentation."
+    },
+    {
+      "path": "CODE_OF_CONDUCT.md",
+      "sha256": "1640d193ebedfc0a86071791fb36d1398c7e5dd33cb5f4ecc9a3dc378563272f",
+      "status": "unchanged",
+      "purpose": "Project setup, repository policy, legal, or security entry-point documentation."
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "3c5e82199558e1917416d5d6159448fb49825e084105e4cdecafd500b42bdac2",
+      "status": "unchanged",
+      "purpose": "Project setup, repository policy, legal, or security entry-point documentation."
+    },
+    {
+      "path": "README.md",
+      "sha256": "6ad2494d8df29e32a84ebb402146e50ccb6ab5db8f461ae5be2eb8409395a1df",
+      "status": "modified",
+      "purpose": "Project setup, repository policy, legal, or security entry-point documentation."
+    },
+    {
+      "path": "SECURITY.md",
+      "sha256": "2ea552c32ca935191fa3640dc8de8daec0396e2ab57fd7b0a695c72f2a732bd2",
+      "status": "unchanged",
+      "purpose": "Project setup, repository policy, legal, or security entry-point documentation."
+    },
+    {
+      "path": "alembic.ini",
+      "sha256": "c5f44d38da0f0a513fe1ae7771b346b4aa6b4e8505df6fb6ee898fd2f494b6f8",
+      "status": "unchanged",
+      "purpose": "SQLite migration/configuration needed to create or upgrade local application data safely."
+    },
+    {
+      "path": "chinescan/__init__.py",
+      "sha256": "8f5654f9d0906d717acaed614f39a30ac74e1b12e30fce3acd824534c1078f9b",
+      "status": "modified",
+      "purpose": "Application source module: ChiNeScan local security assessment and investigation platform."
+    },
+    {
+      "path": "chinescan/__main__.py",
+      "sha256": "1b1a5b92be61d961231647db322e67eb296cc9b8376c0525fed881a4eed51c93",
+      "status": "modified",
+      "purpose": "Application source module: Run ChiNeScan with ``python -m chinescan``."
+    },
+    {
+      "path": "chinescan/chain_trace/__init__.py",
+      "sha256": "ca23c5e018df3d591070a27d0d37184a9cb2aac11f56a8a1c6dfb16bd3b5a773",
+      "status": "unchanged",
+      "purpose": "Application source module: Offline-first wallet tracing primitives."
+    },
+    {
+      "path": "chinescan/chain_trace/detectors.py",
+      "sha256": "245e5225daba8c556b3d13160efba67560d8e0640e9db5efe9721679ea9cfc13",
+      "status": "unchanged",
+      "purpose": "Application source module: Explainable wallet behavior leads; every rule is heuristic."
+    },
+    {
+      "path": "chinescan/chain_trace/endpoint_policy.py",
+      "sha256": "97cb6fed9ff6d234eafde71912c4ee8e1d700ee402e33619d4a553257c49c41e",
+      "status": "unchanged",
+      "purpose": "Application source module: Validation rules for provider URLs used by the live HTTP transport."
+    },
+    {
+      "path": "chinescan/chain_trace/export.py",
+      "sha256": "54ed7795bea95819fdb74d44181fbbebc141bc10f1c8eab5271caebdd95abf54",
+      "status": "unchanged",
+      "purpose": "Application source module: Portable chain graph and indicator exports."
+    },
+    {
+      "path": "chinescan/chain_trace/labels.py",
+      "sha256": "70634c21a7f63947d2a97baed8ee798986764a3b10bd1a6ff4965aa9b725b168",
+      "status": "unchanged",
+      "purpose": "Application source module: Local, provenance-bearing address labels."
+    },
+    {
+      "path": "chinescan/chain_trace/models.py",
+      "sha256": "157ead7d0b0a409695cdb22320f5ed48e83c2acc8e9aa0647cb998c99459da93",
+      "status": "unchanged",
+      "purpose": "Application source module: Typed, immutable chain trace records."
+    },
+    {
+      "path": "chinescan/chain_trace/providers/__init__.py",
+      "sha256": "41e116baa0674585f903e1115135bdadc78a8460631b914a223baed84d098965",
+      "status": "unchanged",
+      "purpose": "Application source module: Injected chain data providers."
+    },
+    {
+      "path": "chinescan/chain_trace/providers/base.py",
+      "sha256": "11349253e3bf467f79bb5bb1d599872d727b57c240949f82910fda81f161bede",
+      "status": "unchanged",
+      "purpose": "Application source module: Provider protocol shared by live and imported transaction history."
+    },
+    {
+      "path": "chinescan/chain_trace/providers/evm.py",
+      "sha256": "90435ce7edf62ceddb4ba7e69a424528beed38356614d3e4a16fae0b8b34eaf0",
+      "status": "unchanged",
+      "purpose": "Application source module: Bounded, redaction-safe Etherscan-family provider."
+    },
+    {
+      "path": "chinescan/chain_trace/providers/offline.py",
+      "sha256": "5e998765e0182ec0e7c93a72435811c910e49540beeaeb26f6ccfb8b106115d7",
+      "status": "unchanged",
+      "purpose": "Application source module: Bounded CSV and JSON explorer export importer."
+    },
+    {
+      "path": "chinescan/chain_trace/registry.py",
+      "sha256": "e6a665ff854f96328344921899128a8cb84644d44de1a611a73ea9e988e5beaf",
+      "status": "unchanged",
+      "purpose": "Application source module: Data-driven chain registry and address normalization."
+    },
+    {
+      "path": "chinescan/chain_trace/service.py",
+      "sha256": "484049f6dbcef0bddf2a608eb84febd47b421078336c88d556f1c57aefa39881",
+      "status": "unchanged",
+      "purpose": "Application source module: Audited chain trace orchestration and persistence."
+    },
+    {
+      "path": "chinescan/chain_trace/tracer.py",
+      "sha256": "de01622eb0c7123a47e8d4bbbd27175e8d35f26f54e769a1911121a889cdb171",
+      "status": "unchanged",
+      "purpose": "Application source module: Breadth-first outgoing transaction collector with explicit coverage gaps."
+    },
+    {
+      "path": "chinescan/cli/__init__.py",
+      "sha256": "bf4c27f7b63726a724ff888e272f4c0ea904e64c9b4b07e6c935c62721948af4",
+      "status": "unchanged",
+      "purpose": "Application source module: Command-line interface."
+    },
+    {
+      "path": "chinescan/cli/app.py",
+      "sha256": "6741cc4b0c5d8bcaea7f18c525b5c6f4b3914dd9a1199a56e8dfd7142a2c2f80",
+      "status": "unchanged",
+      "purpose": "Application source module: Typer application entry point."
+    },
+    {
+      "path": "chinescan/cli/chain_commands.py",
+      "sha256": "2a9ef334dbb4ad087d32153fedcb0e6464cbddf9e7e3630f0ee8e9c83f7b06fd",
+      "status": "unchanged",
+      "purpose": "Application source module: CLI commands for offline-first chain tracing."
+    },
+    {
+      "path": "chinescan/cli/commands.py",
+      "sha256": "75bb1388824ffcd4e174424da99d0642ca11ced81b4eebcafaea04b6d68f9180",
+      "status": "modified",
+      "purpose": "Application source module: User-facing CLI commands."
+    },
+    {
+      "path": "chinescan/core/__init__.py",
+      "sha256": "addcb9a08db4584b9ae01e533a5a31e9cd278af37dc51704ca3144ff277722d7",
+      "status": "unchanged",
+      "purpose": "Application source module: Core platform contracts."
+    },
+    {
+      "path": "chinescan/core/accounts.py",
+      "sha256": "c0ba089959b6d4377f0601c05f2d212c8e57f78e15f148855a68574bd76a4a72",
+      "status": "unchanged",
+      "purpose": "Application source module: Single-operator email credentials and process-local opaque sessions."
+    },
+    {
+      "path": "chinescan/core/cases.py",
+      "sha256": "5fae48a9525dc393701f3c63ab657470262bade81690d35821cbebc4ef6830a1",
+      "status": "unchanged",
+      "purpose": "Application source module: Local case lifecycle, typed record links, and deterministic case timelines."
+    },
+    {
+      "path": "chinescan/core/config/__init__.py",
+      "sha256": "77220c5a5b7062b735ae129be3de632d531f6c8bf98d10bbd565050d22076866",
+      "status": "unchanged",
+      "purpose": "Application source module: Configuration loading and validation."
+    },
+    {
+      "path": "chinescan/core/config/io.py",
+      "sha256": "b9db2fb270c0bc7eca667b195fa7445e55d1c77ec986d7e965f8aff294ef5c6d",
+      "status": "unchanged",
+      "purpose": "Application source module: TOML configuration utilities."
+    },
+    {
+      "path": "chinescan/core/config/settings.py",
+      "sha256": "59a4608474e1e6ff522527242f8baea122d5b298e1592a0661fcd9ec003d2bb8",
+      "status": "unchanged",
+      "purpose": "Application source module: Typed application settings and CHINESCAN_ environment overrides."
+    },
+    {
+      "path": "chinescan/core/data/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "status": "unchanged",
+      "purpose": "Application implementation module __init__; required to reproduce the product."
+    },
+    {
+      "path": "chinescan/core/data/common_passwords.txt",
+      "sha256": "b9c734d7f516b0cafdcb1c81ff6d7f27be8f51c621e4be3bd7e20b1d21f70692",
+      "status": "unchanged",
+      "purpose": "Project file chinescan/core/data/common_passwords.txt; included as part of the tracked/unignored current repository snapshot."
+    },
+    {
+      "path": "chinescan/core/diagnostics.py",
+      "sha256": "f271ce70cb230e0775df7ff7e5fc8f8877d700fcfd1064b1214fd255472aa8b1",
+      "status": "modified",
+      "purpose": "Application source module: Path-free local environment and service diagnostics."
+    },
+    {
+      "path": "chinescan/core/errors.py",
+      "sha256": "9a770000ad7505202b017139b861eaeab48795cb0a7f0f21b06e07b53d2c793a",
+      "status": "unchanged",
+      "purpose": "Application source module: Typed application exceptions and stable CLI exit statuses."
+    },
+    {
+      "path": "chinescan/core/external_reports.py",
+      "sha256": "61965c2d7e997a97e4b078b5a2b77bd6ad0b94d645e547bc24bb3ff500b951d2",
+      "status": "modified",
+      "purpose": "Application source module: Bounded, inert import of external JSON and SARIF security reports."
+    },
+    {
+      "path": "chinescan/core/fs_policy.py",
+      "sha256": "786ff4c7f3d5a71c929a36b5066820fb4c249226728b3b7e5b12701cb968e64b",
+      "status": "unchanged",
+      "purpose": "Application source module: Filesystem path policy and capability-scoped, read-only browsing service."
+    },
+    {
+      "path": "chinescan/core/github_import.py",
+      "sha256": "a6580f31bab4b8fcae89bd4b44c69b19ea2d7bf40d386c5737dbf8af3ea00889",
+      "status": "unchanged",
+      "purpose": "Application source module: Validated, bounded public GitHub imports and their in-memory preview/job service."
+    },
+    {
+      "path": "chinescan/core/log_locations.py",
+      "sha256": "b9239e3c43cc9100f501d0774aa507a6fcb1ff304dd7b1d25deb3312832255ce",
+      "status": "unchanged",
+      "purpose": "Application source module: Project-owned, policy checked log location associations and suggestions."
+    },
+    {
+      "path": "chinescan/core/logging/__init__.py",
+      "sha256": "ed8ef58231ad582a6d51536e5aafdad5d78cdccd4a8caba384f1f75c7484ef5b",
+      "status": "unchanged",
+      "purpose": "Application source module: Structured logging and redaction."
+    },
+    {
+      "path": "chinescan/core/logging/redaction.py",
+      "sha256": "32c8dfedc44a3ea74b07a52cf92cbebc2fc24b62067e10a6cbb0d4fbbbca3510",
+      "status": "modified",
+      "purpose": "Application source module: Single, defensive redaction implementation for logs and user-facing errors."
+    },
+    {
+      "path": "chinescan/core/logging/structured.py",
+      "sha256": "06bf55ed7023ca14d87635750d8a6f02719c40eb847aac26128ad4a78211e9ed",
+      "status": "unchanged",
+      "purpose": "Application source module: JSON-line formatter and logger configuration."
+    },
+    {
+      "path": "chinescan/core/malware_ack.py",
+      "sha256": "227858b5755f8044014703c1fe3fe2df1aba9d3d2c97a365224a9bca77d46636",
+      "status": "unchanged",
+      "purpose": "Application source module: Single-use project malware scan acknowledgements."
+    },
+    {
+      "path": "chinescan/core/malware_project_scan.py",
+      "sha256": "01556a56c4ede6b030d993d60b7486b03ac4f1a771d0dc6dc04ee09f39e8852b",
+      "status": "unchanged",
+      "purpose": "Application source module: Bounded, read-only heuristic scanning for approved project trees."
+    },
+    {
+      "path": "chinescan/core/models/__init__.py",
+      "sha256": "40252c1cfc0c63e80542a8adedef9629d510d43c04fda6bf3d3d12c5efa465f4",
+      "status": "unchanged",
+      "purpose": "Application source module: Canonical records."
+    },
+    {
+      "path": "chinescan/core/models/common.py",
+      "sha256": "826168f73f718dda2a35b41fc29a8980611249ec60e1a2a56a267746be628e57",
+      "status": "unchanged",
+      "purpose": "Application source module: Shared model fields and enums."
+    },
+    {
+      "path": "chinescan/core/models/finding.py",
+      "sha256": "d8437106df31f971fd87112d73a06ac46d273d9572bd80afb4384d7aadf4d819",
+      "status": "modified",
+      "purpose": "Application source module: Finding and external reference records."
+    },
+    {
+      "path": "chinescan/core/models/investigation.py",
+      "sha256": "a6f7fbb2b065e267c4ce09f0496b874165be163a8bf1d5410d398275d94627ca",
+      "status": "modified",
+      "purpose": "Application source module: Distinct, typed top-level investigation records."
+    },
+    {
+      "path": "chinescan/core/orchestration/__init__.py",
+      "sha256": "b1b8815598e428786c2d3571dc7eda2667438292d00a8ecfcf0efc721c843a6b",
+      "status": "unchanged",
+      "purpose": "Application source module: Orchestration boundaries."
+    },
+    {
+      "path": "chinescan/core/orchestration/code_rules.py",
+      "sha256": "e45fb2694c923e1c9a4d772cf57fcf126bcccf3ea868a77b779e8983386e2b97",
+      "status": "modified",
+      "purpose": "Application source module: Built-in heuristic rules for local Python and JS/TS code assessment."
+    },
+    {
+      "path": "chinescan/core/orchestration/code_scan.py",
+      "sha256": "3689cab100a0d81afd5d01073ac4a14b93ed989d516a5d29256937c12817f9b6",
+      "status": "modified",
+      "purpose": "Application source module: Local project detection, scanner execution, and normalized scan persistence."
+    },
+    {
+      "path": "chinescan/core/orchestration/protocols.py",
+      "sha256": "7ede45e5f55346bca19cd8765331fa63309a21a824ca8e4e1af4073a4e754abe",
+      "status": "unchanged",
+      "purpose": "Application source module: Protocols implemented by scanner and analysis adapters."
+    },
+    {
+      "path": "chinescan/core/projects.py",
+      "sha256": "e89e926bad31f66c50e92164c0d300596c352af18db842a7664b8d498c4c8f55",
+      "status": "unchanged",
+      "purpose": "Application source module: Project records, legacy project configuration and project-scoped operations."
+    },
+    {
+      "path": "chinescan/core/report_store.py",
+      "sha256": "40ac85cb9eefe439fd405b377fdb53d39b09157c6181f4e4cd9b49ff7e05eb11",
+      "status": "unchanged",
+      "purpose": "Application source module: Create immutable, redacted JSON and Markdown scan report files."
+    },
+    {
+      "path": "chinescan/core/reporting.py",
+      "sha256": "6d13036f4224391f3feecddb5d00f1c4054ab741c09171758a60f132d94ebea4",
+      "status": "modified",
+      "purpose": "Application source module: Render persisted scan findings in portable analyst-facing formats."
+    },
+    {
+      "path": "chinescan/core/storage/__init__.py",
+      "sha256": "6c722fc08e1e22ec74fc9a055f02d968e8be17cfb0ff23ff43f777e107dcb560",
+      "status": "unchanged",
+      "purpose": "Application source module: Persistence interfaces and implementations."
+    },
+    {
+      "path": "chinescan/core/storage/recovery.py",
+      "sha256": "57d5073ab71574c237c993d45d8a44a8e27e1efabac962cc73a66e7f467d5fc8",
+      "status": "unchanged",
+      "purpose": "Application source module: Local SQLite backup, verification, restore, and preview-only retention."
+    },
+    {
+      "path": "chinescan/core/storage/repository.py",
+      "sha256": "e15f571e56830b3311776cc4ab6dbc887eccccc0cf13d7659e132e2853995ae6",
+      "status": "modified",
+      "purpose": "Application source module: Generic repository boundary for versioned records."
+    },
+    {
+      "path": "chinescan/core/storage/sqlite.py",
+      "sha256": "98d4cb4fb7ec8e7787da034b82b867ab16df554ab3b3b1a74b093d1701ade999",
+      "status": "modified",
+      "purpose": "Application source module: SQLAlchemy-backed SQLite repository."
+    },
+    {
+      "path": "chinescan/core/trends.py",
+      "sha256": "361c9bba55a10ea737b5b9c79bc0b24d8d6a375ae7d161b384f3bdda40440e5d",
+      "status": "unchanged",
+      "purpose": "Application source module: Build privacy-conscious daily summaries from locally stored scan records."
+    },
+    {
+      "path": "chinescan/core/verdict.py",
+      "sha256": "6e005eb2d4417f44e12a0021399ae2f64e179f1758445537f39122f99717b3d0",
+      "status": "unchanged",
+      "purpose": "Application source module: Pure scan verdict calculation and analyst caveats."
+    },
+    {
+      "path": "chinescan/data/top-packages.txt",
+      "sha256": "f70f08324a8582a936704a108ba41b5127c58612a0b794c588c8033910cf33e7",
+      "status": "unchanged",
+      "purpose": "Project file chinescan/data/top-packages.txt; included as part of the tracked/unignored current repository snapshot."
+    },
+    {
+      "path": "chinescan/domain_assessment/__init__.py",
+      "sha256": "ab476a4335de2a5176e030e616daf6ad607e1ad6029d5387f55ecc1b7bed92c5",
+      "status": "unchanged",
+      "purpose": "Application source module: Explicitly authorized, bounded domain posture assessment."
+    },
+    {
+      "path": "chinescan/domain_assessment/authorization.py",
+      "sha256": "94e7d9a2e0782403f92c4f631e369988b3aeee06fe6a9d21ecfa49bb241ef2ec",
+      "status": "unchanged",
+      "purpose": "Application source module: Strict hostname and explicit-authorization validation for domain assessments."
+    },
+    {
+      "path": "chinescan/domain_assessment/probe.py",
+      "sha256": "85432a52a4e7ffb715b490e0bfc7bade07e89700bf88bbdbfd8ec82281b7ad95",
+      "status": "modified",
+      "purpose": "Application source module: Low-impact, injectable DNS/HTTP/TLS posture probes for one public hostname."
+    },
+    {
+      "path": "chinescan/domain_assessment/service.py",
+      "sha256": "126f5868bf4a185c7a24f9e5251b54f72efd58533964a04f72fc706078e880be",
+      "status": "unchanged",
+      "purpose": "Application source module: Audited orchestration for one explicitly authorized domain posture assessment."
+    },
+    {
+      "path": "chinescan/log_analysis/__init__.py",
+      "sha256": "a5ec1f10134f345685911014b60659c54d5512a86c75a0fb5a8a66de694da1f8",
+      "status": "unchanged",
+      "purpose": "Application source module: Local, bounded security log ingestion and analysis."
+    },
+    {
+      "path": "chinescan/log_analysis/detections.py",
+      "sha256": "96f81edf313f812cd1240c12e371931074843b5d7c58c815e588ce43e18adc5d",
+      "status": "unchanged",
+      "purpose": "Application source module: Built-in and safe-subset Sigma detections for normalized events."
+    },
+    {
+      "path": "chinescan/log_analysis/ingest.py",
+      "sha256": "346eccab57ce1ce8b11e782e3a1e9d11ca6bcc609854c6c07c475e87b8cb6fa6",
+      "status": "unchanged",
+      "purpose": "Application source module: Bounded local log file, directory, gzip, ZIP, and tar ingestion."
+    },
+    {
+      "path": "chinescan/log_analysis/ioc_matching.py",
+      "sha256": "cd8a231564977cf70e9681ca726cf9c6c90530a39413a1609122d32524ffd3d0",
+      "status": "unchanged",
+      "purpose": "Application source module: Local parsing and matching for caller-supplied indicators of compromise."
+    },
+    {
+      "path": "chinescan/log_analysis/normalization.py",
+      "sha256": "16320514bf69f65f9d3310f7693a5f81b40b1687b31625953be6d5701fa3972c",
+      "status": "unchanged",
+      "purpose": "Application source module: Normalize common exported log fields into canonical events."
+    },
+    {
+      "path": "chinescan/log_analysis/parsers.py",
+      "sha256": "a4f0209eb2d121a3eed560323dad41f57f61cf4f574e507185b627b9545ca46e",
+      "status": "unchanged",
+      "purpose": "Application source module: Small, dependency-light parsers for common exported security log formats."
+    },
+    {
+      "path": "chinescan/log_analysis/service.py",
+      "sha256": "92e93e0d70117e7fe0b5c7c987dbed5228c42d750ada9b3df14d382285395ae6",
+      "status": "unchanged",
+      "purpose": "Application source module: Orchestration for local log parsing, detection, correlation, and persistence."
+    },
+    {
+      "path": "chinescan/malware_analysis/__init__.py",
+      "sha256": "351ea6f8c474e7f4bfee9f0ab144a547d85daa6e0d51db3313d60003e6647410",
+      "status": "unchanged",
+      "purpose": "Application source module: Non-executing, local static file triage."
+    },
+    {
+      "path": "chinescan/malware_analysis/analyzer.py",
+      "sha256": "32bd7d7ea61f62a67cdcf0a4e8bd490fd9700a35afdf2dfb861c88589aab2aac",
+      "status": "unchanged",
+      "purpose": "Application source module: Bounded static analysis for one local file; never executes or retains sample bytes."
+    },
+    {
+      "path": "chinescan/malware_analysis/engines.py",
+      "sha256": "2a600969bc5821530481357da8812abfa3f921fe4e1ec23efb42eba415d1233e",
+      "status": "unchanged",
+      "purpose": "Application source module: Explicit local YARA and ClamAV adapters with timeouts and no shell execution."
+    },
+    {
+      "path": "chinescan/malware_analysis/managed.py",
+      "sha256": "7ba381db6a9eaf91fe454a8c4645a68d8308eae777cf12deb10a46d6a83c5f36",
+      "status": "unchanged",
+      "purpose": "Application source module: Backend-only managed sample intake and persisted static-analysis jobs."
+    },
+    {
+      "path": "chinescan/malware_analysis/process.py",
+      "sha256": "0de70c289e179470910b2544c6645eed038ace9eefb98ca5d738f1e30c0e2ac1",
+      "status": "unchanged",
+      "purpose": "Application source module: Windows Job Object controls for the fixed static-analysis child process."
+    },
+    {
+      "path": "chinescan/malware_analysis/worker.py",
+      "sha256": "7cda74b9c7a36f43c49bcf7647556af12ca9fa70eacb18ce30dfbfc976664d4a",
+      "status": "unchanged",
+      "purpose": "Application source module: Fixed child entry point for built-in static analysis; accepts one bounded JSON request."
+    },
+    {
+      "path": "chinescan/scanners/__init__.py",
+      "sha256": "3cd767ba1815744ef347dae006c0b1fe43f536d676ea06815c5fcb4f404b02ac",
+      "status": "unchanged",
+      "purpose": "Application source module: Scanner adapters."
+    },
+    {
+      "path": "chinescan/scanners/external.py",
+      "sha256": "8e141b33f8d8a6af9939de5c973664d515eb90748e67e99abe4e88222c025760",
+      "status": "unchanged",
+      "purpose": "Application source module: Local subprocess adapters for Semgrep, Gitleaks, and Trivy JSON output."
+    },
+    {
+      "path": "chinescan/scanners/fake.py",
+      "sha256": "e382976860405930cb23850addb210f7bd4ea99b827cb459b55218d77dc5c4ec",
+      "status": "unchanged",
+      "purpose": "Application source module: Deterministic in-memory adapter used by tests and examples."
+    },
+    {
+      "path": "chinescan/scanners/indicators.py",
+      "sha256": "4e86d756fe090586fe166ece29116fa77d39ed3c2e9d62cd1f610dd14711e14d",
+      "status": "unchanged",
+      "purpose": "Application source module: Offline matching of caller-supplied local indicators against project files."
+    },
+    {
+      "path": "chinescan/web/__init__.py",
+      "sha256": "d7d9681402f6b036151c04f937ecf98bca587e4ec2691c08d02905a557cb6360",
+      "status": "unchanged",
+      "purpose": "Application source module: Authenticated loopback dashboard."
+    },
+    {
+      "path": "chinescan/web/app.py",
+      "sha256": "16924182c317d549b1b3c724c9524edb127cc9fac1ef189fc79294d6974b718d",
+      "status": "modified",
+      "purpose": "Application source module: Same-origin authenticated API and production frontend serving."
+    },
+    {
+      "path": "chinescan/web/auth.py",
+      "sha256": "571cc0e9b0836ce2d9f54a507608708298cccd73d398ae61ad10aeeed7d859f8",
+      "status": "unchanged",
+      "purpose": "Application source module: Web-facing imports for the shared operator account service and sessions."
+    },
+    {
+      "path": "chinescan/web/chain_trace_jobs.py",
+      "sha256": "8850092cfcd55eb6e9d8a07ce8e107bff52e7cf8dbb34d143de6dc3639f10428",
+      "status": "unchanged",
+      "purpose": "Application source module: Small persistent worker queue for chain trace jobs."
+    },
+    {
+      "path": "chinescan/web/code_jobs.py",
+      "sha256": "e05e498903c23f3f1693eafefcd18b18b8eb5eb3200c4e52bc5200128ab2273f",
+      "status": "unchanged",
+      "purpose": "Application source module: Operator-configured projects and bounded local code assessment jobs."
+    },
+    {
+      "path": "chinescan/web/fs_browser.py",
+      "sha256": "da0ec8a51e623b17cf7d6c5315efb7a05ba5b1382c468cfd761e6ecf9338efbf",
+      "status": "unchanged",
+      "purpose": "Application source module: HTTP-facing name for the core filesystem browsing service."
+    },
+    {
+      "path": "chinescan/web/log_jobs.py",
+      "sha256": "ffa3e6c28634fe2796a08bd245b19c7bcc2a3ac8e66f3e01c2eaa3028bab0e79",
+      "status": "unchanged",
+      "purpose": "Application source module: Operator-configured log sources and bounded local analysis jobs."
+    },
+    {
+      "path": "chinescan/web/malware_jobs.py",
+      "sha256": "186cdc2d6c2338f645805595c7153a1fc456d32c518439998d917036238d4bf2",
+      "status": "unchanged",
+      "purpose": "Application source module: Authenticated-dashboard adapter for the managed static malware backend."
+    },
+    {
+      "path": "chinescan/web/rate_limit.py",
+      "sha256": "e9d34ff1db6f91eb7c9b29e51064b19b07a1a5cf52ebdcc551d93c96f801aaf1",
+      "status": "unchanged",
+      "purpose": "Application source module: Small process-local sliding-window request limiter."
+    },
+    {
+      "path": "configs/chinescan.example.toml",
+      "sha256": "ec1ada6ada066c8784039e7a3bc7f3517ef16a88cfa4969caa3065c4e73170b5",
+      "status": "unchanged",
+      "purpose": "Project file configs/chinescan.example.toml; included as part of the tracked/unignored current repository snapshot."
+    },
+    {
+      "path": "docker-compose.yml",
+      "sha256": "b453dffa8dde0271a978e7cfd7c4dd37b30613e32c623204e1a617ff5fbf877f",
+      "status": "unchanged",
+      "purpose": "Local container build/run metadata; not remote deployment authorization."
+    },
+    {
+      "path": "docker/Dockerfile",
+      "sha256": "c5ce2aee6dd9f7eeff294568231abbc024ab47368e16a2a4ca095fb908b7347a",
+      "status": "unchanged",
+      "purpose": "Local container build/run metadata; not remote deployment authorization."
+    },
+    {
+      "path": "docs/API.md",
+      "sha256": "e349541ff5097ae0211d822779dc8e9014ae48e957b5ad6d9316442e197c02f5",
+      "status": "modified",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "sha256": "74c790ea5376a8aafeda0310586f4d295c7ff9f62e5b7addf1d5bb3f5c2dfab8",
+      "status": "unchanged",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/ChiNeScan-improvements.md",
+      "sha256": "df998659f03abcd08ae3f6af6b6d7fb466c455a8c461c990059621df04c0543e",
+      "status": "added",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/ChiNeScan-security-review.md",
+      "sha256": "10429e737fdb6024b84f21043f5a08c0d99f27016a18c2817ff068d4f5c3552f",
+      "status": "added",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/DECISIONS.md",
+      "sha256": "f75ee195dbd035411c81d3bb36f1697e8ab6d7693f3f66de25876c51a3f0319c",
+      "status": "modified",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/DEDUPLICATION.md",
+      "sha256": "a109e56db46a30251a3b75fcf7fc220cf25e918d98db42c53e6ec624bf300c77",
+      "status": "unchanged",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/DEPLOYMENT.md",
+      "sha256": "f2c95a5e1490e4c7727e5fc1635429b618b02d80346db122bd3078c70d2b6a7d",
+      "status": "modified",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/DEVELOPMENT.md",
+      "sha256": "e8585c765bca82dc964ff6e0615ad9c28d7fec167891d380c3dfb61b7906ffba",
+      "status": "modified",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/ENVIRONMENT.md",
+      "sha256": "085ae914dd48b427f9fc0c5a974532f5b37772fcbaa8b1855c3ae3ccecefcf9f",
+      "status": "unchanged",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/LOG-SOURCES.md",
+      "sha256": "226dabf68f1f7405a6e53b82a155c556542c3bbda174eee09d656ab4c0b2482d",
+      "status": "unchanged",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/MALWARE-BACKEND.md",
+      "sha256": "0bdcc8a81e0a0dddcdc77ed0c585bbe44f2af3ca9b0ee4113cad2a4a4a5cffa7",
+      "status": "unchanged",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/PROJECTS.md",
+      "sha256": "54096b9dbd1b3963bdd2c0f579a62f6b9d548179494c3c01b977b60a94dc2663",
+      "status": "unchanged",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/RECOVERY-RUNBOOK.md",
+      "sha256": "539a9e900ac16a9820771206ef490aa7b9a9bc993d34b72aca1f13adb79af935",
+      "status": "modified",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/RESPONSIBLE_USE.md",
+      "sha256": "90247992a30d523ad9fdff9248f3a89908b47fe01157b31fe5b0a32f3057b114",
+      "status": "modified",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/ROADMAP.md",
+      "sha256": "d04b17a89cc2d0b46da8cfcf12e296fbc65f9da2e445f740fdeadee2987ca0cb",
+      "status": "unchanged",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/SCANNING-ANOTHER-PROJECT.md",
+      "sha256": "c5fcd84545f945ed070cb579657b87a9a643c01710dd20b4bce0e856a820d23e",
+      "status": "modified",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/plans/phase-1.md",
+      "sha256": "8d29e0dfcebbc2dfff10571303089c01f2a82e76a0fc89e83712a8c8d44a1498",
+      "status": "unchanged",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/plans/phase-2.md",
+      "sha256": "645c38232957027c487671e820e9a80164bf2e5e2973d64e4e9540ef43712cc1",
+      "status": "unchanged",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/plans/phase-3.md",
+      "sha256": "0590deea0eec3c402930578e4432b828e1b2d97234850e9c53cc330f89acad5a",
+      "status": "unchanged",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/plans/phase-4.md",
+      "sha256": "8b9a1e3cd3be6067429fc04ee5bd6882bd6cad75db8c9d1383e0d3f57cb9d4ff",
+      "status": "unchanged",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/plans/phase-5.md",
+      "sha256": "86d8d81b8bb6e0fc650631b0e3a83a7f4bce3717809fe3977af8f665f47b8d27",
+      "status": "unchanged",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/plans/phase-6.md",
+      "sha256": "47ccbd572384ea7ca2aedfa38b79868415a6bec7b7babdb5182ceb800008d69a",
+      "status": "unchanged",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/plans/phase-7.md",
+      "sha256": "c6f3b986ed45b2eb53630b4df0c0d1bc34fe8265273313b495861a79072c187c",
+      "status": "unchanged",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/plans/phase-8.md",
+      "sha256": "be66e5f7ea8df100e61616c23b37ff3f6c23c2793f9ae4e4af684d68f7b7180f",
+      "status": "unchanged",
+      "purpose": "User, developer, security, or operations documentation for the supported profile."
+    },
+    {
+      "path": "docs/reports/api-security-report.md",
+      "sha256": "14655d3a224a87be9ae34c7712e1d30f7b36729ff75cee1cf782bf03debd7cca",
+      "status": "unchanged",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/chain-trace-report.md",
+      "sha256": "49143c9f649ca5f0bf7dfb76a0d93a895bf526c9e57a5295a4908a8f8a51c847",
+      "status": "unchanged",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/development-status-audit.md",
+      "sha256": "a941411aa3ba6a0bbc337d342571f8716c24999ec0a0f92956e114758d54e4b7",
+      "status": "unchanged",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/phase-0-report.md",
+      "sha256": "7245ea7bce50a7f51b5b41a51570e31ff482e579a48cdfd371993ca052492af5",
+      "status": "unchanged",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/phase-1-acceptance.md",
+      "sha256": "7498dd9a30c23ed8b7984f44be46d8d816301963783dbaa72d0517b203795571",
+      "status": "unchanged",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/phase-1-report.md",
+      "sha256": "262b6285fba5d05524d15c15080c6dd8c05dd92b80ef767b53786cfae9750895",
+      "status": "removed",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/phase-2-report.md",
+      "sha256": "e2c1d006f4df77593cd4290558e81015214cc9d8c00a4fdc82ea539e11c9e000",
+      "status": "unchanged",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/phase-3-report.md",
+      "sha256": "e4cf23b45c960a78809213616f0c760c90449a4ae2220b88e40e68f8c85197b6",
+      "status": "unchanged",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/phase-4-report.md",
+      "sha256": "ba6dfcfb152906f8beace04f7919a25b90e669ccfb89d0cb03e0c8d3fccd570d",
+      "status": "unchanged",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/phase-4a-report.md",
+      "sha256": "fa48a1e792f77343e2384f195d229e2323d5976f45a453a766e611f39ad98ed0",
+      "status": "unchanged",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/phase-5-report.md",
+      "sha256": "8eb4657ba0cfcf2b0552bbbfef941964bca36a1b5ec3eb3e407b45b605b1684e",
+      "status": "unchanged",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/phase-5a-report.md",
+      "sha256": "64e6e6cb2399d1d101d679715e96ee2b733a1311accc03f1cfea8565c4cc5fd3",
+      "status": "unchanged",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/phase-6-report.md",
+      "sha256": "e5da1187d766e2e7edb246e68105f3fa77b4237ae42dd2d0e7a48f52b3ba9e6e",
+      "status": "unchanged",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/phase-7-report.md",
+      "sha256": "b296254a6a7910b220648a472dcb2566f6d3fb3a873ab3872208ccdd4639545a",
+      "status": "unchanged",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/phase-8-report.md",
+      "sha256": "89103570ee3dec648d9ab0029a39490d7de73fce7661535b6cff258543d29a5f",
+      "status": "unchanged",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/real-scanner-integration-verification.md",
+      "sha256": "41bfc59bb7808fd4b117d9bd6b6849d5be2f62e70dc8a1d283e94784f0355813",
+      "status": "unchanged",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/redaction-remediation-2026-11-06.md",
+      "sha256": "c24dd152dd20ad944c783e5e5980c75289770d57b26710fc663ddd55163d893b",
+      "status": "added",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/release-closure-2026-11-06.md",
+      "sha256": "e53629ed65ee05c699584333268070fbae7ecb87c9f3d949c58421d7bd706f89",
+      "status": "added",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/release-handover-2026-11-06.md",
+      "sha256": "cc373fb4f965562aec1d5b0fab6802906124385e132d8e1fcd41cb6300cfa13a",
+      "status": "added",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/release-notes-handover-2026-11-06.md",
+      "sha256": "11a975c202f1e6ad48735a9e443554266ffea7c7685bd3fe4f87a65349d89c19",
+      "status": "added",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/release-validation-2026-11-06.md",
+      "sha256": "7147810ff6f714c218776c28d1d628da5056fb5ebf6cdce9fc517a2a3571bd1b",
+      "status": "added",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/security-hardening-validation.md",
+      "sha256": "3db3cd130a1422b797a993cd2791b4faef1d3735eb1bcb84fb7de2799af4eb59",
+      "status": "unchanged",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "docs/reports/security-review.md",
+      "sha256": "9462beed1f3160e8d7e8e7ba19975a4b43a9dabef6f1c8a8251bcf9840141aff",
+      "status": "unchanged",
+      "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
+    },
+    {
+      "path": "fixtures/real-scanners/clamav-clean.txt",
+      "sha256": "af867100228c20fde03a6140622ccbb3d683dd598f0c22543b1455369e550025",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/real-scanners/gitleaks-clean/credential.txt",
+      "sha256": "9a02e40b4e5ff5e007095a525f7139cfb80c07357883c30581747249950a78a5",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/real-scanners/gitleaks-positive/credential.txt",
+      "sha256": "c2fbda1e64d0c882414c4cdac1bce1e0197539d9b43e152c60b45107c86e8090",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/real-scanners/semgrep-clean/app.py",
+      "sha256": "c895da066f75cea544b26c7a02c26c04dd9f9a90e651f722dad873e6549bce57",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/real-scanners/semgrep-local.yml",
+      "sha256": "97172239ebb23c53194b56bd456d624993285aa20cee4bb1a5bb42adf2fb832a",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/real-scanners/semgrep-positive/app.py",
+      "sha256": "9a1f98237bdcbf32dcdb220731b83489c4f4f7906dc28bfb00704b991de094d9",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/real-scanners/trivy-clean-config/Dockerfile",
+      "sha256": "a1f5251a6add63e3b8373a624cb59d43778e5a747494fdea61e8d402764e801a",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/real-scanners/trivy-local-config/Dockerfile",
+      "sha256": "811ac075dcd83382c843b5660d62f141341db48ee94f484a4412e79b2176cc54",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/real-scanners/yara-clean.txt",
+      "sha256": "1f936e6a82e6e1b03bbdb0a9dd82ad9e8a4481094037fc93e87dd7661755c13c",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/real-scanners/yara-local.yar",
+      "sha256": "a88cb109485120bced96acd9d1898da9b104412dde0a7dfab5a796540cf43774",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/real-scanners/yara-positive.txt",
+      "sha256": "18b077b9458960297a17d9c42ee1ae760d1afc165f61975b36bf7dfc1416bf28",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/sample-iocs.txt",
+      "sha256": "68ae7381a3d4b33794789b366aec1995c96058fade7eb5d2c02be4638ea4cf89",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/sample-logs/auth.log",
+      "sha256": "2c1556d15faa4a1692b6cec4ba737e7c81d43903ee925a5aa7da03bbbddae6e4",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/sample-logs/cloudtrail.json",
+      "sha256": "f6cd28dd26818897e9c9fa61363f846c247cc87edee8361b4f15cb439fa7df47",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/sample-logs/events.jsonl",
+      "sha256": "af22c4008f54ad2a0feb02f3dce139b3fdca17b4714c454cbd1870a2d92b6eff",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/sample-logs/firewall.cef",
+      "sha256": "f3573d7b5c3f3e40d6948c94a23e1cd41d8f2246f7bab0e1c37be475eac4a442",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/sample-logs/firewall.leef",
+      "sha256": "e89f5f4bbeb8ee962a60966705fe99b214153a0f7a6abb207ab111d21ad67a66",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/sample-logs/iis-access.log",
+      "sha256": "7cef53264d1417ed43d4c17c6052ba47a6de92a159ccf819410710c379eaa776",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/sample-logs/nginx-access.log",
+      "sha256": "0c6dabb8d5b5b46b5ce7bce029bc1311275ff0b73fed6c91b0f45949ae9a64b4",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/sample-logs/syslog.log",
+      "sha256": "b0a6436e3e19ba198dd3ac18ddc4875d6d527971ed0c88bdae8bb61f3637f2e2",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/sample-logs/windows-events.csv",
+      "sha256": "735be3e7278458d69c62037b7ac8e11ab11e8386e90d74c3eca6439289204261",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/sample-logs/windows-failed-login.yml",
+      "sha256": "22a47dcf95a2c60cb12f3ee600c6d309f7eca753100a25e4709a04bbfd8b0a61",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/sample-malware/marker.yar",
+      "sha256": "45a9a21bd12d7a7ed0b9014c179dc2a514e5e2eb3c9a4131dd852efb0d1ddc8f",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/sample-malware/synthetic-indicators.txt",
+      "sha256": "71dee0761a731a0646316e680d1f710e4145b0f407c443ff63aa7920bcb5d12a",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/sample-node-project/app.js",
+      "sha256": "76bcbc56216f936e5abc606e53ffafde6266b70e167ddfdcb5458815310efe14",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/sample-node-project/package.json",
+      "sha256": "cf9d8769bd6b4c88580b866a39510db54c4b8de06dd97f6c68d44d40fdd71cc3",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/sample-python-project/app.py",
+      "sha256": "e54464d3e423aa2fa44d2a2dba5fe517adef74f10b2d01ecb9ea34a3daf83f5e",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "fixtures/sample-python-project/pyproject.toml",
+      "sha256": "de2fb9ac77250a95a98dde0e3702a3cac62d7c66a20672ee3400080b8d73ea01",
+      "status": "unchanged",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "frontend/e2e/dashboard.spec.ts",
+      "sha256": "9ec159a36d47e04d8120ef49bac6371e04607237ea86d3d36024e0a4734b42a7",
+      "status": "modified",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/e2e/github-import.spec.ts",
+      "sha256": "a28db1146119756a5afe669b07abfbf4298179293681ba9221af4f2f264e8663",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/e2e/global-setup.ts",
+      "sha256": "b31fd11dd8ffd57215b9fb7a0c10ee8c10982f31fbac22ad0a17f7d6743feaba",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/e2e/operator-recovery.spec.ts",
+      "sha256": "e1ff6403060478077c9501cd83da4df92d0b5a1ccd46ccfb8acfe301df30c984",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/e2e/projects.spec.ts",
+      "sha256": "73ab6d721e91f67d6e583553e10fe762f0a818807032d36faa8a5936e7b1b7ba",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/e2e/session-expiry.spec.ts",
+      "sha256": "ed5a5b5781468f46ba90bdbd26cd5a0543fa1f4b7847c4b0eefc9421e2b3dc7d",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/e2e/system-status.spec.ts",
+      "sha256": "f800d2139b1cea2da3b19a1989e0c9000350ff06e2ec79247833feb393907cf9",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/index.html",
+      "sha256": "387328433c9343ec79696c32a0fc98a36580fc832ddb0c6b1cd48f5184425795",
+      "status": "modified",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/package-lock.json",
+      "sha256": "4ac97df35c19ca723a42cccb66df208d8de796ee7116aef3f5cff5eeece38647",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/package.json",
+      "sha256": "41eba47369ca85f27ccdd74d67fc28429bbd651f20f77b15c3939611f0da09d3",
+      "status": "modified",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/playwright.config.ts",
+      "sha256": "c3f8608bc877bf7085d74b4a9dda125ef9d7ca16e0a26338aff5e3f9f9a8918d",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/api.test.ts",
+      "sha256": "27876377652b6ab4db03c5701ee2c61fd0a695c1c1eb876ed3387ba359f2fbb2",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/api.ts",
+      "sha256": "99e391f3fbb9ba595c99c6832fcf4b71672d6674b99269882d06ca69cc6df268",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/main.tsx",
+      "sha256": "d96e3d058bc97dc9db31d0ac7d0357006dc34e0d9bb5e81258e238961f0c00a6",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/test-fixtures/report-parity.json",
+      "sha256": "6bc92637ad7e847a79f227d708a4c1fa1b0d842ae4731b1bb24117ee968593f0",
+      "status": "added",
+      "purpose": "Controlled local sample or test fixture; reproduces behavior without production data."
+    },
+    {
+      "path": "frontend/src/test-setup.ts",
+      "sha256": "268e7200d092daa3225eb06790ed72842e5d3234a53980c90ff463d7b81528d3",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/types.ts",
+      "sha256": "ee7e8212a58b92c119ee4a9e284ece3fef3bd477de3ac89832765cf299f823c4",
+      "status": "modified",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/App.test.tsx",
+      "sha256": "b6a596cf3db5bea5d3ac915618dc590f9fcba1e8f80256864b92654a9756613a",
+      "status": "modified",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/App.tsx",
+      "sha256": "87602712ae107df5a2eacc631290e1f3c5e2ceb05d5aefcbcd1921775f7cf020",
+      "status": "modified",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/CasesWorkspace.test.tsx",
+      "sha256": "1bd86e33ff505ce1a86f4819506a0332db62696ed14ad672290dabf4be0da0eb",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/CasesWorkspace.tsx",
+      "sha256": "abe0682c2a713f0b8a7cbdd3cc57665104740b6fc36490e340c1c6448d659e40",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/ChainTraceGraph.test.tsx",
+      "sha256": "19f792142ae0a37f241dd31706d36062d95db572285aee76922ac4f112a8cfee",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/ChainTraceGraph.tsx",
+      "sha256": "b4373a2173f0f3ef2992f7f07f16e09623ec92fc4b26ed9af0f13e8efb7f48ab",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/ChainTraceWorkspace.tsx",
+      "sha256": "40cee8b76c8b31a7ef539e0fcc9aab2ab9b53b873d14da363597edbaa3b8c75f",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/CodeJobsWorkspace.test.tsx",
+      "sha256": "f7d4add8a824d2d838bf3f693a5a1373ba495249afe0372de72e29efcf4edd7e",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/CodeJobsWorkspace.tsx",
+      "sha256": "21757bb4587bff6843da8eafd65ec31fbff5c3a78a4d07a4ee51b6f1a8d2fda5",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/FolderApprovalPicker.test.tsx",
+      "sha256": "4f8ed56b979bbb65ebca0822a8795d6b5fde48773fbe6f3effdeb457b9632bed",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/FolderApprovalPicker.tsx",
+      "sha256": "21a2b7e6c409043d32e0a2c661ca572ab4f178efd9560531d1d6a7b2948aeba0",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/GitHubImportDialog.test.tsx",
+      "sha256": "495a3c07ac42b159c2141819f2c19f0ba211acb787b5397bef85949f4e5fa604",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/GitHubImportDialog.tsx",
+      "sha256": "4dd42773e172baf442e1ceebc10938b58e0a38aaac9f992b6e1cea93041ed24b",
+      "status": "modified",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/LogJobsWorkspace.test.tsx",
+      "sha256": "cf89d9ada74e82604a67937a24cb734638eda18cb2ec7dd3562545fa887cc4bf",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/LogJobsWorkspace.tsx",
+      "sha256": "bb2fd40e1d7d9c468932d2e0ba0f0d31488a9c08f1400a764f6df6192c7792d4",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/MalwareWorkspace.test.tsx",
+      "sha256": "b242378d49646822ce600a57bbb17c3bf9a6284c441eb64ec3f5d0902f41266b",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/MalwareWorkspace.tsx",
+      "sha256": "bc982a31fa563e50d237c8edbebef7329d1c408e75a3fcc503c16bd0a12a22ca",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/ProjectMalware.test.tsx",
+      "sha256": "76d52ffb5132ae1af60cd0828591dba2628dbfb81a6222f02d0f3d5fc41c4951",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/ProjectMalware.tsx",
+      "sha256": "c113c6b3a6953ec61496fb4a7f76b247862de9ad1b359a01abf2826465a159af",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/ProjectsWorkspace.test.tsx",
+      "sha256": "77dc961929b242ebb59987345d244e84179df5f908c504f78c0e25a5e4cc85ab",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/ProjectsWorkspace.tsx",
+      "sha256": "f5ee031aa49bc0aebbe9a369791d17d46f1ff7b361951144a21f51d2ea69ff6a",
+      "status": "modified",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/ScanityReportImport.tsx",
+      "sha256": "af91477c3c9608c47c1cacb694443548b71c888a048af39d2a75f7b76ad7bfb1",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/SystemStatus.test.tsx",
+      "sha256": "8ca3f4b23f599a81b29c07e72a2df9cf0056615eb36d299f93a0b15aa4c763e7",
+      "status": "modified",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/SystemStatus.tsx",
+      "sha256": "7b223e6efdf54f88a6acec40fcc021cf880d42e341337c31e31cfbd72917dcd4",
+      "status": "modified",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/ui/styles.css",
+      "sha256": "3e7de825096b44d75234d8121fa1a41ea489407347f824e4db990059bd903140",
+      "status": "modified",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/src/vite-env.d.ts",
+      "sha256": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/tsconfig.app.json",
+      "sha256": "cbdfaf97b7b710e6b84606628ea929d44e9c48eba61c2690a76d723180257b4a",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/tsconfig.json",
+      "sha256": "e8d6f7b50828db3953e21c7e92584f9206b3cd2551b4012507372afbb7fe9ce3",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/tsconfig.node.json",
+      "sha256": "adb3d10e23876c431a4a28a4ed127e965dd8e4f171eef065820feedc8fe132c1",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "frontend/vite.config.ts",
+      "sha256": "b6f1fa8422beb1f6b9a138dc2c6c3e4dc05229ebaa02196007036f9352fae813",
+      "status": "unchanged",
+      "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
+    },
+    {
+      "path": "migrations/env.py",
+      "sha256": "8ea00f5ecf197f7c8766bc0ef3ce28abc60ee755278bf4071938234c6de99ff0",
+      "status": "unchanged",
+      "purpose": "SQLite migration/configuration needed to create or upgrade local application data safely."
+    },
+    {
+      "path": "migrations/script.py.mako",
+      "sha256": "114d2c8daf1106848ce42d0c5f13a4d0056ec4205dfc568999d988c131bb8c54",
+      "status": "unchanged",
+      "purpose": "SQLite migration/configuration needed to create or upgrade local application data safely."
+    },
+    {
+      "path": "migrations/versions/0001_initial.py",
+      "sha256": "51a4226c6c600e35060046bfdba1826592563e51cf51b854df793dab7daa3f58",
+      "status": "unchanged",
+      "purpose": "SQLite migration/configuration needed to create or upgrade local application data safely."
+    },
+    {
+      "path": "migrations/versions/0002_case_workflow.py",
+      "sha256": "5aac7fa68762c967696c1a8d1cb2944353b9e59f384d1a480e7c4061e44788d4",
+      "status": "unchanged",
+      "purpose": "SQLite migration/configuration needed to create or upgrade local application data safely."
+    },
+    {
+      "path": "migrations/versions/0003_malware_backend.py",
+      "sha256": "6057eda9f742a5e732062c14f1362c367b87f8ccea628b470c5cf068ff3facdf",
+      "status": "unchanged",
+      "purpose": "SQLite migration/configuration needed to create or upgrade local application data safely."
+    },
+    {
+      "path": "pyproject.toml",
+      "sha256": "3bd432b727c155cee4df340e2a58ee555a6103ed027f4cf1c8e4a8a2a3cf1aae",
+      "status": "unchanged",
+      "purpose": "Locked project dependency/build metadata needed for reproducible setup."
+    },
+    {
+      "path": "schemas/finding.schema.json",
+      "sha256": "c8b5502e5d3997e8697dc78fe5a2544d3271c75c8d5c0d78779c0bc924d739be",
+      "status": "modified",
+      "purpose": "Versioned JSON data contract; required to validate/preserve payload compatibility."
+    },
+    {
+      "path": "schemas/investigation.schema.json",
+      "sha256": "21a12a5e74e325efe074f63cea2e3f2b78e72703c8f3684c2c93af73380a7b3a",
+      "status": "modified",
+      "purpose": "Versioned JSON data contract; required to validate/preserve payload compatibility."
+    },
+    {
+      "path": "scripts/benchmark_local.py",
+      "sha256": "af46f5350bce91d074b4c594821eba5847e64977977b045954a053f056026cd8",
+      "status": "unchanged",
+      "purpose": "Local setup/acceptance/export/benchmark utility for documented workflows."
+    },
+    {
+      "path": "scripts/export_schemas.py",
+      "sha256": "edd5794d5378e2027fadf7391969535fc8cca08e97ccfc1592f478d7ddaff5d0",
+      "status": "unchanged",
+      "purpose": "Local setup/acceptance/export/benchmark utility for documented workflows."
+    },
+    {
+      "path": "scripts/recovery_acceptance.py",
+      "sha256": "f280d416795aca018741e64f272b18ac59286aa5a110338e0fcb97a38b7972c2",
+      "status": "unchanged",
+      "purpose": "Local setup/acceptance/export/benchmark utility for documented workflows."
+    },
+    {
+      "path": "scripts/start-dashboard.ps1",
+      "sha256": "6d4e9c47c8040ca67f9e3a85ecdec1c92506f43522293d8dc95287c3911360db",
+      "status": "modified",
+      "purpose": "Local setup/acceptance/export/benchmark utility for documented workflows."
+    },
+    {
+      "path": "tests/browser/serve.py",
+      "sha256": "765569c210b2b59e70dc826f5d4493e6f1dd8d4d219a4986596049e14e716468",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (serve); required to validate release behavior."
+    },
+    {
+      "path": "tests/conftest.py",
+      "sha256": "bc771db783a9eb8e8551e55a18b32031b2799faef6b34c3cdfc5dc42cb26b9b4",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (conftest); required to validate release behavior."
+    },
+    {
+      "path": "tests/fixtures/code-assessment-nextjs/.gitignore",
+      "sha256": "b8c4c4a66a4805fa85770debc67f615881f82d1de0dda2244ac1cd2b9d902e7e",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (.gitignore); required to validate release behavior."
+    },
+    {
+      "path": "tests/fixtures/code-assessment-nextjs/.next/static/chunks/main.js",
+      "sha256": "5d2a5a36064926731895ad3172475982a7918cab7741945343377cba00eee819",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (main); required to validate release behavior."
+    },
+    {
+      "path": "tests/fixtures/code-assessment-nextjs/next.config.js",
+      "sha256": "4ec0060e56e4ca909f81ef96accdf85a0b13906a1a1d5c2bd40fb9a1c0c0fc51",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (next.config); required to validate release behavior."
+    },
+    {
+      "path": "tests/fixtures/code-assessment-nextjs/package.json",
+      "sha256": "6534b408df9b975f383689a369fa3ed85205b2104c1747aa416ddcff6f269820",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (package); required to validate release behavior."
+    },
+    {
+      "path": "tests/fixtures/code-assessment-nextjs/src/app/api/route.ts",
+      "sha256": "20a7d05e8d1c04fc0b28f3b961f13e46df8f9316249e8d221a234c9b021c68db",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (route); required to validate release behavior."
+    },
+    {
+      "path": "tests/fixtures/code-assessment-nextjs/src/components/Preview.tsx",
+      "sha256": "69cf39b942d8791dbef5aec8742c2550bdb125a6a2b3242fcd42e6971fd29271",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (Preview); required to validate release behavior."
+    },
+    {
+      "path": "tests/fixtures/code-assessment-nextjs/tests/auth.test.ts",
+      "sha256": "059674cf46a276f03f6088eb091a097ccfe550abe873ffd158c329e0027f1cd6",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (auth.test); required to validate release behavior."
+    },
+    {
+      "path": "tests/integration/test_real_scanners.py",
+      "sha256": "d070edc337ba688356508294e9f7e24895e777ba33382eb2eba2f301765eeb6b",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_real_scanners); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_accounts_hardening.py",
+      "sha256": "9b2a7b0aeae0d49ecd46084d60e75af224b91edb5f80aeb29dfe9e11707e98e1",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_accounts_hardening); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_accounts_parity.py",
+      "sha256": "bb06e1f370ccadf6f93ad799fc078405d7b6afb71be1296e6ef20584038c90dd",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_accounts_parity); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_accounts_service.py",
+      "sha256": "b53dff7e1f69c101e54b80e3203318c20df5d76edf63319ea7b7bf607e7d188b",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_accounts_service); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_benchmark_local.py",
+      "sha256": "5babb7a6189be4313d7f80aec71b13cb5e7c766c7d9ecff148609ad18acd6391",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_benchmark_local); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_cases.py",
+      "sha256": "fb3fc7e1590a9b4782370e13ec0c69ffebbc52cad3eddf3be3fc09dede9ec0b2",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_cases); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_chain_trace.py",
+      "sha256": "312f921ba0fb9e0dd5807d8c7d18be8b9dd64ae631c17d0ef484db411a312125",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_chain_trace); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_cli.py",
+      "sha256": "711440b1f9ae6f2b9063220160b41234d2e7bc5cee05533ba50f6ee22d998586",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_cli); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_code_actionability.py",
+      "sha256": "6d03985d6135e5985259348c3135ab38a595a2177536fa6756821dc3a75772a1",
+      "status": "modified",
+      "purpose": "Automated regression coverage (test_code_actionability); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_code_jobs.py",
+      "sha256": "786eac4c89e142d7bbc5a95d07347928e6e5b7fb74d6c32c0a62622c3b5022dc",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_code_jobs); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_code_rules_behavior.py",
+      "sha256": "d9cfe3f59522920303cfcfc56efd574b6c2522790fc87112ba167097185a6178",
+      "status": "modified",
+      "purpose": "Automated regression coverage (test_code_rules_behavior); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_code_scan.py",
+      "sha256": "c47d769db3cb63440a186b5a9cd8aeefea6dce575e80dab3a49610f678e894ff",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_code_scan); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_config.py",
+      "sha256": "b3440e0c4bd3de1e7fc034015d54930356aea2ffbf5db1a5260daa8fadcf5168",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_config); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_diagnostics.py",
+      "sha256": "5ee93fdfe1861fb4eea552e44c280a3cb5fdc52605dd77386a6f46e9e5bb9c51",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_diagnostics); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_domain_assessment.py",
+      "sha256": "19939b9f40b980e71337ab21043feac5c59612141059ccca050a3a52f608d1da",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_domain_assessment); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_external_scanners.py",
+      "sha256": "02c019e845d0cafb71d35303e2c23132d581b25b8c8c9cd1ffdecf8e65476a1f",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_external_scanners); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_fake_scanner.py",
+      "sha256": "c720ec69351acc0bda539114049c75c34dcfc47e5c2b84e0cc1e1fa4c22da9db",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_fake_scanner); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_fs_api.py",
+      "sha256": "f75d1231090547cfe19a9d91aee453820701a3ca537c449ab3037a3a585269b3",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_fs_api); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_fs_cli.py",
+      "sha256": "a189410921208512db607fff42211da9088304f256c9fc3c566d4e1d6101e195",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_fs_cli); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_fs_policy.py",
+      "sha256": "f9e3ee5dc3e23fe1fd0367859ca22e4d1043d7f0d25c6fb418217bc3d65e517f",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_fs_policy); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_github_import.py",
+      "sha256": "56a5e4fc55931fcca2c2cc41e2781449491bacacc419f6c452133b6de2b6ef3f",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_github_import); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_github_projects.py",
+      "sha256": "8c72f03f36df02fc89a83bbaf96555c1e5b53889eab10b3f35ce6c619eb14ab8",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_github_projects); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_indicators.py",
+      "sha256": "ecd887e1adbfa6e1be7d71831a25cb562f770be10e49f13cae42776f235d5591",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_indicators); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_log_analysis.py",
+      "sha256": "32db5c454bd2922d8c920587338ad63b3b7f1e4e124544bcb3349f7fc1b994bd",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_log_analysis); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_log_jobs.py",
+      "sha256": "a8d68bfe645092b3c49c780233f0bcd5092a196e9afcce4ee1e1009b8bcf3f31",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_log_jobs); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_log_source_status.py",
+      "sha256": "178810ce2c2a18d8f50c6b4c3bded39e5544959ad62622ebe62f01efc2eeafc4",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_log_source_status); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_logging.py",
+      "sha256": "d6dcf17f6fdacb725f83a611851b8b2142cb02895f0055a773b97f228d2f10a8",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_logging); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_malware_analysis.py",
+      "sha256": "39fe3a406bfcf87a0dd94315fc911890ee9d50cc1f2039033e6eddfad66de37f",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_malware_analysis); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_malware_project_scan.py",
+      "sha256": "79efaf571a135484240fb14735c225d393312e55e12aefdff9bb743a04c96f18",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_malware_project_scan); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_managed_malware.py",
+      "sha256": "ed4c595d73e53800d28223190714dcb369e8e8694cc4ae4d2eee7a22d0a39189",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_managed_malware); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_migration.py",
+      "sha256": "e28bdf29e16ab4abddf705104eea5add63803219ba25704e2a5261c771586b2d",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_migration); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_models.py",
+      "sha256": "d811cdc63e4d0a30041318c3c539ca4cc10f1dbfe0f8f86a40861167d61040ab",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_models); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_parser_hardening.py",
+      "sha256": "d21d83ba8c73eabb1008c84c62ab45a2b21cf82441ef2933587805ca3c4cd70d",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_parser_hardening); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_projects.py",
+      "sha256": "7b12b43a775f7b78a618a6c85ab4de7e70a5b56431965a723bad6280451d2ec5",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_projects); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_projects_cli.py",
+      "sha256": "894b530b483dd26e1d6b3789a2a44b198b803ef7d7ab9cb776a9dca74da74d18",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_projects_cli); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_rate_limit.py",
+      "sha256": "20307f0b07d61aeabf73c6ab2b7851571a16eb8432f7f2c5e863b0abcdfd0d97",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_rate_limit); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_recovery.py",
+      "sha256": "14e8b09ed98a18950b3e2dddd4c411cc549340b7873941c09d52e85488bcff58",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_recovery); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_redaction.py",
+      "sha256": "095030d70bbff5b79ce1330dba3a810edd02d56d8388ec1cfa5badf69126288e",
+      "status": "modified",
+      "purpose": "Automated regression coverage (test_redaction); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_redaction_canaries.py",
+      "sha256": "f89919c002fade335f805888e9b3dd1f870bcfa76953e64fadf9145f02d34af4",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_redaction_canaries); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_reporting.py",
+      "sha256": "09e3aac0df86fa8fc8bb319b495e272ac373f763b17b282cccbe52d828b367b1",
+      "status": "modified",
+      "purpose": "Automated regression coverage (test_reporting); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_route_security_inventory.py",
+      "sha256": "139012a382f272dcb509a5465fb2d22209dc3f51d559c2a70a02db5353599fd3",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_route_security_inventory); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_schema_exports.py",
+      "sha256": "92ca19983710d49b3dc44fbde360606840ee1accf5ea1de08f2ec64b3c997c7a",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_schema_exports); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_storage.py",
+      "sha256": "9b6786af1ded66715e435db0278159857f94e2c4b6cb7f859e904e3886db07e0",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_storage); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_totp.py",
+      "sha256": "3892bdbb6e3e5944d89ba7488f97cfc5cdcc9494f3977e0947f66b423c9d87ae",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_totp); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_trends.py",
+      "sha256": "f28ecb1f3154c21583af4b91b8eadba93f59dfcc82392007a4fd64f7983ac4df",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_trends); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_verdict_and_reports_store.py",
+      "sha256": "11bf1b7fddb7ab20d961d0b59042dacc322b6b5765aa79c7057e093d8a6f00ef",
+      "status": "unchanged",
+      "purpose": "Automated regression coverage (test_verdict_and_reports_store); required to validate release behavior."
+    },
+    {
+      "path": "tests/unit/test_web_api.py",
+      "sha256": "0fb7e5d0be70471ff6160ff1b3f8f1747286ebe4799bcfa4ff00fdc33bc7f208",
+      "status": "modified",
+      "purpose": "Automated regression coverage (test_web_api); required to validate release behavior."
+    },
+    {
+      "path": "uv.lock",
+      "sha256": "88c93711d0b788374a0e0947c7fa2af8dd309c92c9f32a74de0197edd85bdfaf",
+      "status": "unchanged",
+      "purpose": "Locked project dependency/build metadata needed for reproducible setup."
+    }
+  ],
+  "excluded_artifacts": [
+    "docs/reports/implementation-inventory-2026-11-06.json",
+    "docs/reports/implementation-inventory-closure-2026-11-06.json",
+    "docs/reports/implementation-inventory-handover-2026-11-06.json",
+    "docs/reports/implementation-inventory-r1-2026-11-06.json"
+  ],
+  "self_excluded_path": "docs/reports/release-snapshot-manifest-2026-11-06.json",
+  "release_stage_path_count": 52,
+  "release_stage_paths": [
+    "README.md",
+    "chinescan/__init__.py",
+    "chinescan/__main__.py",
+    "chinescan/cli/commands.py",
+    "chinescan/core/diagnostics.py",
+    "chinescan/core/external_reports.py",
+    "chinescan/core/logging/redaction.py",
+    "chinescan/core/models/finding.py",
+    "chinescan/core/models/investigation.py",
+    "chinescan/core/orchestration/code_rules.py",
+    "chinescan/core/orchestration/code_scan.py",
+    "chinescan/core/reporting.py",
+    "chinescan/core/storage/repository.py",
+    "chinescan/core/storage/sqlite.py",
+    "chinescan/domain_assessment/probe.py",
+    "chinescan/web/app.py",
+    "docs/API.md",
+    "docs/ChiNeScan-improvements.md",
+    "docs/ChiNeScan-security-review.md",
+    "docs/DECISIONS.md",
+    "docs/DEPLOYMENT.md",
+    "docs/DEVELOPMENT.md",
+    "docs/RECOVERY-RUNBOOK.md",
+    "docs/RESPONSIBLE_USE.md",
+    "docs/SCANNING-ANOTHER-PROJECT.md",
+    "docs/reports/phase-1-report.md",
+    "docs/reports/redaction-remediation-2026-11-06.md",
+    "docs/reports/release-closure-2026-11-06.md",
+    "docs/reports/release-handover-2026-11-06.md",
+    "docs/reports/release-notes-handover-2026-11-06.md",
+    "docs/reports/release-snapshot-manifest-2026-11-06.json",
+    "docs/reports/release-validation-2026-11-06.md",
+    "frontend/e2e/dashboard.spec.ts",
+    "frontend/index.html",
+    "frontend/package.json",
+    "frontend/src/test-fixtures/report-parity.json",
+    "frontend/src/types.ts",
+    "frontend/src/ui/App.test.tsx",
+    "frontend/src/ui/App.tsx",
+    "frontend/src/ui/GitHubImportDialog.tsx",
+    "frontend/src/ui/ProjectsWorkspace.tsx",
+    "frontend/src/ui/SystemStatus.test.tsx",
+    "frontend/src/ui/SystemStatus.tsx",
+    "frontend/src/ui/styles.css",
+    "schemas/finding.schema.json",
+    "schemas/investigation.schema.json",
+    "scripts/start-dashboard.ps1",
+    "tests/unit/test_code_actionability.py",
+    "tests/unit/test_code_rules_behavior.py",
+    "tests/unit/test_redaction.py",
+    "tests/unit/test_reporting.py",
+    "tests/unit/test_web_api.py"
+  ],
+  "release_archive_file_count": 297,
+  "manifest_schema_version": 2,
+  "hash_algorithm": "SHA-256",
+  "hash_normalization_policy": "Hash exact Git blob bytes after Git clean filters and line-ending normalization. For paths present in the release index, read the staged index blob. For removed paths, read the base-commit tree blob. The manifest path is self-excluded; no manifest self-hash is stored.",
+  "generation_provenance": {
+    "base_commit": "2ad86b05ca82181da78b3eb6bfee5598d63dc8af",
+    "source": "Git index blob contents for release-present paths; base-tree blob for removed paths.",
+    "reproducibility": "Deterministic JSON serialization in UTF-8 with LF line endings; no volatile generation timestamp."
+  }
+}

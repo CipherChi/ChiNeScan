@@ -24,11 +24,13 @@ type Diagnostics = {
   scan_bounds: Record<string, number>;
   recent_errors: ErrorSummary[];
 };
-type Snapshot = { health: Health | null; checks: Check[]; diagnostics: Diagnostics | null; online: boolean | null };
+type RequestState = 'not checked' | 'received' | 'failed' | 'rate limited' | 'timed out';
+type Snapshot = { health: Health | null; checks: Check[]; diagnostics: Diagnostics | null; online: boolean | null; requestStates: { health: RequestState; readiness: RequestState; diagnostics: RequestState } };
 class RateLimitedError extends Error {}
 
 const HEALTHY_POLL_INTERVAL_MS = 30_000;
 const INITIAL_RETRY_INTERVAL_MS = 1_000;
+const REQUEST_TIMEOUT_MS = 5_000;
 export const MAX_RETRY_INTERVAL_MS = 60_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -98,7 +100,7 @@ async function get<T>(url: string, signal: AbortSignal, decode: (value: unknown)
 }
 
 export function SystemStatus({ onUnauthorized }: { onUnauthorized: () => void }) {
-  const [snapshot, setSnapshot] = useState<Snapshot>({ health: null, checks: [], diagnostics: null, online: null });
+  const [snapshot, setSnapshot] = useState<Snapshot>({ health: null, checks: [], diagnostics: null, online: null, requestStates: { health: 'not checked', readiness: 'not checked', diagnostics: 'not checked' } });
   const [checking, setChecking] = useState(false);
   const [announcement, setAnnouncement] = useState('');
   const refreshRef = useRef<(() => Promise<void>) | null>(null);
@@ -107,7 +109,7 @@ export function SystemStatus({ onUnauthorized }: { onUnauthorized: () => void })
     let timer: number | undefined;
     let retryDelay = INITIAL_RETRY_INTERVAL_MS;
     let inFlight = false;
-    const controller = new AbortController();
+    let activeController: AbortController | null = null;
     const schedule = (delay: number) => {
       if (!stopped) timer = window.setTimeout(() => { void poll(); }, delay);
     };
@@ -115,21 +117,44 @@ export function SystemStatus({ onUnauthorized }: { onUnauthorized: () => void })
       if (stopped || inFlight) return;
       inFlight = true;
       setChecking(true);
+      const controller = new AbortController();
+      activeController = controller;
+      const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       if (manual) {
         if (timer !== undefined) window.clearTimeout(timer);
         setAnnouncement('Checking system status now.');
       }
       try {
-        const [health, ready, diagnostics] = await Promise.all([
+        const results = await Promise.allSettled([
           get('/api/health', controller.signal, decodeHealth),
           get('/api/ready', controller.signal, decodeChecks),
           get('/api/diagnostics', controller.signal, decodeDiagnostics),
         ]);
         if (stopped) return;
-        setSnapshot({ health: health.value, checks: ready.value, diagnostics: diagnostics.value, online: health.status < 500 && diagnostics.status < 500 });
-        retryDelay = INITIAL_RETRY_INTERVAL_MS;
-        if (manual) setAnnouncement('System check complete: connected to the local service.');
-        schedule(HEALTHY_POLL_INTERVAL_MS);
+        if (results.some((item) => item.status === 'rejected' && item.reason instanceof UnauthorizedError)) { onUnauthorized(); return; }
+        const [health, ready, diagnostics] = results;
+        const stateOf = (item: PromiseSettledResult<unknown>): RequestState => item.status === 'fulfilled'
+          ? 'received' : item.reason instanceof RateLimitedError ? 'rate limited'
+            : item.reason instanceof DOMException && item.reason.name === 'AbortError' ? 'timed out' : 'failed';
+        setSnapshot((current) => ({
+          health: health.status === 'fulfilled' ? health.value.value as Health : current.health,
+          checks: ready.status === 'fulfilled' ? ready.value.value as Check[] : current.checks,
+          diagnostics: diagnostics.status === 'fulfilled' ? diagnostics.value.value as Diagnostics : current.diagnostics,
+          online: health.status === 'fulfilled' ? health.value.status < 500 : false,
+          requestStates: { health: stateOf(health), readiness: stateOf(ready), diagnostics: stateOf(diagnostics) },
+        }));
+        const failed = [health, ready, diagnostics].some((item) => item.status === 'rejected');
+        if (manual) setAnnouncement(failed
+          ? `System check complete with partial results: health ${stateOf(health)}; readiness ${stateOf(ready)}; diagnostics ${stateOf(diagnostics)}.`
+          : 'System check complete: connected to the local service.');
+        if (failed) {
+          const delay = retryDelay;
+          retryDelay = Math.min(retryDelay * 2, MAX_RETRY_INTERVAL_MS);
+          schedule(delay);
+        } else {
+          retryDelay = INITIAL_RETRY_INTERVAL_MS;
+          schedule(HEALTHY_POLL_INTERVAL_MS);
+        }
       } catch (reason) {
         if (reason instanceof UnauthorizedError) { onUnauthorized(); return; }
         if (reason instanceof RateLimitedError) {
@@ -145,6 +170,8 @@ export function SystemStatus({ onUnauthorized }: { onUnauthorized: () => void })
           schedule(delay);
         }
       } finally {
+        window.clearTimeout(timeout);
+        if (activeController === controller) activeController = null;
         inFlight = false;
         if (!stopped) setChecking(false);
       }
@@ -153,14 +180,14 @@ export function SystemStatus({ onUnauthorized }: { onUnauthorized: () => void })
     void poll();
     return () => {
       stopped = true;
-      controller.abort();
+      activeController?.abort();
       if (timer !== undefined) window.clearTimeout(timer);
       refreshRef.current = null;
     };
   }, [onUnauthorized]);
   return <div className="status-workspace" aria-live="polite">
     <section className="panel status-connectivity" aria-label="Connectivity"><strong>{snapshot.online === null ? 'Checking local service' : snapshot.online ? 'Connected to local service' : 'Service offline'}</strong><span>{snapshot.online === null ? 'Checking service health and readiness.' : snapshot.online ? 'Polling for service health and readiness.' : 'The local service is unavailable. Retrying automatically.'}</span><button type="button" aria-label="Check system status now" onClick={() => { void refreshRef.current?.(); }} disabled={checking}>{checking ? 'Checking…' : 'Check now'}</button><span role="status" aria-live="polite">{announcement}</span></section>
-    <section className="panel status-panel"><div className="panel-heading"><h2>System checks</h2><span>Version {snapshot.health?.version ?? 'Unavailable'}</span></div><ul className="status-checks">{snapshot.checks.map((check) => <li key={check.id}><div><strong>{check.label}</strong><p>{check.detail}</p>{check.action_hint && <small>Action: {check.action_hint}</small>}</div><span className={`status-badge status-${check.state.toLowerCase()}`}>[{check.state}]</span></li>)}</ul></section>
+    <section className="panel status-panel"><div className="panel-heading"><h2>System checks</h2><span>Version {snapshot.health?.version ?? 'Unavailable'}</span></div><p>Request results · Health: {snapshot.requestStates.health} · readiness: {snapshot.requestStates.readiness} · diagnostics: {snapshot.requestStates.diagnostics}</p><ul className="status-checks">{snapshot.checks.map((check) => <li key={check.id}><div><strong>{check.label}</strong><p>{check.detail}</p>{check.action_hint && <small>Action: {check.action_hint}</small>}</div><span className={`status-badge status-${check.state.toLowerCase()}`}>[{check.state}]</span></li>)}</ul></section>
     {snapshot.diagnostics && <div className="status-grid"><section className="panel status-panel"><h2>Local configuration</h2><p>Operator state: <strong>{snapshot.diagnostics.operator_state}</strong></p><p>Allowed roots: {snapshot.diagnostics.allowed_roots.valid} valid, {snapshot.diagnostics.allowed_roots.ignored} ignored</p><h3>Scan bounds</h3><dl>{Object.entries(snapshot.diagnostics.scan_bounds).map(([key, value]) => <div key={key}><dt>{key.replaceAll('_', ' ')}</dt><dd>{value}</dd></div>)}</dl></section><section className="panel status-panel"><h2>Recent errors</h2>{snapshot.diagnostics.recent_errors.length ? <ul>{snapshot.diagnostics.recent_errors.map((item) => <li key={item.request_id}><strong>{item.error_code}</strong> {item.route}<p>{item.message}</p></li>)}</ul> : <p>No recent errors.</p>}</section></div>}
   </div>;
 }

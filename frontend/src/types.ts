@@ -1,6 +1,10 @@
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
 export type Verdict = 'leads_found' | 'no_matches_with_gaps' | 'no_matches_in_scope' | 'scan_failed';
 export type EvidenceKind = 'confirmed_artifact' | 'pattern_match' | 'reference_only' | 'context_only';
+export type ScoreEvidence = { file: string; line_numbers: number[]; code_excerpt: string | null };
+export type ScoreContribution = { signal_id: string; description: string; raw_count: number; effective_count: number; weight: number; adjustment: string; contribution: number; evidence: ScoreEvidence[] };
+export type CodePatternRisk = { score: number; confidence: string; signals: string[]; disclaimer: string; name: string; direction: string; interpretation: string; algorithm_version: string | null; contributions: ScoreContribution[]; coverage_limitations: string[]; confidence_rationale: string | null };
+export type FindingExplanation = { version: string; classification_policy_version?: string | null; observed: string | null; match_reason: string | null; established: string[]; inferred: string[]; severity_rationale: string | null; confidence_rationale: string | null; exposure_rationale: string | null; attack_prerequisites: string[]; conditional_impact: string | null; controls_considered: string[]; false_positive_considerations: string[]; verification_steps: string[]; remediation_rationale: string | null; limitations: string[]; ruleset_version: string | null };
 export type ChainJob = { job_id: string; status: 'queued'|'running'|'succeeded'|'failed'|'interrupted'; created_at: string; scan_id: string|null; error: string|null };
 export type ChainLabel = { address: string; chain: string; category: string; name: string; source: string; date: string };
 export type ChainNode = { address: string; depth: number; category?: string; label?: ChainLabel };
@@ -19,7 +23,7 @@ export type Scan = {
   coverage_gap_count?: number;
   finding_ids?: string[];
   coverage?: { examined: Record<string, number>; excluded?: Record<string, number>; gaps: Array<{ code: string; reason: string; count: number }> } | null;
-  code_assessment?: { files_scanned: number; files_excluded: number; excluded_paths: string[]; vibe_coding_risk?: { score: number; confidence: string; signals: string[]; disclaimer: string } | null } | null;
+  code_assessment?: { files_scanned: number; files_excluded: number; excluded_paths: string[]; vibe_coding_risk?: CodePatternRisk | null } | null;
   failures?: Record<string, string>;
 };
 export type Finding = {
@@ -30,6 +34,7 @@ export type Finding = {
   confidence: string;
   scanner: string;
   rule_id: string;
+  contributing_rule_ids?: string[];
   description?: string;
   location?: string | null;
   line_numbers?: number[];
@@ -39,8 +44,10 @@ export type Finding = {
   exposure?: string;
   source?: string;
   tags?: string[];
+  evidence?: EvidenceKind | null;
+  explanation?: FindingExplanation | null;
 };
-export type Page<T> = { items: T[]; total: number; limit: number; offset: number };
+export type Page<T> = { items: T[]; total: number; total_stored?: number; limit: number; offset: number };
 export type Overview = {
   scan_count: number;
   finding_count: number;

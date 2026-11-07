@@ -69,6 +69,17 @@ test('production dashboard workflows, redaction, downloads, keyboard, and logout
   await page.getByText(scanId).click();
   await expect(page.getByRole('complementary', { name: 'scan details' })).toBeVisible();
   await expect(page.getByText('Create case from this scan')).toBeVisible();
+  const findingDownloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download all findings (JSONL)' }).click();
+  const findingDownload = await findingDownloadPromise;
+  const findingPath = await findingDownload.path();
+  expect(findingPath).toBeTruthy();
+  const { readFile } = await import('node:fs/promises');
+  const findingLines = (await readFile(findingPath!, 'utf8')).trim().split('\n').map((line) => JSON.parse(line) as { type: string; total_findings?: number; returned_findings?: number; finding?: { finding_id: string }; sha256?: string });
+  expect(findingLines[0]).toMatchObject({ type: 'manifest', total_findings: 2 });
+  expect(findingLines.slice(1, -1).map((row) => row.finding?.finding_id)).toEqual(['browser-finding-high', 'browser-finding-critical']);
+  expect(findingLines.at(-1)).toMatchObject({ type: 'complete', returned_findings: 2 });
+  expect(findingLines.at(-1)?.sha256).toMatch(/^[a-f0-9]{64}$/);
   await page.getByRole('button', { name: 'Create case from this scan' }).click();
 
   await expect(page.getByRole('heading', { name: 'Cases' }).first()).toBeVisible();
@@ -272,7 +283,9 @@ test('finding detail shows fixture data as text and preserves keyboard navigatio
   await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Findings', exact: true }).click();
   await expect(page.getByText('Synthetic high severity fixture')).toBeVisible();
   await page.getByText('Synthetic high severity fixture').click();
-  await expect(page.getByRole('complementary', { name: 'finding details' })).toBeVisible();
-  await expect(page.getByText('synthetic password=fixture-secret-value')).toBeVisible();
+  const detail = page.getByRole('complementary', { name: 'finding details' });
+  await expect(detail).toBeVisible();
+  await expect(detail).toContainText('password=[REDACTED]');
+  await expect(detail).not.toContainText('fixture-secret-value');
   await expect(page.locator('svg[onload], img[onerror]')).toHaveCount(0);
 });

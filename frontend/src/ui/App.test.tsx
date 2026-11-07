@@ -1,6 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
+import type { Finding, Scan } from '../types';
+import reportParityFixtureJson from '../test-fixtures/report-parity.json';
+
+const reportParityFixture = reportParityFixtureJson as unknown as { scan: Scan; findings: Finding[] };
 
 function json(body: unknown, status = 200) {
   return Promise.resolve(new Response(JSON.stringify(body), {
@@ -10,7 +14,7 @@ function json(body: unknown, status = 200) {
 }
 
 describe('dashboard authentication and overview', () => {
-  beforeEach(() => { vi.restoreAllMocks(); });
+  beforeEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); window.localStorage.clear(); });
 
   it('shows sign in after an unauthorized session check and loads stored metrics after login', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -37,9 +41,124 @@ describe('dashboard authentication and overview', () => {
     fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
+    expect(screen.getAllByText('ChiNeScan').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/GNET|GNetScan/i)).not.toBeInTheDocument();
     expect(await screen.findByText('3', { selector: 'strong' })).toBeInTheDocument();
     expect(await screen.findByText('7', { selector: 'strong' })).toBeInTheDocument();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/overview', expect.anything()));
+  });
+
+  it('persists the animation preference, pauses in hidden tabs, and hides decoration from assistive tech', async () => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = String(input);
+      if (path === '/api/auth/session') return json({ authenticated: true, email_masked: 'a***@example.test', signup_available: false });
+      if (path === '/api/auth/csrf') return json({ csrf_token: 'csrf-value' });
+      if (path === '/api/overview') return json({ scan_count: 0, finding_count: 0, findings_by_severity: { critical: 0, high: 0, medium: 0, low: 0, info: 0 }, recent_scans: [] });
+      if (path.startsWith('/api/findings?')) return json({ items: [], total: 0, limit: 20, offset: 0 });
+      throw new Error(`Unexpected API call: ${path}`);
+    });
+    render(<App/>);
+    await screen.findByRole('heading', { name: 'Overview' });
+    const ambient = document.querySelector('.terminal-ambient');
+    expect(ambient).toHaveAttribute('aria-hidden', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Pause ambient motion' }));
+    expect(screen.getByRole('button', { name: 'Resume ambient motion' })).toHaveAttribute('aria-pressed', 'false');
+    expect(window.localStorage.getItem('chinescan-terminal-motion')).toBe('off');
+    fireEvent.click(screen.getByRole('button', { name: 'Resume ambient motion' }));
+    expect(ambient).toHaveClass('is-active');
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await waitFor(() => expect(ambient).not.toHaveClass('is-active'));
+  });
+
+  it('uses reduced-motion settings and migrates the previous local preference', async () => {
+    window.localStorage.setItem('gnet-scan-terminal-motion', 'on');
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = String(input);
+      if (path === '/api/auth/session') return json({ authenticated: true, email_masked: 'a***@example.test', signup_available: false });
+      if (path === '/api/auth/csrf') return json({ csrf_token: 'csrf-value' });
+      if (path === '/api/overview') return json({ scan_count: 0, finding_count: 0, findings_by_severity: { critical: 0, high: 0, medium: 0, low: 0, info: 0 }, recent_scans: [] });
+      if (path.startsWith('/api/findings?')) return json({ items: [], total: 0, limit: 20, offset: 0 });
+      throw new Error(`Unexpected API call: ${path}`);
+    });
+    render(<App/>);
+    await screen.findByRole('heading', { name: 'Overview' });
+    expect(window.localStorage.getItem('chinescan-terminal-motion')).toBe('on');
+    expect(document.querySelector('.terminal-ambient')).not.toHaveClass('is-active');
+    expect(document.querySelector('.terminal-ambient')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('shows complete-export limit failures without creating a downloadable partial file', async () => {
+    const scanSummary = {
+      scan_id: 'scan-limit', started_at: '2026-01-01T00:00:00Z', finished_at: '2026-01-01T00:01:00Z',
+      status: 'complete', scanner: 'builtin', project_types: ['python'], finding_count: 0,
+      coverage_gap_count: 0,
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = String(input);
+      if (path === '/api/auth/session') return json({ authenticated: true, email_masked: 'a***@example.test', signup_available: false });
+      if (path === '/api/auth/csrf') return json({ csrf_token: 'csrf-value' });
+      if (path === '/api/overview') return json({ scan_count: 1, finding_count: 0, findings_by_severity: { critical: 0, high: 0, medium: 0, low: 0, info: 0 }, recent_scans: [scanSummary] });
+      if (path.startsWith('/api/findings?')) return json({ items: [], total: 0, limit: 20, offset: 0 });
+      if (path.startsWith('/api/scans/scan-limit/report/full-json')) return json({ detail: 'Complete JSON report exceeds the 20 MB export limit.' }, 413);
+      if (path.startsWith('/api/scans/scan-limit/report/json')) return json({ summary: { total_stored_findings: 4, available_finding_records: 4, grouped_issue_total: 3, returned_grouped_findings: 2, processing_failure_count: 1 }, report_omissions: { omitted_preview_groups: 1, omitted_preview_occurrences: 2, reason: 'per-category group cap' } });
+      if (path === '/api/scans/scan-limit') return json({ ...scanSummary, finding_ids: [], coverage: { examined: {}, excluded: {}, gaps: [] }, failures: {}, code_assessment: null });
+      throw new Error(`Unexpected API call: ${path}`);
+    });
+    render(<App/>);
+    await screen.findByRole('heading', { name: 'Overview' });
+    fireEvent.click(await screen.findByText('scan-lim')); // recent scan table uses the first eight characters
+    fireEvent.click(await screen.findByRole('button', { name: 'Download complete JSON' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('No file was downloaded');
+    expect(fetchMock).toHaveBeenCalledWith('/api/scans/scan-limit/report/full-json', { credentials: 'same-origin' });
+    fireEvent.click(screen.getByRole('button', { name: 'Download JSON preview' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('4 scan-linked finding IDs; 4 available records; 3 grouped issues; 2 groups returned. 1 group and 2 occurrences omitted (per-category group cap). 1 processing failure');
+  });
+
+  it('renders the shared report-parity fixture with the same score, coverage, explanation, and legacy state', async () => {
+    const { scan, findings } = reportParityFixture;
+    const summary = {
+      scan_id: scan.scan_id,
+      started_at: scan.started_at,
+      finished_at: scan.finished_at,
+      status: scan.status,
+      scanner: scan.scanner,
+      project_types: scan.project_types,
+      finding_count: findings.length,
+      coverage_gap_count: scan.coverage?.gaps.length ?? 0,
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = String(input);
+      if (path === '/api/auth/session') return json({ authenticated: true, email_masked: 'a***@example.test', signup_available: false });
+      if (path === '/api/auth/csrf') return json({ csrf_token: 'csrf-value' });
+      if (path === '/api/overview') return json({ scan_count: 1, finding_count: findings.length, findings_by_severity: { critical: 0, high: 1, medium: 1, low: 0, info: 0 }, recent_scans: [summary] });
+      if (path.startsWith('/api/findings?')) return json({ items: findings.map(({ finding_id, title, severity, category, confidence, scanner, rule_id }) => ({ finding_id, title, severity, category, confidence, scanner, rule_id })), total: findings.length, limit: 20, offset: 0 });
+      if (path === `/api/scans/${scan.scan_id}`) return json({ ...scan, finding_count: findings.length, coverage_gap_count: scan.coverage?.gaps.length ?? 0, failures: {} });
+      const finding = findings.find((item) => path === `/api/findings/${item.finding_id}`);
+      if (finding) return json(JSON.parse(JSON.stringify(finding).replaceAll('redaction-canary', '[REDACTED]')));
+      throw new Error(`Unexpected API call: ${path}`);
+    });
+    render(<App/>);
+    await screen.findByRole('heading', { name: 'Overview' });
+    fireEvent.click(await screen.findByText(scan.scan_id.slice(0, 8)));
+    await screen.findByRole('heading', { name: 'Scan details' });
+    expect(screen.getByText(`${scan.scan_id}`)).toBeInTheDocument();
+    expect(screen.getByText('Code pattern risk: 36/100', { exact: false })).toBeInTheDocument();
+    expect(screen.getByText(/legacy-pattern-v1/)).toBeInTheDocument();
+    expect(screen.getByText(/2 observed → 2 counted × 18; contribution 36/)).toBeInTheDocument();
+    expect(screen.getByText(/generated: 3 excluded/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: findings[0].finding_id.slice(0, 12) + ' →' }));
+    await screen.findByRole('heading', { name: 'Finding details' });
+    expect(screen.getByText(/potential impact if the preconditions hold/)).toBeInTheDocument();
+    expect(screen.getByText(/data provenance is unresolved/)).toBeInTheDocument();
+    expect(screen.getByText('static-impact-v1')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('redaction-canary');
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Main navigation' })).getByRole('button', { name: /findings/i }));
+    fireEvent.click(await screen.findByText(findings[1].title));
+    expect(await screen.findByRole('heading', { name: 'Explanation unavailable' })).toBeInTheDocument();
   });
 
   it('renders API finding titles containing markup as text', async () => {
@@ -80,7 +199,7 @@ describe('dashboard authentication and overview', () => {
     render(<App/>);
     expect(await screen.findByText('No scans yet')).toBeInTheDocument();
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Main navigation' })).getByRole('button', { name: /findings/i }));
-    expect(await screen.findByText('No persisted finding records')).toBeInTheDocument();
+    expect(await screen.findByText('No matching finding records')).toBeInTheDocument();
   });
 
   it('explains that signup is disabled when an operator already exists', async () => {

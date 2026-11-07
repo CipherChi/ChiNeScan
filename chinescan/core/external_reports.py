@@ -30,7 +30,7 @@ def parse_scanity_export(
         raise ExternalReportError("Report exceeds the 2 MB import limit.")
     try:
         payload = json.loads(content.decode("utf-8-sig"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
         raise ExternalReportError("Report must be valid UTF-8 JSON or SARIF.") from exc
     if not isinstance(payload, dict):
         raise ExternalReportError("Report root must be a JSON object.")
@@ -260,8 +260,12 @@ def _text(value: Any, limit: int) -> str:
         value = value.get("text") or value.get("message")
     if not isinstance(value, str):
         return ""
-    cleaned = "".join(char for char in value if char in "\n\t" or ord(char) >= 32)
-    return str(redact(cleaned)).strip()[:limit]
+    # Imported fields are intentionally clipped before redaction because only
+    # this prefix can be persisted. This avoids scanning discarded attacker-
+    # controlled tails while still redacting every character we retain.
+    bounded = value[:limit]
+    cleaned = "".join(char for char in bounded if char in "\n\t" or ord(char) >= 32)
+    return str(redact(cleaned)).strip()
 
 
 def _nested_text(value: Any, key: str) -> str:

@@ -21,7 +21,7 @@ CASES: dict[str, tuple[str, str, str]] = {
         "src/app.py",
     ),
     "SQL-INJECTION": (
-        "const sql = 'SELECT * FROM users WHERE id=' + request.id",
+        "const rows = await db.query('SELECT * FROM users WHERE id=' + request.id)",
         "db.query('SELECT * FROM users WHERE id = ?', [request.id])",
         "src/app.js",
     ),
@@ -86,9 +86,9 @@ CASES: dict[str, tuple[str, str, str]] = {
         "src/server.js",
     ),
     "MISSING-SECURITY-HEADERS": (
-        "app = express()",
-        "app = express(); app.use(helmet())",
-        "src/server.js",
+        "module.exports = { headers: async () => [{ source: '/(.*)', headers: [{ key: 'X-Frame-Options', value: 'DENY' }] }] }",  # noqa: E501
+        "module.exports = { headers: async () => [{ source: '/(.*)', headers: [{ key: 'Content-Security-Policy', value: \"default-src 'self'\" }, { key: 'X-Frame-Options', value: 'DENY' }, { key: 'X-Content-Type-Options', value: 'nosniff' }, { key: 'Referrer-Policy', value: 'no-referrer' }] }] }",  # noqa: E501
+        "next.config.js",
     ),
     "TLS-VERIFY-DISABLED": (
         "fetch(url, { rejectUnauthorized: false })",
@@ -207,3 +207,128 @@ def test_context_dependent_match_stays_possible(tmp_path: Path) -> None:
     )
     finding = next(item for item in findings if item.rule_id == "API-AUTH-MISSING")
     assert finding.confidence.value == "POSSIBLE"
+
+
+def test_jwt_none_algorithm_keyword_is_high_potential_impact_not_critical(tmp_path: Path) -> None:
+    path = tmp_path / "src" / "auth.js"
+    path.parent.mkdir(parents=True)
+    findings = analyze_source(
+        tmp_path,
+        path,
+        "verify(token, key, { algorithm: 'none' })",
+        is_test=False,
+    )
+    finding = next(item for item in findings if item.rule_id == "JWT-ALG-NONE")
+    assert finding.severity.value == "high"
+    assert finding.confidence.value == "POSSIBLE"
+    assert finding.explanation is not None
+    assert finding.explanation.classification_policy_version == "static-impact-v1"
+    assert "does not establish" in (finding.explanation.severity_rationale or "")
+    assert not any(rule.severity.value == "critical" for rule in RULES)
+
+
+@pytest.mark.parametrize(
+    ("relative", "source", "expected"),
+    [
+        ("src/client.ts", 'const node = document.querySelector(`[data-id="${id}"]`);', False),
+        ("src/server.ts", 'createHash("sha256").update(`${scope}:${value}`);', False),
+        ("src/server.ts", "// db.query(`SELECT * FROM t WHERE id=${request.id}`)", False),
+        (
+            "src/server.ts",
+            'const example = "db.query(`SELECT * FROM t WHERE id=${request.id}`)";',
+            False,
+        ),
+        (
+            "src/api.ts",
+            "const rows = await db.query(`SELECT * FROM users WHERE id=${request.params.id}`);",
+            True,
+        ),
+        ("src/api.ts", 'cursor.execute("SELECT * FROM users WHERE id=%s", (request.id,))', False),
+        (
+            "src/api.py",
+            'cursor.execute("SELECT * FROM users WHERE id=" + request.args["id"])',
+            True,
+        ),
+        ("src/api.ts", "await prisma.$queryRaw`SELECT * FROM users WHERE id=${request.id}`", True),
+    ],
+)
+def test_sql_detection_requires_database_sink_and_unsafe_query(
+    tmp_path: Path, relative: str, source: str, expected: bool
+) -> None:
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    findings = analyze_source(tmp_path, path, source, is_test=False)
+    sql_findings = [finding for finding in findings if finding.rule_id == "SQL-INJECTION"]
+    assert bool(sql_findings) is expected
+    if sql_findings:
+        assert sql_findings[0].confidence.value == "POSSIBLE"
+        assert sql_findings[0].explanation is not None
+        assert "no AST" in " ".join(sql_findings[0].explanation.limitations)
+
+
+def test_display_text_and_project_pages_do_not_become_absence_findings(tmp_path: Path) -> None:
+    samples = {
+        "src/app/(public)/contact/page.tsx": 'export default function Page(){ return <a href="/contact">Contact</a> }',  # noqa: E501
+        "src/app/(public)/page.tsx": 'export default function Page(){ return <a href="/admin/login">Login</a> }',  # noqa: E501
+        "eslint.config.mjs": "export default config;",
+        "playwright.config.ts": "export default defineConfig({});",
+    }
+    for relative, source in samples.items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        rules = {
+            finding.rule_id for finding in analyze_source(tmp_path, path, source, is_test=False)
+        }
+        assert "LOGIN-NO-RATE-LIMIT" not in rules
+        assert "MISSING-SECURITY-HEADERS" not in rules
+
+
+def test_cookie_simple_options_variable_is_resolved(tmp_path: Path) -> None:
+    path = tmp_path / "src" / "auth.js"
+    path.parent.mkdir()
+    source = "const options = { httpOnly: true, secure: true, sameSite: 'lax' };\nres.cookie('session', token, options);"  # noqa: E501
+    rules = {finding.rule_id for finding in analyze_source(tmp_path, path, source, is_test=False)}
+    assert "COOKIE-FLAGS" not in rules
+
+
+def test_code_pattern_risk_ledger_reconciles_caps_and_bonuses(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from chinescan.core.orchestration.code_rules import vibe_risk
+
+    files = []
+    for index in range(4):
+        path = tmp_path / f"src/{index}.tsx"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "'use client'; validate(form); const key = 'service_role';", encoding="utf-8"
+        )
+        files.append(path)
+    route = tmp_path / "src/route.ts"
+    route.write_text(
+        "export function GET() {}\nexport function POST() {}\nexport function PUT() {}\nexport function DELETE() {}",  # noqa: E501
+        encoding="utf-8",
+    )
+    files.append(route)
+    risk = vibe_risk(SimpleNamespace(source_files=tuple(files), root=tmp_path))
+    assert risk.algorithm_version == "legacy-pattern-v1"
+    assert risk.score == sum(item.contribution for item in risk.contributions)
+    by_signal = {item.signal_id: item for item in risk.contributions}
+    assert by_signal["tutorial_default"].raw_count == 4
+    assert by_signal["tutorial_default"].effective_count == 3
+    assert by_signal["tutorial_default"].contribution == 54
+    assert by_signal["client_validation"].contribution == 24
+    assert "server-side validation not established" in by_signal["client_validation"].description
+    assert by_signal["route_handlers_without_controls"].contribution == 12
+    assert risk.score == 90
+
+
+def test_legacy_score_has_explicit_versioned_ledger(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from chinescan.core.orchestration.code_rules import vibe_risk
+
+    risk = vibe_risk(SimpleNamespace(source_files=(), root=tmp_path))
+    assert risk.score == 0
+    assert risk.contributions
+    assert all(item.raw_count == 0 and item.contribution == 0 for item in risk.contributions)
