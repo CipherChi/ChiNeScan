@@ -65,3 +65,8 @@ family, and SQLite payload compatibility are retained. JSONL is a new format and
 JSON object. Follow the documented local upgrade process: back up and verify the local database,
 test the candidate against a copy, and preserve the previous working database until the upgrade is
 confirmed. No deployment or production migration was performed for this handover.
+
+
+## SQLite risk status
+
+The three Debian Trixie libsqlite3-0 findings are accepted residual risk under the v0.1.0 local, single-operator conditions recorded verbatim in docs/ChiNeScan-security-review.md; they are not fixed. Re-check the Debian tracker for CVE-2026-119373, CVE-2026-119374, and CVE-2026-119379 before 2026-12-08, or earlier if Debian ships a Trixie fix.
