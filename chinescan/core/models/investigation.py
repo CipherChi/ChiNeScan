@@ -220,6 +220,7 @@ class Scan(SchemaRecord):
     event_ids: list[str] = Field(default_factory=list)
     alert_ids: list[str] = Field(default_factory=list)
     timeline_entry_ids: list[str] = Field(default_factory=list)
+    location_ids: list[str] = Field(default_factory=list)
     failures: dict[str, str] = Field(default_factory=dict)
     scan_options: dict[str, str | int | float | bool] = Field(default_factory=dict)
     coverage: CoverageReport | None = None

@@ -25,6 +25,7 @@ from chinescan.core.models.investigation import (
     Scan,
     VibeCodingRisk,
 )
+from chinescan.web.app import ScanDetailResponse
 from chinescan.core.storage.sqlite import SQLiteRepository
 from chinescan.web.app import COOKIE_NAME, create_app
 from chinescan.web.auth import (
@@ -687,6 +688,39 @@ def test_old_shape_scan_still_serializes_from_authenticated_api(tmp_path):
     assert response.json()["coverage_gap_count"] == 0
 
 
+def test_every_persisted_scan_column_round_trips_through_detail_response(tmp_path):
+    _app, client, _credential, database = _fixture(tmp_path)
+    repository = SQLiteRepository(database)
+    scan = Scan(
+        scan_id="scan-1",
+        project_id="project-1",
+        project_removed=True,
+        target_id="target-1",
+        scanner="builtin",
+        started_at=datetime.now(UTC),
+        status="partial",
+        project_types=["python"],
+        finding_ids=["finding-1"],
+        event_ids=["event-1"],
+        alert_ids=["alert-1"],
+        timeline_entry_ids=["timeline-1"],
+        location_ids=["location-1"],
+        failures={"logs": "unavailable"},
+        scan_options={"limit": 7},
+    )
+    persisted = scan.model_dump(mode="json")
+    repository.save("scan", scan.scan_id, persisted)
+    repository.close()
+
+    assert set(Scan.model_fields) <= set(ScanDetailResponse.model_fields)
+    assert _login(client).status_code == 200
+    response = client.get("/api/scans/scan-1")
+    assert response.status_code == 200
+    payload = response.json()
+    for column in Scan.model_fields:
+        assert payload[column] == persisted[column], column
+
+
 def test_successful_findings_payload_preserves_hashes_titles_and_tokens(tmp_path):
     _app, client, _credential, database = _fixture(tmp_path)
     token = secrets.token_urlsafe(32)
@@ -1204,6 +1238,37 @@ def test_protected_reads_and_paginated_real_records(tmp_path):
     scan_detail = client.get("/api/scans/scan-1").json()
     assert "target_id" not in scan_detail
     assert scan_detail["finding_ids"] == ["finding-1", "finding-2"]
+
+
+def test_overview_and_scan_list_accept_project_log_scan_records_with_locations(tmp_path):
+    _app, client, _credential, database = _fixture(tmp_path)
+    repository = SQLiteRepository(database)
+    scan = repository.get("scan", "scan-1")
+    assert scan is not None
+    scan["location_ids"] = ["synthetic-location"]
+    repository.save("scan", "scan-1", scan)
+    repository.close()
+
+    assert _login(client).status_code == 200
+    overview = client.get("/api/overview")
+    assert overview.status_code == 200
+    assert overview.json()["recent_scans"][0]["scan_id"] == "scan-1"
+    scans = client.get("/api/scans")
+    assert scans.status_code == 200
+    assert scans.json()["items"][0]["scan_id"] == "scan-1"
+
+
+def test_backend_access_log_records_method_route_status_and_duration(tmp_path, caplog):
+    _app, client, _credential, _database = _fixture(tmp_path)
+    with caplog.at_level("INFO", logger="chinescan.access"):
+        response = client.get("/api/health")
+    assert response.status_code == 200
+    record = next(record for record in caplog.records if record.message == "request_complete")
+    assert record.method == "GET"
+    assert record.route == "/api/health"
+    assert record.status == 200
+    assert record.duration_ms >= 0
+    assert not hasattr(record, "body")
 
 
 def test_malware_api_fail_closed_and_redacted_case_linking(tmp_path, request):
