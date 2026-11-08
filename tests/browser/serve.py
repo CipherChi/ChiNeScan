@@ -283,6 +283,7 @@ def main() -> None:
             github_import_enabled=args.github_import_enabled,
         ),
         github_import_test_file_transport=args.github_import_enabled,
+        project_operation_rate_limit=1000,
     )
     served_application: ASGIApp = application
     if args.hold_scan_until_expiry:

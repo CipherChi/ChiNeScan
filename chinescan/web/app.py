@@ -536,6 +536,7 @@ def create_app(
     malware_registry_path: Path | str | None = None,
     settings: Settings | None = None,
     github_import_test_file_transport: bool = False,
+    project_operation_rate_limit: int = 20,
 ) -> FastAPI:
     """Create an application instance; sessions and throttling live in this process."""
     configure_logging()
@@ -647,7 +648,7 @@ def create_app(
         ),
     )
     chain_jobs = ChainTraceJobManager(repository, active_settings)
-    project_throttle = LoginThrottle(limit=20, window_seconds=60)
+    project_throttle = LoginThrottle(limit=project_operation_rate_limit, window_seconds=60)
     fs_browse_throttle = LoginThrottle(limit=60, window_seconds=60)
     malware_config = (
         Path(malware_registry_path)

@@ -4,6 +4,12 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { basename, parse, relative, resolve, sep } from 'node:path';
 
+const runId = process.env.CHINESCAN_E2E_RUN_ID ?? 'local';
+const codeProjectName = `E2E code project ${runId}`;
+const codeCaseTitle = `E2E linked project case ${runId}`;
+const malwareProjectName = `E2E malware project ${runId}`;
+const logProjectName = (run: number) => `E2E log project ${runId} ${run}`;
+
 type Fixture = { url: string; email: string; password: string };
 function fixtures(): Record<string, Fixture> {
   return JSON.parse(process.env.CHINESCAN_BROWSER_TEST_URLS ?? '{}') as Record<string, Fixture>;
@@ -56,6 +62,14 @@ async function approveProjectFolder(
   await dialog.getByRole('button', { name: 'Approve folder' }).click();
 }
 
+async function removeProjectRecord(page: import('@playwright/test').Page, projectName: string) {
+  await page.getByRole('row').filter({ hasText: projectName }).getByRole('button', { name: 'Open project' }).click();
+  await page.getByRole('button', { name: 'Remove project' }).click();
+  await page.getByLabel(new RegExp(`Type ${projectName} to confirm`)).fill(projectName);
+  await page.getByRole('button', { name: 'Remove project record' }).click();
+  await expect(page.getByRole('row').filter({ hasText: projectName })).toHaveCount(0);
+}
+
 async function folderHash(directory: string): Promise<string> {
   const hash = createHash('sha256');
   async function visit(current: string, relative: string) {
@@ -84,29 +98,50 @@ test('add project, assess code, create linked case and remove record without tou
   const originalFolderHash = await folderHash(projectFolder!);
   await signIn(page, fixture);
   await page.getByRole('button', { name: 'Projects', exact: true }).click();
-  await approveProjectFolder(page, 'E2E code project');
+  await approveProjectFolder(page, codeProjectName);
   await capture(page, 'picker.png');
-  await expect(page.getByRole('heading', { name: 'E2E code project' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: codeProjectName })).toBeVisible();
   await capture(page, 'project-page.png');
+  const assessmentRequests: string[] = [];
+  page.on('response', (response) => {
+    const url = new URL(response.url());
+    const match = url.pathname.match(/^\/api\/projects\/[^/]+(?:\/code-jobs)?$/);
+    if (!match) return;
+    const route = url.pathname.replace(/^\/api\/projects\/[^/]+/, '/api/projects/:id');
+    assessmentRequests.push(`${response.request().method()} ${route} -> ${response.status()}`);
+  });
+  page.on('requestfailed', (request) => {
+    const url = new URL(request.url());
+    if (!/^\/api\/projects\/[^/]+(?:\/code-jobs)?$/.test(url.pathname)) return;
+    const route = url.pathname.replace(/^\/api\/projects\/[^/]+/, '/api/projects/:id');
+    assessmentRequests.push(`${request.method()} ${route} -> request failed`);
+  });
   await page.getByRole('button', { name: 'Assess code' }).click();
   const partial = page.getByText('Partial result');
-  await expect(partial).toBeVisible({ timeout: 60_000 });
+  try {
+    await expect(partial).toBeVisible({ timeout: 60_000 });
+  } catch (error) {
+    const recentJobRows = await page.getByRole('region', { name: 'Recent jobs' }).getByRole('listitem').count().catch(() => -1);
+    const assessmentHistoryRows = await page.getByRole('region', { name: 'Assessment history' }).locator('.project-scan-row').count().catch(() => -1);
+    const apiEvents = assessmentRequests.slice(-20).join('\n') || '[no matching API responses]';
+    throw new Error(`${String(error)}\nAssessment diagnostics (sanitized routes/status and row counts only):\n${apiEvents}\nRecent job rows: ${recentJobRows}\nAssessment history rows: ${assessmentHistoryRows}`);
+  }
   await capture(page, 'partial-banner.png');
   await expect(page.getByRole('heading', { name: /Persisted findings/ })).toBeVisible();
   const caseLink = page.getByRole('button', { name: 'Create or link case' }).first();
   await expect(caseLink).toBeVisible();
   await caseLink.click();
   await expect(page.getByRole('heading', { name: 'Create a case' })).toBeVisible();
-  await page.getByLabel('Case title').fill('E2E linked project case');
+  await page.getByLabel('Case title').fill(codeCaseTitle);
   await page.getByRole('button', { name: 'Create case' }).click();
   await expect(page.getByText('Case created and saved.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Projects', exact: true }).click();
-  await page.getByRole('row').filter({ hasText: 'E2E code project' }).getByRole('button', { name: 'Open project' }).click();
-  await expect(page.getByText('E2E linked project case')).toBeVisible();
+  await page.getByRole('row').filter({ hasText: codeProjectName }).getByRole('button', { name: 'Open project' }).click();
+  await expect(page.getByText(codeCaseTitle)).toBeVisible();
   await page.getByRole('button', { name: 'Remove project' }).click();
-  await page.getByLabel(/Type E2E code project to confirm/).fill('E2E code project');
+  await page.getByLabel(new RegExp(`Type ${codeProjectName} to confirm`)).fill(codeProjectName);
   await page.getByRole('button', { name: 'Remove project record' }).click();
-  await expect(page.getByRole('row').filter({ hasText: 'E2E code project' })).toHaveCount(0);
+  await expect(page.getByRole('row').filter({ hasText: codeProjectName })).toHaveCount(0);
   expect(existsSync(resolve(projectFolder!, 'app.py'))).toBe(true);
   expect(existsSync(resolve(projectFolder!, 'worker.py'))).toBe(true);
   expect(await folderHash(projectFolder!)).toBe(originalFolderHash);
@@ -126,8 +161,8 @@ test('project malware acknowledgement gates scanning, shows partial findings, an
   const fixture = fixtures().standard;
   await signIn(page, fixture);
   await page.getByRole('button', { name: 'Projects', exact: true }).click();
-  await approveProjectFolder(page, 'E2E malware project');
-  await expect(page.getByRole('heading', { name: 'E2E malware project' })).toBeVisible();
+  await approveProjectFolder(page, malwareProjectName);
+  await expect(page.getByRole('heading', { name: malwareProjectName })).toBeVisible();
 
   const startedJobs: string[] = [];
   page.on('request', (request) => {
@@ -152,6 +187,8 @@ test('project malware acknowledgement gates scanning, shows partial findings, an
   await expect(page.getByText('Partial malware scan')).toBeVisible();
   await capture(page, 'malware-partial-banner.png');
   expect(startedJobs).toHaveLength(1);
+  await page.getByRole('button', { name: '← All projects' }).click();
+  await removeProjectRecord(page, malwareProjectName);
 });
 
 test('project log suggestions and analysis work twice and removal preserves files', async ({ page }) => {
@@ -163,8 +200,8 @@ test('project log suggestions and analysis work twice and removal preserves file
 
   for (let run = 1; run <= 2; run += 1) {
     await page.getByRole('button', { name: 'Projects', exact: true }).click();
-    await approveProjectFolder(page, `E2E log project ${run}`);
-    await expect(page.getByRole('heading', { name: `E2E log project ${run}` })).toBeVisible();
+    await approveProjectFolder(page, logProjectName(run));
+    await expect(page.getByRole('heading', { name: logProjectName(run) })).toBeVisible();
     await capture(page, `project-log-locations-${run}.png`);
 
     await page.getByRole('button', { name: 'Suggest locations' }).click();
@@ -189,5 +226,8 @@ test('project log suggestions and analysis work twice and removal preserves file
     await expect(page.getByText('No log locations linked yet.')).toBeVisible();
     expect(await folderHash(projectFolder!)).toBe(originalFolderHash);
     await page.getByRole('button', { name: '← All projects' }).click();
+  }
+  for (const projectName of [logProjectName(1), logProjectName(2)]) {
+    await removeProjectRecord(page, projectName);
   }
 });
