@@ -36,6 +36,33 @@ from chinescan.web.auth import (
 )
 from chinescan.web.log_jobs import LogSourceRegistry
 
+SCAN_DETAIL_EXPOSED_FIELD_REASONS = {
+    "scan_id": "Stable identifier used to request and link this scan.",
+    "started_at": "Shown as the scan start time.",
+    "finished_at": "Shown as the scan completion time when available.",
+    "status": "Shown to explain whether the scan completed or was partial.",
+    "scanner": "Shown to identify the scanner that produced the result.",
+    "project_types": "Shown as the detected project classifications.",
+    "finding_ids": "Used to link persisted findings to the scan.",
+    "coverage": "Shown to explain assessed and unassessed scope.",
+    "failures": "Shown to explain partial results without exposing raw records.",
+    "code_assessment": "Shown as the scan's code assessment summary.",
+    "verdict": "Shown as the scan's summarized verdict.",
+}
+SCAN_DETAIL_WITHHELD_FIELD_REASONS = {
+    "schema_version": "Storage compatibility metadata is not part of the API view.",
+    "project_id": "Internal project registry relationship; project details use their own endpoint.",
+    "project_removed": "Internal project lifecycle state, not a scan result.",
+    "target_id": "Internal target relationship; target records are not exposed by this view.",
+    "event_ids": "Internal event links are served through the timeline APIs.",
+    "alert_ids": "Internal alert links are served through the alert APIs.",
+    "timeline_entry_ids": "Internal timeline links are served through the timeline API.",
+    "location_ids": "Internal local log-location links are not scan response data.",
+    "scan_options": (
+        "Internal scan configuration may disclose operator inputs and is not needed by this view."
+    ),
+}
+
 
 def _fixture(tmp_path, *, ttl: int = 1800):
     database = tmp_path / "records.sqlite3"
@@ -711,13 +738,21 @@ def test_every_persisted_scan_column_round_trips_through_detail_response(tmp_pat
     repository.save("scan", scan.scan_id, persisted)
     repository.close()
 
-    assert set(Scan.model_fields) <= set(ScanDetailResponse.model_fields)
+    exposed = set(SCAN_DETAIL_EXPOSED_FIELD_REASONS)
+    withheld = set(SCAN_DETAIL_WITHHELD_FIELD_REASONS)
+    assert exposed.isdisjoint(withheld)
+    assert exposed | withheld == set(Scan.model_fields)
+    assert exposed == set(ScanDetailResponse.model_fields) & set(Scan.model_fields)
+    assert all(SCAN_DETAIL_EXPOSED_FIELD_REASONS.values())
+    assert all(SCAN_DETAIL_WITHHELD_FIELD_REASONS.values())
     assert _login(client).status_code == 200
     response = client.get("/api/scans/scan-1")
     assert response.status_code == 200
     payload = response.json()
-    for column in Scan.model_fields:
+    for column in exposed:
         assert payload[column] == persisted[column], column
+    for column in withheld:
+        assert column not in payload, column
 
 
 def test_successful_findings_payload_preserves_hashes_titles_and_tokens(tmp_path):
@@ -1255,6 +1290,9 @@ def test_overview_and_scan_list_accept_project_log_scan_records_with_locations(t
     scans = client.get("/api/scans")
     assert scans.status_code == 200
     assert scans.json()["items"][0]["scan_id"] == "scan-1"
+    scan_detail = client.get("/api/scans/scan-1")
+    assert scan_detail.status_code == 200
+    assert "location_ids" not in scan_detail.json()
 
 
 def test_backend_access_log_records_method_route_status_and_duration(tmp_path, caplog):

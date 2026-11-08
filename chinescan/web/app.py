@@ -183,16 +183,7 @@ class ScanSummaryResponse(BaseModel):
 
 
 class ScanDetailResponse(ScanSummaryResponse):
-    schema_version: str = "1.0"
-    project_id: str | None = None
-    project_removed: bool = False
-    target_id: str
     finding_ids: list[str]
-    event_ids: list[str] = Field(default_factory=list)
-    alert_ids: list[str] = Field(default_factory=list)
-    timeline_entry_ids: list[str] = Field(default_factory=list)
-    location_ids: list[str] = Field(default_factory=list)
-    scan_options: dict[str, str | int | float | bool] = Field(default_factory=dict)
     coverage: CoverageReport | None = None
     failures: dict[str, str] = Field(default_factory=dict)
     code_assessment: CodeAssessmentSummary | None = None
@@ -2002,16 +1993,7 @@ def create_app(
             raise HTTPException(status_code=404, detail="Scan not found.")
         scan = Scan.model_validate(raw)
         return _scan_summary(scan) | {
-            "schema_version": scan.schema_version,
-            "project_id": scan.project_id,
-            "project_removed": scan.project_removed,
-            "target_id": scan.target_id,
             "finding_ids": scan.finding_ids,
-            "event_ids": scan.event_ids,
-            "alert_ids": scan.alert_ids,
-            "timeline_entry_ids": scan.timeline_entry_ids,
-            "location_ids": scan.location_ids,
-            "scan_options": scan.scan_options,
             "coverage": scan.coverage.model_dump(mode="json") if scan.coverage else None,
             "failures": scan.failures,
             "code_assessment": scan.code_assessment.model_dump(mode="json")
