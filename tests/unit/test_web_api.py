@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from shutil import rmtree
 from tempfile import mkdtemp
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -26,7 +27,13 @@ from chinescan.core.models.investigation import (
     VibeCodingRisk,
 )
 from chinescan.core.storage.sqlite import SQLiteRepository
-from chinescan.web.app import COOKIE_NAME, ScanDetailResponse, create_app
+from chinescan.web.app import (
+    COOKIE_NAME,
+    PROJECT_OPERATION_RATE_LIMIT,
+    PROJECT_OPERATION_RATE_WINDOW_SECONDS,
+    ScanDetailResponse,
+    create_app,
+)
 from chinescan.web.auth import (
     create_operator,
     issue_reset_token,
@@ -64,7 +71,12 @@ SCAN_DETAIL_WITHHELD_FIELD_REASONS = {
 }
 
 
-def _fixture(tmp_path, *, ttl: int = 1800):
+def _fixture(
+    tmp_path,
+    *,
+    ttl: int = 1800,
+    test_only_project_operation_rate_limit: int | None = None,
+):
     database = tmp_path / "records.sqlite3"
     credential = tmp_path / "private" / "operator.json"
     create_operator(credential, "analyst@example.test", "safe local password")
@@ -95,7 +107,15 @@ def _fixture(tmp_path, *, ttl: int = 1800):
     repository.save("finding", critical.finding_id, critical.model_dump(mode="json"))
     repository.save("scan", scan.scan_id, scan.model_dump(mode="json"))
     repository.close()
-    app = create_app(database, credential, session_ttl_seconds=ttl, serve_frontend=False)
+    app_options: dict[str, Any] = {
+        "session_ttl_seconds": ttl,
+        "serve_frontend": False,
+    }
+    if test_only_project_operation_rate_limit is not None:
+        app_options["test_only_project_operation_rate_limit"] = (
+            test_only_project_operation_rate_limit
+        )
+    app = create_app(database, credential, **app_options)
     client = TestClient(app, base_url="http://127.0.0.1", client=("127.0.0.1", 50000))
     return app, client, credential, database
 
@@ -108,6 +128,70 @@ def _login(
         json={"email": email, "password": password},
         headers={"Origin": str(client.base_url).rstrip("/")},
     )
+
+
+def test_project_approval_uses_20_per_60_second_default_despite_test_environment(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("CI", "true")
+    monkeypatch.setenv("NODE_ENV", "test")
+    monkeypatch.delenv("CHINESCAN_TEST_ONLY_PROJECT_OPERATION_RATE_LIMIT", raising=False)
+    monkeypatch.delenv("CHINESCAN_PROJECT_OPERATION_RATE_LIMIT", raising=False)
+    assert PROJECT_OPERATION_RATE_LIMIT == 20
+    assert PROJECT_OPERATION_RATE_WINDOW_SECONDS == 60
+
+    _app, client, _credential, _database = _fixture(tmp_path)
+    login = _login(client)
+    assert login.status_code == 200
+    headers = {
+        "Origin": str(client.base_url).rstrip("/"),
+        "X-CSRF-Token": login.json()["csrf_token"],
+    }
+    payload = {"directory_id": "a" * 40, "approved": False}
+    start = time.monotonic()
+    statuses = [
+        client.post("/api/projects/approve-folder", json=payload, headers=headers).status_code
+        for _ in range(PROJECT_OPERATION_RATE_LIMIT + 1)
+    ]
+    assert time.monotonic() - start < PROJECT_OPERATION_RATE_WINDOW_SECONDS
+    assert statuses == [400] * PROJECT_OPERATION_RATE_LIMIT + [429]
+
+
+def test_project_rate_limit_override_requires_explicit_test_only_setting(tmp_path):
+    test_limit = 1000
+    _app, client, _credential, _database = _fixture(
+        tmp_path, test_only_project_operation_rate_limit=test_limit
+    )
+    login = _login(client)
+    assert login.status_code == 200
+    headers = {
+        "Origin": str(client.base_url).rstrip("/"),
+        "X-CSRF-Token": login.json()["csrf_token"],
+    }
+    payload = {"directory_id": "a" * 40, "approved": False}
+    statuses = [
+        client.post("/api/projects/approve-folder", json=payload, headers=headers).status_code
+        for _ in range(PROJECT_OPERATION_RATE_LIMIT + 1)
+    ]
+    assert statuses == [400] * (PROJECT_OPERATION_RATE_LIMIT + 1)
+
+
+def test_test_only_project_rate_limit_is_absent_from_production_startup_paths():
+    root = Path(__file__).resolve().parents[2]
+    startup_paths = (
+        "docker/Dockerfile",
+        "scripts/start-dashboard.ps1",
+        "docker-compose.yml",
+        "docs/DEPLOYMENT.md",
+    )
+    override_names = (
+        "test_only_project_operation_rate_limit",
+        "CHINESCAN_TEST_ONLY_PROJECT_OPERATION_RATE_LIMIT",
+    )
+    for relative_path in startup_paths:
+        content = (root / relative_path).read_text(encoding="utf-8")
+        for override_name in override_names:
+            assert override_name not in content, f"{override_name} leaked into {relative_path}"
 
 
 def _import_session(client: TestClient) -> dict[str, str]:

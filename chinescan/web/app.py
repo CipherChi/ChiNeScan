@@ -112,6 +112,8 @@ COOKIE_NAME = "chinescan_session"
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 MAX_SCAN_REPORT_FINDINGS = 10_000
 MAX_SCAN_REPORT_BYTES = 20 * 1024 * 1024
+PROJECT_OPERATION_RATE_LIMIT = 20
+PROJECT_OPERATION_RATE_WINDOW_SECONDS = 60
 
 
 class LoginRequest(BaseModel):
@@ -527,9 +529,9 @@ def create_app(
     malware_registry_path: Path | str | None = None,
     settings: Settings | None = None,
     github_import_test_file_transport: bool = False,
-    project_operation_rate_limit: int = 20,
+    test_only_project_operation_rate_limit: int | None = None,
 ) -> FastAPI:
-    """Create an application instance; sessions and throttling live in this process."""
+    """Create an app; the optional project-limit override is only for isolated tests."""
     configure_logging()
     active_settings = settings or Settings(_env_file=None)
     repository = SQLiteRepository(database_path)
@@ -639,7 +641,14 @@ def create_app(
         ),
     )
     chain_jobs = ChainTraceJobManager(repository, active_settings)
-    project_throttle = LoginThrottle(limit=project_operation_rate_limit, window_seconds=60)
+    project_throttle = LoginThrottle(
+        limit=(
+            PROJECT_OPERATION_RATE_LIMIT
+            if test_only_project_operation_rate_limit is None
+            else test_only_project_operation_rate_limit
+        ),
+        window_seconds=PROJECT_OPERATION_RATE_WINDOW_SECONDS,
+    )
     fs_browse_throttle = LoginThrottle(limit=60, window_seconds=60)
     malware_config = (
         Path(malware_registry_path)

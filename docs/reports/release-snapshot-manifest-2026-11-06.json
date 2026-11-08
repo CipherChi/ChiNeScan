@@ -4,18 +4,19 @@
   "base_commit": "2ad86b05ca82181da78b3eb6bfee5598d63dc8af",
   "working_tree_state": {
     "branch": "release/v0.1.0",
-    "head_commit": "57ca72a1a19a0f16d5199815fe0c909f6472d481",
+    "head_commit": "132aa5fc8ee7e4568710cf41b7451f34ba5c5f19",
     "is_clean": false,
     "files_in_manifest": 297,
-    "modified": 43,
+    "modified": 48,
     "added": 8,
-    "unchanged": 245,
+    "unchanged": 240,
     "removed": 1,
-    "staged_path_count": 53,
+    "staged_path_count": 58,
     "unstaged_path_count": 0,
     "untracked_path_count": 5,
     "deleted_path_count": 1,
     "staged_paths": [
+      ".github/workflows/ci.yml",
       "README.md",
       "chinescan/__init__.py",
       "chinescan/__main__.py",
@@ -50,8 +51,11 @@
       "docs/reports/release-snapshot-manifest-2026-11-06.json",
       "docs/reports/release-validation-2026-11-06.md",
       "frontend/e2e/dashboard.spec.ts",
+      "frontend/e2e/global-setup.ts",
+      "frontend/e2e/projects.spec.ts",
       "frontend/index.html",
       "frontend/package.json",
+      "frontend/playwright.config.ts",
       "frontend/src/test-fixtures/report-parity.json",
       "frontend/src/types.ts",
       "frontend/src/ui/App.test.tsx",
@@ -64,6 +68,7 @@
       "schemas/finding.schema.json",
       "schemas/investigation.schema.json",
       "scripts/start-dashboard.ps1",
+      "tests/browser/serve.py",
       "tests/unit/test_code_actionability.py",
       "tests/unit/test_code_rules_behavior.py",
       "tests/unit/test_redaction.py",
@@ -81,7 +86,7 @@
     "deleted_paths": [
       "docs/reports/phase-1-report.md"
     ],
-    "identity_note": "Release candidate is identified by the base commit plus the staged Git tree and this self-excluded manifest. The Phase 1 report is removed from the release tree while its local working copy and excluded inventory reports remain untracked.",
+    "identity_note": "Release candidate is identified by the base commit plus the staged Git tree and this self-excluded manifest. The Phase 1 report is removed from the release tree while its local working copy and the four excluded internal implementation-inventory reports remain untracked.",
     "staged_deleted_paths": [
       "docs/reports/phase-1-report.md"
     ]
@@ -133,8 +138,8 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "e33a7012a993aadb0c66c9e1cf3bee04c560c382ec9ef71f924624edbb220a1e",
-      "status": "unchanged",
+      "sha256": "8535dc6f1420a40ca91c24487389eb7ee13d2c1812e4dc560c09522ed2521f51",
+      "status": "modified",
       "purpose": "Repository CI/dependency automation configuration for release validation."
     },
     {
@@ -451,7 +456,7 @@
     },
     {
       "path": "chinescan/core/models/investigation.py",
-      "sha256": "a6f7fbb2b065e267c4ce09f0496b874165be163a8bf1d5410d398275d94627ca",
+      "sha256": "cfba03ffc0db66ebf6f5dd33b42b2d162e350b372351e931bf3589b2bb4c1e4b",
       "status": "modified",
       "purpose": "Application source module: Distinct, typed top-level investigation records."
     },
@@ -673,7 +678,7 @@
     },
     {
       "path": "chinescan/web/app.py",
-      "sha256": "16924182c317d549b1b3c724c9524edb127cc9fac1ef189fc79294d6974b718d",
+      "sha256": "0e9519fa7a56ad18b4f54ae254bbdbedef11367ab1b38cf4908dd667c5247e9f",
       "status": "modified",
       "purpose": "Application source module: Same-origin authenticated API and production frontend serving."
     },
@@ -757,7 +762,7 @@
     },
     {
       "path": "docs/ChiNeScan-security-review.md",
-      "sha256": "834f671a1f846659ce022e446740db0e0561eda1df687c33b567bdbffd77ad92",
+      "sha256": "06620e645825f6a019b8830bccaf16c33cbfaf11400d2d23353c74fed6ed4408",
       "status": "added",
       "purpose": "User, developer, security, or operations documentation for the supported profile."
     },
@@ -997,7 +1002,7 @@
     },
     {
       "path": "docs/reports/release-notes-handover-2026-11-06.md",
-      "sha256": "11a975c202f1e6ad48735a9e443554266ffea7c7685bd3fe4f87a65349d89c19",
+      "sha256": "3adacc5e3fc42037712e6d462afa96a7a25e755134327a9499f49f3975881b5b",
       "status": "added",
       "purpose": "Release, validation, inventory, or operational evidence; records claims and limitations."
     },
@@ -1201,8 +1206,8 @@
     },
     {
       "path": "frontend/e2e/global-setup.ts",
-      "sha256": "b31fd11dd8ffd57215b9fb7a0c10ee8c10982f31fbac22ad0a17f7d6743feaba",
-      "status": "unchanged",
+      "sha256": "a9d76bda2e9e67a8134444fdcd006e1cdd93559fd3d0718faa65ed00f89da38c",
+      "status": "modified",
       "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
     },
     {
@@ -1213,8 +1218,8 @@
     },
     {
       "path": "frontend/e2e/projects.spec.ts",
-      "sha256": "73ab6d721e91f67d6e583553e10fe762f0a818807032d36faa8a5936e7b1b7ba",
-      "status": "unchanged",
+      "sha256": "ffed7b581b1cb5e766491e777a2cbe3b9becbb922c9745c227bee8d9f0bb5f93",
+      "status": "modified",
       "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
     },
     {
@@ -1249,8 +1254,8 @@
     },
     {
       "path": "frontend/playwright.config.ts",
-      "sha256": "c3f8608bc877bf7085d74b4a9dda125ef9d7ca16e0a26338aff5e3f9f9a8918d",
-      "status": "unchanged",
+      "sha256": "8503d63081be4b3e269d1098e91cdc415ad3bb9d91e5510bfe6e2bc29a7c7b79",
+      "status": "modified",
       "purpose": "Dashboard source, tests, or build input needed to reproduce the local UI."
     },
     {
@@ -1543,8 +1548,8 @@
     },
     {
       "path": "tests/browser/serve.py",
-      "sha256": "765569c210b2b59e70dc826f5d4493e6f1dd8d4d219a4986596049e14e716468",
-      "status": "unchanged",
+      "sha256": "a8de140518470e8aceebd3123a3f359937b81311383107dbd9628f9fa46732c2",
+      "status": "modified",
       "purpose": "Automated regression coverage (serve); required to validate release behavior."
     },
     {
@@ -1873,7 +1878,7 @@
     },
     {
       "path": "tests/unit/test_web_api.py",
-      "sha256": "0fb7e5d0be70471ff6160ff1b3f8f1747286ebe4799bcfa4ff00fdc33bc7f208",
+      "sha256": "97d0d78c7805afe1ae72d6aab9b5e37e8286496cadb0efef6a8e8c2f31aaef9f",
       "status": "modified",
       "purpose": "Automated regression coverage (test_web_api); required to validate release behavior."
     },
@@ -1891,8 +1896,9 @@
     "docs/reports/implementation-inventory-r1-2026-11-06.json"
   ],
   "self_excluded_path": "docs/reports/release-snapshot-manifest-2026-11-06.json",
-  "release_stage_path_count": 53,
+  "release_stage_path_count": 58,
   "release_stage_paths": [
+    ".github/workflows/ci.yml",
     "README.md",
     "chinescan/__init__.py",
     "chinescan/__main__.py",
@@ -1927,8 +1933,11 @@
     "docs/reports/release-snapshot-manifest-2026-11-06.json",
     "docs/reports/release-validation-2026-11-06.md",
     "frontend/e2e/dashboard.spec.ts",
+    "frontend/e2e/global-setup.ts",
+    "frontend/e2e/projects.spec.ts",
     "frontend/index.html",
     "frontend/package.json",
+    "frontend/playwright.config.ts",
     "frontend/src/test-fixtures/report-parity.json",
     "frontend/src/types.ts",
     "frontend/src/ui/App.test.tsx",
@@ -1941,6 +1950,7 @@
     "schemas/finding.schema.json",
     "schemas/investigation.schema.json",
     "scripts/start-dashboard.ps1",
+    "tests/browser/serve.py",
     "tests/unit/test_code_actionability.py",
     "tests/unit/test_code_rules_behavior.py",
     "tests/unit/test_redaction.py",
