@@ -25,9 +25,8 @@ from chinescan.core.models.investigation import (
     Scan,
     VibeCodingRisk,
 )
-from chinescan.web.app import ScanDetailResponse
 from chinescan.core.storage.sqlite import SQLiteRepository
-from chinescan.web.app import COOKIE_NAME, create_app
+from chinescan.web.app import COOKIE_NAME, ScanDetailResponse, create_app
 from chinescan.web.auth import (
     create_operator,
     issue_reset_token,
