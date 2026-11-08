@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import secrets
 import shutil
 import threading
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -19,7 +20,7 @@ from uuid import uuid4
 
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.middleware.base import RequestResponseEndpoint
@@ -50,8 +51,14 @@ from chinescan.core.logging.redaction import redact
 from chinescan.core.logging.structured import configure_logging
 from chinescan.core.malware_ack import MalwareAcknowledgementError, MalwareAcknowledgements
 from chinescan.core.malware_project_scan import ProjectMalwareJobs, ProjectMalwareScanner
-from chinescan.core.models.common import Confidence, FindingCategory, ScanVerdict, Severity
-from chinescan.core.models.finding import Finding
+from chinescan.core.models.common import (
+    Confidence,
+    EvidenceKind,
+    FindingCategory,
+    ScanVerdict,
+    Severity,
+)
+from chinescan.core.models.finding import Finding, FindingExplanation
 from chinescan.core.models.investigation import (
     Alert,
     Case,
@@ -65,7 +72,13 @@ from chinescan.core.models.investigation import (
 from chinescan.core.orchestration.code_scan import ScanBounds
 from chinescan.core.projects import ProjectError, ProjectService
 from chinescan.core.report_store import ReportStoreError, save_scan_reports
-from chinescan.core.reporting import ReportingError, render_case_report, render_report, scan_data
+from chinescan.core.reporting import (
+    ReportingError,
+    redact_finding_payload,
+    render_case_report,
+    render_report,
+    scan_data,
+)
 from chinescan.core.storage.sqlite import SQLiteRepository
 from chinescan.malware_analysis.managed import (
     ManagedSampleError,
@@ -97,6 +110,10 @@ from chinescan.web.rate_limit import InProcessRateLimiter
 
 COOKIE_NAME = "chinescan_session"
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+MAX_SCAN_REPORT_FINDINGS = 10_000
+MAX_SCAN_REPORT_BYTES = 20 * 1024 * 1024
+PROJECT_OPERATION_RATE_LIMIT = 20
+PROJECT_OPERATION_RATE_WINDOW_SECONDS = 60
 
 
 class LoginRequest(BaseModel):
@@ -171,6 +188,7 @@ class ScanDetailResponse(ScanSummaryResponse):
     finding_ids: list[str]
     coverage: CoverageReport | None = None
     failures: dict[str, str] = Field(default_factory=dict)
+    code_assessment: CodeAssessmentSummary | None = None
 
 
 class FindingSummaryResponse(BaseModel):
@@ -184,12 +202,20 @@ class FindingSummaryResponse(BaseModel):
     confidence: Confidence
     scanner: str
     rule_id: str
+    contributing_rule_ids: list[str] = Field(default_factory=list)
 
 
 class FindingDetailResponse(FindingSummaryResponse):
     description: str = ""
     location: str | None = None
     tags: list[str] = Field(default_factory=list)
+    evidence: EvidenceKind | None = None
+    line_numbers: list[int] = Field(default_factory=list)
+    code_excerpt: str | None = None
+    remediation: str | None = None
+    cwe_ids: list[str] = Field(default_factory=list)
+    exposure: str = "unknown"
+    explanation: FindingExplanation | None = None
 
 
 class OverviewResponse(BaseModel):
@@ -212,6 +238,7 @@ class FindingPageResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     items: list[FindingSummaryResponse]
     total: int
+    total_stored: int
     limit: int
     offset: int
 
@@ -502,8 +529,9 @@ def create_app(
     malware_registry_path: Path | str | None = None,
     settings: Settings | None = None,
     github_import_test_file_transport: bool = False,
+    test_only_project_operation_rate_limit: int | None = None,
 ) -> FastAPI:
-    """Create an application instance; sessions and throttling live in this process."""
+    """Create an app; the optional project-limit override is only for isolated tests."""
     configure_logging()
     active_settings = settings or Settings(_env_file=None)
     repository = SQLiteRepository(database_path)
@@ -613,7 +641,14 @@ def create_app(
         ),
     )
     chain_jobs = ChainTraceJobManager(repository, active_settings)
-    project_throttle = LoginThrottle(limit=20, window_seconds=60)
+    project_throttle = LoginThrottle(
+        limit=(
+            PROJECT_OPERATION_RATE_LIMIT
+            if test_only_project_operation_rate_limit is None
+            else test_only_project_operation_rate_limit
+        ),
+        window_seconds=PROJECT_OPERATION_RATE_WINDOW_SECONDS,
+    )
     fs_browse_throttle = LoginThrottle(limit=60, window_seconds=60)
     malware_config = (
         Path(malware_registry_path)
@@ -666,7 +701,7 @@ def create_app(
         repository.close()
 
     application = FastAPI(
-        title="Chinetscan local dashboard", docs_url=None, redoc_url=None, lifespan=lifespan
+        title="ChiNeScan local dashboard", docs_url=None, redoc_url=None, lifespan=lifespan
     )
     application.state.repository = repository
     application.state.project_registry = registry
@@ -859,15 +894,29 @@ def create_app(
                 }
             )
             del error_ring[:-50]
-        logging.getLogger("chinescan.access").info(
+        duration_ms = round((time.monotonic() - started) * 1000, 2)
+        access_logger = logging.getLogger("chinescan.access")
+        access_logger.info(
             "request_complete",
             extra={
                 "request_id": request_id,
+                "method": request.method,
                 "route": getattr(route, "path", request.url.path),
                 "status": response.status_code,
-                "duration_ms": round((time.monotonic() - started) * 1000, 2),
+                "duration_ms": duration_ms,
             },
         )
+        if duration_ms >= 1000:
+            access_logger.warning(
+                "slow_request",
+                extra={
+                    "request_id": request_id,
+                    "method": request.method,
+                    "route": getattr(route, "path", request.url.path),
+                    "status": response.status_code,
+                    "duration_ms": duration_ms,
+                },
+            )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -1956,6 +2005,9 @@ def create_app(
             "finding_ids": scan.finding_ids,
             "coverage": scan.coverage.model_dump(mode="json") if scan.coverage else None,
             "failures": scan.failures,
+            "code_assessment": scan.code_assessment.model_dump(mode="json")
+            if scan.code_assessment
+            else None,
         }
 
     @application.get("/api/findings", response_model=FindingPageResponse)
@@ -1989,9 +2041,13 @@ def create_app(
                 descending=order == "desc",
                 filters=filters,
             )
+            _all_rows, total_stored = repository.page_records(
+                "finding", limit=1, offset=0, sort_by="severity", descending=True
+            )
         return {
             "items": [_finding_summary(Finding.model_validate(item)) for item in page],
             "total": total,
+            "total_stored": total_stored,
             "limit": limit,
             "offset": offset,
         }
@@ -2181,20 +2237,116 @@ def create_app(
     @application.get("/api/scans/{scan_id}/report/{output_format}")
     def scan_report(
         scan_id: str,
-        output_format: Literal["json", "markdown", "html", "csv", "sarif", "share-summary"],
+        output_format: Literal[
+            "json", "full-json", "detail", "markdown", "html", "csv", "sarif", "share-summary"
+        ],
         _session: Session = Depends(current_session),  # noqa: B008
     ) -> Response:  # noqa: B008
         try:
             with db_lock:
                 scan, findings = scan_data(repository, scan_id)
-                if len(findings) > 10_000:
+                if len(findings) > MAX_SCAN_REPORT_FINDINGS:
                     raise HTTPException(
                         status_code=413, detail="Scan report exceeds configured finding limits."
                     )
                 body = render_report(scan, findings, output_format)
-            return _download_response(body, f"scan-report.{output_format}", output_format)
+                if len(body.encode("utf-8")) > MAX_SCAN_REPORT_BYTES:
+                    raise HTTPException(
+                        status_code=413, detail="Complete report exceeds the 20 MB export limit."
+                    )
+            return _download_response(
+                body,
+                f"scan-report.{output_format}",
+                output_format,
+                max_bytes=MAX_SCAN_REPORT_BYTES if output_format == "full-json" else 2_000_000,
+            )
         except ReportingError as exc:
+            if output_format == "full-json" and "Complete JSON report exceeds" in str(exc):
+                raise HTTPException(
+                    status_code=413,
+                    detail="Complete JSON report exceeds the configured count or byte limit.",
+                ) from exc
             raise _case_http_error(exc) from exc
+
+    @application.get("/api/scans/{scan_id}/findings.jsonl")
+    def scan_findings_jsonl(
+        scan_id: str,
+        _session: Session = Depends(current_session),  # noqa: B008
+    ) -> StreamingResponse:
+        if len(scan_id) > 255:
+            raise HTTPException(status_code=404, detail="Scan not found.")
+        with db_lock:
+            stored = repository.get("scan", scan_id)
+        if stored is None:
+            raise HTTPException(status_code=404, detail="Scan not found.")
+        scan = Scan.model_validate(stored)
+        finding_ids = list(scan.finding_ids)
+        if len(finding_ids) != len(set(finding_ids)):
+            raise HTTPException(
+                status_code=409,
+                detail="Scan contains duplicate finding IDs; export was not started.",
+            )
+        chain_scan = "chain" in scan.project_types or scan.scanner == "chain_trace"
+
+        def stream() -> Iterator[str]:
+            manifest = {
+                "type": "manifest",
+                "schema": "chinescan.findings/1",
+                "scan_id": scan_id,
+                "total_findings": len(finding_ids),
+                "ordering": "scan.finding_ids order",
+                "consistency": "scan ID list captured at request start",
+                "processing_failure_count": len(scan.failures),
+            }
+            yield json.dumps(manifest, ensure_ascii=False, sort_keys=True) + "\n"
+            digest = hashlib.sha256()
+            returned = 0
+            for start in range(0, len(finding_ids), 100):
+                ids = finding_ids[start : start + 100]
+                with db_lock:
+                    records = repository.get_many("finding", ids)
+                try:
+                    if len(records) != len(ids):
+                        raise ValueError("finding unavailable")
+                    for finding_id in ids:
+                        finding = Finding.model_validate(records[finding_id])
+                        row = {
+                            "type": "finding",
+                            "finding": redact_finding_payload(finding, chain_scan=chain_scan),
+                        }
+                        line = json.dumps(row, ensure_ascii=False, sort_keys=True)
+                        digest.update((line + "\n").encode("utf-8"))
+                        returned += 1
+                        yield line + "\n"
+                except Exception:
+                    yield (
+                        json.dumps(
+                            {"type": "error", "code": "record_unavailable_or_unsafe"},
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    )
+                    return
+            yield (
+                json.dumps(
+                    {
+                        "type": "complete",
+                        "returned_findings": returned,
+                        "sha256": digest.hexdigest(),
+                    },
+                    sort_keys=True,
+                )
+                + "\n"
+            )
+
+        return StreamingResponse(
+            stream(),
+            media_type="application/x-ndjson",
+            headers={
+                "Content-Disposition": f'attachment; filename="scan-{scan_id}-findings.jsonl"',
+                "Cache-Control": "no-store",
+            },
+        )
 
     @application.post("/api/scans/{scan_id}/external-reports", status_code=201)
     async def import_scanity_report(
@@ -2637,17 +2789,27 @@ def _finding_summary(finding: Finding, *, detail: bool = False) -> dict[str, Any
     # Explicit schema allowlist: never send raw evidence or arbitrary persisted JSON to the browser.
     value: dict[str, Any] = {
         "finding_id": finding.finding_id,
-        "title": finding.title,
+        "title": redact(finding.title),
         "severity": finding.severity.value,
         "category": finding.category.value,
         "confidence": finding.confidence.value,
         "scanner": finding.scanner,
-        "rule_id": finding.rule_id,
+        "rule_id": redact(finding.rule_id),
+        "contributing_rule_ids": finding.contributing_rule_ids or [finding.rule_id],
     }
     if detail:
-        value["description"] = finding.description
+        value["description"] = redact(finding.description)
         value["location"] = safe_display_name(finding.location) if finding.location else None
         value["tags"] = finding.tags
+        value["evidence"] = finding.evidence.value if finding.evidence else None
+        value["line_numbers"] = finding.line_numbers
+        value["code_excerpt"] = redact(finding.code_excerpt) if finding.code_excerpt else None
+        value["remediation"] = redact(finding.remediation) if finding.remediation else None
+        value["cwe_ids"] = finding.cwe_ids
+        value["exposure"] = finding.exposure
+        value["explanation"] = (
+            redact(finding.explanation.model_dump(mode="json")) if finding.explanation else None
+        )
     return value
 
 
@@ -2697,13 +2859,20 @@ def _enforce_case_limits(case: Case) -> None:
         raise HTTPException(status_code=413, detail="Case exceeds configured record limits.")
 
 
-def _download_response(body: str, filename: str, output_format: str) -> Response:
+def _download_response(
+    body: str, filename: str, output_format: str, *, max_bytes: int = 2_000_000
+) -> Response:
     # Reports are generated in memory from bounded stored records, never via a user path.
     encoded = body.encode("utf-8")
-    if len(encoded) > 2_000_000:
-        raise HTTPException(status_code=413, detail="Generated report exceeds the 2 MB limit.")
+    if len(encoded) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Generated report exceeds the {max_bytes // (1024 * 1024)} MB limit.",
+        )
     media_type = {
         "json": "application/json; charset=utf-8",
+        "full-json": "application/json; charset=utf-8",
+        "detail": "text/markdown; charset=utf-8",
         "markdown": "text/markdown; charset=utf-8",
         "html": "text/html; charset=utf-8",
         "csv": "text/csv; charset=utf-8",

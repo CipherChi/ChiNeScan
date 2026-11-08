@@ -84,6 +84,17 @@ jobs:
         env:
           CHINESCAN_PYTHON: ${{ github.workspace }}/.venv/bin/python
 
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v7.0.2
+        with:
+          name: playwright-failure-${{ github.run_id }}
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
+          if-no-files-found: warn
+          retention-days: 7
+
   windows-b1:
     name: Windows managed malware worker acceptance
     runs-on: windows-latest

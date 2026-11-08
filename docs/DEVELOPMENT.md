@@ -86,7 +86,7 @@ with `npm ci --no-audit` from `frontend/`. Run the backend explicitly with
 `uv run chinescan web serve` and the development UI with `npm run dev`. Both bind to loopback;
 Vite proxies `/api` to port 8765.
 
-The operator identity is an email address. ChineScan trims and lowercases it for case-insensitive
+The operator identity is an email address. ChiNeScan trims and lowercases it for case-insensitive
 lookup. With no credential file, open the Vite loopback URL and choose **Create operator account**.
 Signup creates the sole local operator and signs it in immediately. Passwords require at least 12
 characters and are stored as Argon2id hashes. Signup returns a generic conflict after an account
@@ -188,7 +188,7 @@ Log analysis reads local exports and bounded archives without extraction or netw
 
 Malware static triage reads one regular file up to 64 MiB and never executes it. The standalone sample intake and job workflow is deprecated: new sample registrations and jobs return `410 sample_workflow_deprecated`; existing sample records, analyses, and case links remain read-only history. Use `chinescan projects malware scan --project <id> --i-understand-vm-risk` or the project page. Project scans require an explicit acknowledgement at the backend and apply bounded static checks without executing, importing, installing, extracting, or passing project content to a child process. They are heuristic leads, not verdicts. Run Chinescan and the scan inside an isolated VM or sandbox. Process containment is not an OS sandbox and does not isolate filesystem or network access. The B1 sample worker remains a separate historical path with managed storage and Windows Job Object controls; those controls are not an OS sandbox. See [Malware backend operations](MALWARE-BACKEND.md) for its historical storage configuration and recovery boundaries.
 
-Project scanning visits at most 50,000 files, 1 GiB total, 16 MiB per file, depth 32, 2 seconds of checked time per file, and a 300 second job deadline by default. Per-file time is checked between reads; a slow disk read cannot be interrupted. Custom local rules use ChineScan's own small bounded TOML rule format and are not native YARA rules. If no rules directory is configured, custom-rule coverage is visibly marked as skipped. The host virtualization hint is unreliable and never controls whether scanning is allowed.
+Project scanning visits at most 50,000 files, 1 GiB total, 16 MiB per file, depth 32, 2 seconds of checked time per file, and a 300 second job deadline by default. Per-file time is checked between reads; a slow disk read cannot be interrupted. Custom local rules use ChiNeScan's own small bounded TOML rule format and are not native YARA rules. If no rules directory is configured, custom-rule coverage is visibly marked as skipped. The host virtualization hint is unreliable and never controls whether scanning is allowed.
 
 Local project malware rules are read only from `.toml` files in the configured rules directory. Unknown keys or invalid entries reject that file and add a path-free coverage note. The format supports up to 100 rules per file, 20 strings per rule, 500 characters per pattern, and a `min_matches` count from 1 to 50. Regexes use a restricted safe subset; backreferences and nested quantified groups are rejected.
 
@@ -252,6 +252,10 @@ Wallet tracing is offline by default. CLI lookups require `--allow-network-chain
 
 The default trace limits are 120 seconds, 100 provider requests, 500 addresses, depth 6, and 2 MB per response. DNS resolution has a separate 2 second timeout and a bounded four-thread daemon pool. Reaching a limit records a coverage gap and makes the scan partial. API keys come only from the environment variable named by the chain registry and are passed only inside the provider request adapter. Diagnostics expose only a configured/not-configured boolean.
 
+## Redaction processing bounds
+
+The shared redactor caps each string or byte value at 1,000,000 characters/bytes, the combined string/key input at 8,000,000 characters/bytes per top-level redaction operation, nested values at 32 levels, and one operation at 100,000 visited values and mapping keys. These fixed safety bounds apply to CLI, API, logging, imports, and report generation; they are not configurable. Inputs exceeding a bound fail closed with `[REDACTED: safe processing limit exceeded]` or, when a report cannot preserve its required structure, an explicit report error. External-report text fields are clipped to their individual retained-field limits (at most 2,000 characters) before redaction, so discarded tails are not persisted. Keep redaction positive controls when changing these limits or patterns.
+
 The built-in Etherscan-family EVM registry uses API V2 (`https://api.etherscan.io/v2/api`) and a numeric `chain_id`. An operator TOML entry for another EVM chain can use the same endpoint and `api_key_env = "CHINESCAN_ETHERSCAN_KEY"`, with `host_allowlist = ["api.etherscan.io"]` and its network's `chain_id`; API keys are sent in the POST body, never the URL. Other registry fields are `family`, `native_asset`, `explorer_api`, `allow_nonstandard_port`, and (for custom hosts) `host_allowlist`. Provider error gaps include `rate_limited`, `invalid_api_key`, and `provider_error` with a short redacted reason. The provider treats “No transactions found” as an empty result.
 # EVTX log support
 
@@ -260,7 +264,7 @@ EVTX files are detected by project log suggestions and shown as unsupported unti
 # GitHub imports
 
 Public GitHub imports are opt-in. The default is `github_import_enabled = false`; enable it only
-with an explicit operator change in the local `config.toml` and restart ChineScan:
+with an explicit operator change in the local `config.toml` and restart ChiNeScan:
 
 ```toml
 github_import_enabled = true

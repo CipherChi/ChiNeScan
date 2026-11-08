@@ -13,6 +13,32 @@ from chinescan.core.models.common import (
 )
 
 
+class FindingExplanation(SchemaRecord):
+    """Versioned, evidence-bounded explanation for a finding.
+
+    Empty or unavailable fields are intentionally omitted rather than filled with
+    retrospective claims for legacy findings.
+    """
+
+    version: str = "1.0"
+    classification_policy_version: str | None = None
+    observed: str | None = None
+    match_reason: str | None = None
+    established: list[str] = Field(default_factory=list)
+    inferred: list[str] = Field(default_factory=list)
+    severity_rationale: str | None = None
+    confidence_rationale: str | None = None
+    exposure_rationale: str | None = None
+    attack_prerequisites: list[str] = Field(default_factory=list)
+    conditional_impact: str | None = None
+    controls_considered: list[str] = Field(default_factory=list)
+    false_positive_considerations: list[str] = Field(default_factory=list)
+    verification_steps: list[str] = Field(default_factory=list)
+    remediation_rationale: str | None = None
+    limitations: list[str] = Field(default_factory=list)
+    ruleset_version: str | None = None
+
+
 class Reference(SchemaRecord):
     title: str
     url: HttpUrl | None = None
@@ -41,3 +67,5 @@ class Finding(SchemaRecord):
     exposure: str = "unknown"
     references: list[Reference] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    contributing_rule_ids: list[str] = Field(default_factory=list)
+    explanation: FindingExplanation | None = None

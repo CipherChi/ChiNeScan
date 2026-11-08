@@ -1,0 +1,114 @@
+{
+  "scan": {
+    "schema_version": "1.0",
+    "scan_id": "scan-1234",
+    "target_id": "target-parity",
+    "scanner": "builtin",
+    "started_at": "2026-01-01T00:00:00Z",
+    "finished_at": "2026-01-01T00:01:00Z",
+    "status": "complete",
+    "project_types": ["python"],
+    "finding_ids": ["finding-1234", "finding-legacy"],
+    "coverage": {
+      "schema_version": "1.0",
+      "examined": {"python": 1},
+      "excluded": {"generated": 3},
+      "gaps": []
+    },
+    "code_assessment": {
+      "schema_version": "1.0",
+      "files_scanned": 1,
+      "files_excluded": 3,
+      "excluded_paths": ["build"],
+      "vibe_coding_risk": {
+        "schema_version": "1.0",
+        "score": 36,
+        "confidence": "POSSIBLE",
+        "signals": ["tutorial-style insecure default observed in 2 source files"],
+        "name": "Code pattern risk",
+        "direction": "Higher scores indicate more configured code patterns in the scanned source.",
+        "interpretation": "Deterministic heuristic indicator; not proof of authorship, a vulnerability verdict, or scan completeness.",
+        "algorithm_version": "legacy-pattern-v1",
+        "contributions": [
+          {
+            "schema_version": "1.0",
+            "signal_id": "tutorial_default",
+            "description": "Tutorial default",
+            "raw_count": 2,
+            "effective_count": 2,
+            "weight": 18,
+            "adjustment": "Per-file count.",
+            "contribution": 36,
+            "evidence": [
+              {"schema_version": "1.0", "file": "src/settings.py", "line_numbers": [4], "code_excerpt": "allow_origins=['*']"}
+            ]
+          }
+        ],
+        "coverage_limitations": ["Based on one readable supported source file."],
+        "confidence_rationale": "One signal category emitted; confidence remains heuristic."
+      }
+    }
+  },
+  "findings": [
+    {
+      "schema_version": "1.0",
+      "finding_id": "finding-1234",
+      "title": "Unsafe SQL construction candidate",
+      "description": "token=redaction-canary",
+      "severity": "high",
+      "fingerprint": "fingerprint-parity-1",
+      "category": "SAST",
+      "confidence": "POSSIBLE",
+      "evidence": "pattern_match",
+      "scanner": "builtin",
+      "source": "builtin",
+      "rule_id": "SQL-INJECTION",
+      "location": "src/query.py:8",
+      "line_numbers": [8],
+      "code_excerpt": "db.query('SELECT ' + token=redaction-canary)",
+      "remediation": "Use safe parameter binding.",
+      "cwe_ids": ["CWE-89"],
+      "exposure": "unknown",
+      "tags": ["heuristic", "local", "manual-review"],
+      "contributing_rule_ids": ["SQL-INJECTION", "QUERY-CONTEXT"],
+      "explanation": {
+        "schema_version": "1.0",
+        "version": "1.0",
+        "classification_policy_version": "static-impact-v1",
+        "observed": "db.query(dynamic SQL)",
+        "match_reason": "A database query candidate was observed.",
+        "established": ["A database-like call and SQL text were matched."],
+        "inferred": ["The dynamic value may affect SQL construction."],
+        "severity_rationale": "High is potential impact if the preconditions hold.",
+        "confidence_rationale": "Possible because data provenance is unresolved.",
+        "exposure_rationale": "Deployment exposure is unknown.",
+        "attack_prerequisites": ["Attacker-controlled input must reach an unbound query."],
+        "conditional_impact": "If the conditions hold, query integrity or confidentiality could be affected.",
+        "controls_considered": [],
+        "false_positive_considerations": ["A safe wrapper or constant value may be used."],
+        "verification_steps": ["Inspect the complete call and parameter binding."],
+        "remediation_rationale": "Use binding only if unsafe dynamic SQL is confirmed.",
+        "limitations": ["No inter-file data-flow analysis."],
+        "ruleset_version": "builtin-2"
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "finding_id": "finding-legacy",
+      "title": "Legacy candidate",
+      "description": "Historical detail was not stored.",
+      "severity": "medium",
+      "fingerprint": "fingerprint-parity-2",
+      "category": "SAST",
+      "confidence": "POSSIBLE",
+      "scanner": "fixture",
+      "source": "builtin",
+      "rule_id": "LEGACY-RULE",
+      "location": "src/legacy.py:2",
+      "line_numbers": [2],
+      "exposure": "unknown",
+      "tags": ["manual-review"],
+      "contributing_rule_ids": ["LEGACY-RULE"]
+    }
+  ]
+}

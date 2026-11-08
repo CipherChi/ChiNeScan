@@ -616,6 +616,23 @@
           "title": "Notes",
           "type": "array"
         },
+        "project_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project Id"
+        },
+        "project_removed": {
+          "default": false,
+          "title": "Project Removed",
+          "type": "boolean"
+        },
         "scan_ids": {
           "items": {
             "type": "string"
@@ -707,6 +724,58 @@
     },
     {
       "$defs": {
+        "CodeAssessmentSummary": {
+          "additionalProperties": false,
+          "properties": {
+            "excluded_paths": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Excluded Paths",
+              "type": "array"
+            },
+            "files_excluded": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Files Excluded",
+              "type": "integer"
+            },
+            "files_scanned": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Files Scanned",
+              "type": "integer"
+            },
+            "schema_version": {
+              "default": "1.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "vibe_coding_risk": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/VibeCodingRisk"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            }
+          },
+          "title": "CodeAssessmentSummary",
+          "type": "object"
+        },
+        "Confidence": {
+          "enum": [
+            "CONFIRMED",
+            "LIKELY",
+            "POSSIBLE",
+            "INFORMATIONAL"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
         "CoverageGap": {
           "additionalProperties": false,
           "properties": {
@@ -763,6 +832,13 @@
               "title": "Examined",
               "type": "object"
             },
+            "excluded": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "title": "Excluded",
+              "type": "object"
+            },
             "gaps": {
               "items": {
                 "$ref": "#/$defs/CoverageGap"
@@ -788,6 +864,193 @@
           ],
           "title": "ScanVerdict",
           "type": "string"
+        },
+        "ScoreContribution": {
+          "additionalProperties": false,
+          "properties": {
+            "adjustment": {
+              "title": "Adjustment",
+              "type": "string"
+            },
+            "contribution": {
+              "title": "Contribution",
+              "type": "integer"
+            },
+            "description": {
+              "title": "Description",
+              "type": "string"
+            },
+            "effective_count": {
+              "minimum": 0,
+              "title": "Effective Count",
+              "type": "integer"
+            },
+            "evidence": {
+              "items": {
+                "$ref": "#/$defs/ScoreEvidence"
+              },
+              "title": "Evidence",
+              "type": "array"
+            },
+            "raw_count": {
+              "minimum": 0,
+              "title": "Raw Count",
+              "type": "integer"
+            },
+            "schema_version": {
+              "default": "1.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "signal_id": {
+              "title": "Signal Id",
+              "type": "string"
+            },
+            "weight": {
+              "minimum": 0,
+              "title": "Weight",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "signal_id",
+            "description",
+            "raw_count",
+            "effective_count",
+            "weight",
+            "adjustment",
+            "contribution"
+          ],
+          "title": "ScoreContribution",
+          "type": "object"
+        },
+        "ScoreEvidence": {
+          "additionalProperties": false,
+          "properties": {
+            "code_excerpt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Code Excerpt"
+            },
+            "file": {
+              "title": "File",
+              "type": "string"
+            },
+            "line_numbers": {
+              "items": {
+                "type": "integer"
+              },
+              "title": "Line Numbers",
+              "type": "array"
+            },
+            "schema_version": {
+              "default": "1.0",
+              "title": "Schema Version",
+              "type": "string"
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "title": "ScoreEvidence",
+          "type": "object"
+        },
+        "VibeCodingRisk": {
+          "additionalProperties": false,
+          "properties": {
+            "algorithm_version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Algorithm Version"
+            },
+            "confidence": {
+              "$ref": "#/$defs/Confidence"
+            },
+            "confidence_rationale": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Confidence Rationale"
+            },
+            "contributions": {
+              "items": {
+                "$ref": "#/$defs/ScoreContribution"
+              },
+              "title": "Contributions",
+              "type": "array"
+            },
+            "coverage_limitations": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Coverage Limitations",
+              "type": "array"
+            },
+            "direction": {
+              "default": "Higher scores mean more configured code patterns were observed.",
+              "title": "Direction",
+              "type": "string"
+            },
+            "disclaimer": {
+              "default": "Heuristic risk indicators only; this score is not proof of AI authorship.",
+              "title": "Disclaimer",
+              "type": "string"
+            },
+            "interpretation": {
+              "default": "A deterministic heuristic indicator, not a vulnerability or authorship verdict.",
+              "title": "Interpretation",
+              "type": "string"
+            },
+            "name": {
+              "default": "Code pattern risk",
+              "title": "Name",
+              "type": "string"
+            },
+            "schema_version": {
+              "default": "1.0",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "score": {
+              "maximum": 100,
+              "minimum": 0,
+              "title": "Score",
+              "type": "integer"
+            },
+            "signals": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Signals",
+              "type": "array"
+            }
+          },
+          "required": [
+            "score",
+            "confidence"
+          ],
+          "title": "VibeCodingRisk",
+          "type": "object"
         }
       },
       "additionalProperties": false,
@@ -798,6 +1061,17 @@
           },
           "title": "Alert Ids",
           "type": "array"
+        },
+        "code_assessment": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodeAssessmentSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "coverage": {
           "anyOf": [
@@ -843,6 +1117,23 @@
           ],
           "default": null,
           "title": "Finished At"
+        },
+        "project_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project Id"
+        },
+        "project_removed": {
+          "default": false,
+          "title": "Project Removed",
+          "type": "boolean"
         },
         "project_types": {
           "items": {

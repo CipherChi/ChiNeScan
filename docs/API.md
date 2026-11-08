@@ -147,10 +147,12 @@ also require the same-origin `Origin` check and current `X-CSRF-Token` as logout
 | `POST /api/cases/{case_id}/notes` | `{body}` appends a note (1–8000 characters). The authenticated operator is not written into the legacy unverified author-label field. Notes are not editable or deleted through the API. |
 | `POST /api/cases/{case_id}/links` | `{record_type, record_id}` validates supported persisted records through `CaseWorkflow`; repeating an existing link is idempotent. Supported malware types are `malware_sample` (stable identity) and `malware_analysis` (one result). |
 | `GET /api/cases/{case_id}/report/{json|markdown|html}` | Generates a redacted report in memory, capped at 2 MB, and returns it as an attachment. HTML uses `Content-Disposition: attachment` and is not rendered inline. |
-| `GET /api/scans/{scan_id}/report/{json|markdown|html|csv|sarif}` | Uses the existing scan report renderer and formats. The report is a download attachment with a server-chosen filename. |
+| `GET /api/scans/{scan_id}/report/{json|full-json|detail|markdown|html|csv|sarif}` | Uses the shared scan report renderer and formats. The report is a download attachment with a server-chosen filename. `full-json` returns only complete bounded output (maximum 10,000 findings and 20 MiB); larger exports receive HTTP 413 with no attachment. `json` is the grouped preview; `detail` is human-readable Markdown with finding explanations and score contributions. |
+| `GET /api/scans/{scan_id}/findings.jsonl` | Authenticated streamed complete finding retrieval for large scans. JSONL carries a manifest, redacted finding records, and a final completion record with returned count and SHA-256 digest. Consumers must verify the final record; absence means the response is incomplete. |
 
-Case report generation rejects cases above configured link/note/activity limits; scan exports reject
-more than 10,000 findings. All IDs are opaque record IDs, never paths. Unsupported format segments
+Case report generation rejects cases above configured link/note/activity limits. `full-json` rejects
+more than 10,000 findings or 20 MiB of serialized output; the JSONL route streams larger retained
+finding sets in bounded batches. All IDs are opaque record IDs, never paths. Unsupported format segments
 are rejected by route validation. Case persistence still uses the existing JSON payload schema and
 does not add SQL foreign keys. Missing legacy references remain warnings. No artifacts or
 backup/restore controls are exposed.

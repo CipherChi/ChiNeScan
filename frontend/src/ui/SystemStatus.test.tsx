@@ -67,6 +67,24 @@ it('renders healthy status and accessible live updates', async () => {
   expect(screen.getByRole('button', { name: 'Check system status now' })).toBeEnabled();
 });
 
+it('shows completed endpoint results when readiness stalls and records the timeout', async () => {
+  vi.useFakeTimers();
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path === '/api/ready') {
+      return await new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      });
+    }
+    if (path === '/api/health') return jsonResponse({ status: 'ok', version: '0.1.0', uptime_seconds: 42 });
+    return jsonResponse({ status: 'ok', version: '0.1.0', operator_state: 'active', allowed_roots: { valid: 1, ignored: 0 }, scan_bounds: {}, recent_errors: [] });
+  });
+  render(<SystemStatus onUnauthorized={vi.fn()} />);
+  await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+  expect(screen.getByText('Connected to local service')).toBeInTheDocument();
+  expect(screen.getByText(/Health: received · readiness: timed out · diagnostics: received/)).toBeInTheDocument();
+});
+
 it('renders degraded readiness with its action hint', async () => {
   vi.spyOn(globalThis, 'fetch').mockImplementation(successfulFetch('WARN'));
   render(<SystemStatus onUnauthorized={vi.fn()} />);

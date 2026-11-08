@@ -1,11 +1,23 @@
 # Operations and deployment status
 
-Chinetscan has no configured production or staging host, image registry, release credentials, or
+ChiNeScan has no configured production or staging host, image registry, release credentials, or
 health-check endpoint. The CI container job builds locally for verification and does not publish
 the image. Public/remote deployment is disabled. The authenticated dashboard is available only
 through the explicit `chinescan web serve` command, which binds one worker to `127.0.0.1`.
 Docker Compose remains a local one-shot CLI runner; its default `--help` command exits and never
 starts the dashboard.
+
+## Local container image
+
+The local container uses the digest-pinned Python 3.12.16 slim Trixie image
+which provides apt and libapt-pkg7.0 3.0.4, and installs the Trixie security
+revision of `zlib1g` (`1:1.3.dfsg+really1.3.1-1+deb13u1`). The image also carries the Alembic
+configuration and migrations required to initialize its SQLite database.
+The supported container use remains local; the explicit web command binds
+to loopback, and the image is not a remote or multi-user deployment
+configuration. Rebuild and scan the image with current advisory data when
+maintaining it; a package pin and a successful scan are time-specific
+evidence, not a guarantee that the image is vulnerability-free.
 
 ### Reverse proxy example for an explicitly approved remote deployment
 
@@ -85,7 +97,7 @@ an entry is considered managed. Invalid bundles, symlinks, arbitrary files, and 
 are listed as skipped. Entries marked `remove` are proposals only; this stage never deletes backups
 or prunes database records, and it creates no scheduled cleanup.
 
-A future active-database cutover remains operator-controlled: stop every ChineScan process using the
+A future active-database cutover remains operator-controlled: stop every ChiNeScan process using the
 database, make and verify a separate backup, restore to a new path, check the recovered records and
 reports, then update the configured database path while no writer is running. Preserve the original
 until the new path is confirmed. This release does not replace the active database automatically.
@@ -118,7 +130,7 @@ If a host or database may be compromised, stop scans and preserve the database a
 logs as evidence. Limit access to those copies, record who handled them, and follow the
 organization's incident process for containment and notification. Rotate any credentials that
 could have been exposed through the control plane that issued them; do not paste secrets or raw
-investigation records into issues or chat. ChineScan has no built-in incident-response workflow.
+investigation records into issues or chat. ChiNeScan has no built-in incident-response workflow.
 
 ## Requirements before production deployment
 

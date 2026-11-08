@@ -143,6 +143,32 @@ def test_external_import_rejects_oversized_and_traversal_paths(tmp_path: Path) -
     assert finding.location == "external-path-omitted"
 
 
+def test_external_import_redacts_retained_prefix_before_discarding_long_tail(
+    tmp_path: Path,
+) -> None:
+    payload = {
+        "findings": [
+            {
+                "title": "synthetic",
+                "description": "password=synthetic-canary " + "ordinary " * 20_000,
+            }
+        ]
+    }
+    finding = parse_scanity_export(json.dumps(payload).encode(), target=tmp_path)[0]
+    assert "synthetic-canary" not in finding.description
+    assert "[REDACTED]" in finding.description
+    assert len(finding.description) <= 2_000
+
+
+def test_external_import_rejects_excessive_json_nesting_without_echoing_input(
+    tmp_path: Path,
+) -> None:
+    nested = '{"findings":[' + "[" * 20_000 + '"synthetic-canary"' + "]" * 20_000 + "]}"
+    with pytest.raises(ExternalReportError, match="valid UTF-8 JSON") as error:
+        parse_scanity_export(nested.encode(), target=tmp_path)
+    assert "synthetic-canary" not in str(error.value)
+
+
 def test_code_report_groups_and_separates_external_findings(tmp_path: Path) -> None:
     from chinescan.core.orchestration.code_rules import analyze_source
 
@@ -165,7 +191,7 @@ def test_code_report_groups_and_separates_external_findings(tmp_path: Path) -> N
     )
     markdown = render_report(scan, [*findings, *imported], "markdown")
     assert "External scanner results" in markdown
-    assert "Likely real issues" in markdown
+    assert "Rule-supported candidates (not independently verified)" in markdown
     assert "not-a-real-secret" not in markdown
 
 

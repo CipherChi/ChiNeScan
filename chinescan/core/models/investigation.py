@@ -33,11 +33,37 @@ class CoverageReport(SchemaRecord):
     gaps: list[CoverageGap] = Field(default_factory=list)
 
 
+class ScoreEvidence(SchemaRecord):
+    file: str
+    line_numbers: list[int] = Field(default_factory=list)
+    code_excerpt: str | None = None
+
+
+class ScoreContribution(SchemaRecord):
+    signal_id: str
+    description: str
+    raw_count: int = Field(ge=0)
+    effective_count: int = Field(ge=0)
+    weight: int = Field(ge=0)
+    adjustment: str
+    contribution: int
+    evidence: list[ScoreEvidence] = Field(default_factory=list)
+
+
 class VibeCodingRisk(SchemaRecord):
     score: int = Field(ge=0, le=100)
     confidence: Confidence
     signals: list[str] = Field(default_factory=list)
     disclaimer: str = "Heuristic risk indicators only; this score is not proof of AI authorship."
+    name: str = "Code pattern risk"
+    direction: str = "Higher scores mean more configured code patterns were observed."
+    interpretation: str = (
+        "A deterministic heuristic indicator, not a vulnerability or authorship verdict."
+    )
+    algorithm_version: str | None = None
+    contributions: list[ScoreContribution] = Field(default_factory=list)
+    coverage_limitations: list[str] = Field(default_factory=list)
+    confidence_rationale: str | None = None
 
 
 class CodeAssessmentSummary(SchemaRecord):
@@ -194,6 +220,7 @@ class Scan(SchemaRecord):
     event_ids: list[str] = Field(default_factory=list)
     alert_ids: list[str] = Field(default_factory=list)
     timeline_entry_ids: list[str] = Field(default_factory=list)
+    location_ids: list[str] = Field(default_factory=list)
     failures: dict[str, str] = Field(default_factory=dict)
     scan_options: dict[str, str | int | float | bool] = Field(default_factory=dict)
     coverage: CoverageReport | None = None

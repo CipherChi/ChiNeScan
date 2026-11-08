@@ -42,6 +42,7 @@ from chinescan.core.projects import ProjectError, ProjectFileRegistry, ProjectSe
 from chinescan.core.report_store import ReportStoreError, save_scan_reports
 from chinescan.core.reporting import (
     ReportingError,
+    iter_scan_findings_jsonl,
     render_case_report,
     render_report,
     scan_data,
@@ -513,9 +514,9 @@ def web_serve(
         settings=settings,
     )
     if (FRONTEND_DIST / "index.html").is_file():
-        typer.echo(f"Chinetscan dashboard available at http://127.0.0.1:{port}")
+        typer.echo(f"ChiNeScan dashboard available at http://127.0.0.1:{port}")
     else:
-        typer.echo(f"Chinetscan API listening at http://127.0.0.1:{port}")
+        typer.echo(f"ChiNeScan API listening at http://127.0.0.1:{port}")
         typer.echo("Run `npm run dev` in frontend for the development dashboard.")
     run(
         application,
@@ -546,7 +547,7 @@ def doctor(
         False, "--json", help="Emit the full diagnostics report as JSON."
     ),
 ) -> None:
-    """Check local ChineScan readiness without changing local state."""
+    """Check local ChiNeScan readiness without changing local state."""
     from chinescan.core.diagnostics import build_report
 
     report = build_report(
@@ -560,7 +561,7 @@ def doctor(
 def status(
     json_output: bool = typer.Option(False, "--json", help="Emit the diagnostics summary as JSON."),
 ) -> None:
-    """Show a short summary of local ChineScan readiness."""
+    """Show a short summary of local ChiNeScan readiness."""
     from chinescan.core.diagnostics import build_report
 
     report = build_report(
@@ -917,6 +918,13 @@ def code_scan(
         gaps = len(result.coverage.gaps) if result.coverage else 0
         files = result.coverage.examined.get("files_scanned", 0) if result.coverage else 0
         typer.echo(f"Coverage: {files} files examined; {gaps} coverage gap(s).")
+        risk_summary = result.code_assessment.vibe_coding_risk if result.code_assessment else None
+        if risk_summary:
+            typer.echo(
+                f"Code pattern risk: {risk_summary.score}/100 "
+                f"({risk_summary.confidence.value}; "
+                f"{risk_summary.algorithm_version or 'legacy score'})."
+            )
         typer.echo(
             "Next: review leads and investigate coverage gaps in the authorized project scope."
         )
@@ -952,22 +960,47 @@ def not_implemented(phase: int, command: str) -> None:
     raise typer.Exit(code=2)
 
 
-report_formats = ("json", "markdown", "html", "csv", "sarif", "share-summary")
+report_formats = (
+    "json",
+    "full-json",
+    "jsonl",
+    "detail",
+    "markdown",
+    "html",
+    "csv",
+    "sarif",
+    "share-summary",
+)
 
 
 def report(
     scan_id: str = typer.Argument(..., help="Persisted scan ID."),  # noqa: B008
     output_format: str = typer.Option(  # noqa: B008
-        "json", "--format", help="json, markdown, html, csv, sarif, or share-summary."
+        "json",
+        "--format",
+        help="json (preview), full-json (complete within limits), jsonl (bounded complete stream), detail (human-readable findings and score ledger), markdown, html, csv, sarif, or share-summary.",  # noqa: E501
     ),  # noqa: B008
     output: Path | None = typer.Option(  # noqa: B008
         None, "--output", help="Write to this path instead of stdout."
     ),  # noqa: B008
 ) -> None:
     if output_format not in report_formats:
-        raise typer.BadParameter("must be json, markdown, html, csv, or sarif")
+        raise typer.BadParameter(
+            "must be json, full-json, jsonl, detail, markdown, html, csv, sarif, or share-summary"
+        )
     repository = SQLiteRepository(_settings().database_path)
     try:
+        if output_format == "jsonl":
+            if output is None:
+                for line in iter_scan_findings_jsonl(repository, scan_id):
+                    typer.echo(line, nl=False)
+            else:
+                output.parent.mkdir(parents=True, exist_ok=True)
+                with output.open("w", encoding="utf-8", newline="") as stream:
+                    for line in iter_scan_findings_jsonl(repository, scan_id):
+                        stream.write(line)
+                typer.echo(f"Wrote {output_format} report: {output}")
+            return
         scan, findings = scan_data(repository, scan_id)
         content = render_report(scan, findings, output_format)
     except ReportingError as exc:

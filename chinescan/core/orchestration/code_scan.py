@@ -482,8 +482,7 @@ class BuiltinRuleScanner:
                 ]
         profile.source_files = tuple(scanned_sources)
         findings.extend(dependency_findings(profile.root))
-        score, confidence, signals = vibe_risk(profile)
-        self.vibe_coding_risk = VibeCodingRisk(score=score, confidence=confidence, signals=signals)
+        self.vibe_coding_risk = vibe_risk(profile)
         return findings
 
 

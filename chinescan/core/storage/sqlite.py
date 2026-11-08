@@ -55,7 +55,7 @@ class SQLiteRepository(Repository):
             if revision is None and tables:
                 if tables != {"records"} or not self._is_initial_records_schema(inspector):
                     raise StorageError(
-                        "SQLite schema is not a recognized ChineScan revision; "
+                        "SQLite schema is not a recognized ChiNeScan revision; "
                         "database left unchanged."
                     )
                 config = self._alembic_config(url)

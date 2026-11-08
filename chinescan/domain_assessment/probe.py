@@ -208,7 +208,7 @@ def _head_request(
         connection.settimeout(timeout_seconds)
         request = (
             f"HEAD / HTTP/1.1\r\nHost: {hostname}\r\n"
-            "User-Agent: ChineScan/0.1\r\nConnection: close\r\n\r\n"
+            "User-Agent: ChiNeScan/0.1\r\nConnection: close\r\n\r\n"
         )
         connection.sendall(request.encode("ascii"))
         response = bytearray()

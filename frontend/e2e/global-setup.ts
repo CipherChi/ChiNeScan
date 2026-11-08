@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { createWriteStream, type WriteStream } from 'node:fs';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, resolve } from 'node:path';
@@ -14,6 +15,8 @@ const DIAGNOSTIC_LIMIT = 4_000;
 const STARTUP_TIMEOUT_MS = 120_000;
 const READINESS_TIMEOUT_MS = 45_000;
 const READINESS_REQUEST_TIMEOUT_MS = 5_000;
+const backendLog = resolve(repoRoot, 'frontend/test-results/backend.log');
+let backendLogHandle: WriteStream | undefined;
 
 interface TestCredentials {
   email: string;
@@ -60,6 +63,8 @@ async function start(
   missingManagedStorage = false,
   githubImportEnabled = false,
 ): Promise<{ url: string; email: string; password: string; credentialFile: string; dataDirectory: string; githubRepositoryUrl: string | null }> {
+  await mkdir(dirname(backendLog), { recursive: true });
+  backendLogHandle ??= createWriteStream(backendLog, { flags: 'w' });
   const directory = resolve(dataRoot, `instance-${children.length}-ttl-${ttl}`);
   const python = 'uv';
   const args = ['run', 'python', pythonHarness, '--data-dir', directory, '--ttl', String(ttl)];
@@ -94,8 +99,16 @@ async function start(
   let credentialsPipeFailed = false;
   child.stdout?.setEncoding('utf8');
   child.stderr?.setEncoding('utf8');
-  child.stdout?.on('data', (chunk: string) => { stdout = appendBounded(stdout, chunk); });
-  child.stderr?.on('data', (chunk: string) => { stderr = appendBounded(stderr, chunk); });
+  const label = `instance-${children.length - 1}`;
+  child.stdout?.on('data', (chunk: string) => {
+    stdout = appendBounded(stdout, chunk);
+    const sanitized = chunk.replace(/"(?:url|github_repository_url)"\s*:\s*"[^"]*"/g, '"endpoint":"[redacted]"');
+    backendLogHandle?.write(`[${label}] stdout ${sanitized}`);
+  });
+  child.stderr?.on('data', (chunk: string) => {
+    stderr = appendBounded(stderr, chunk);
+    backendLogHandle?.write(`[${label}] stderr ${redactDiagnostic(chunk)}`);
+  });
   try {
     if (!child.stdin) throw new Error('Dashboard fixture credential pipe is unavailable.');
     child.stdin.on('error', () => { credentialsPipeFailed = true; });
@@ -172,6 +185,7 @@ function redactDiagnostic(value: string): string {
 }
 
 export default async function globalSetup(_config: FullConfig) {
+  const runId = randomBytes(5).toString('hex');
   dataRoot = await mkdtemp(resolve(tmpdir(), 'chinescan-playwright-'));
   try {
     const urls = {
@@ -184,6 +198,7 @@ export default async function globalSetup(_config: FullConfig) {
       githubDisabled: await start(1800, makeCredentials()),
     };
     process.env.CHINESCAN_BROWSER_TEST_URLS = JSON.stringify(urls);
+    process.env.CHINESCAN_E2E_RUN_ID = runId;
     process.env.CHINESCAN_BROWSER_PROJECT_FIXTURE = resolve(dataRoot, 'instance-0-ttl-1800-approved-project');
     process.env.CHINESCAN_BROWSER_GITHUB_URL = String(urls.githubEnabled.githubRepositoryUrl);
     process.env.CHINESCAN_BROWSER_GITHUB_DATA_DIR = urls.githubEnabled.dataDirectory;
@@ -202,6 +217,7 @@ export default async function globalSetup(_config: FullConfig) {
   return async () => {
     await Promise.all(children.map(stopOwned));
     delete process.env.CHINESCAN_BROWSER_TEST_URLS;
+    delete process.env.CHINESCAN_E2E_RUN_ID;
     delete process.env.CHINESCAN_BROWSER_PROJECT_FIXTURE;
     delete process.env.CHINESCAN_BROWSER_GITHUB_URL;
     delete process.env.CHINESCAN_BROWSER_GITHUB_DATA_DIR;
@@ -211,5 +227,10 @@ export default async function globalSetup(_config: FullConfig) {
     delete process.env.CHINESCAN_BROWSER_PHASE6C_SCREENSHOTS;
     delete process.env.CHINESCAN_BROWSER_STATUS_SCREENSHOTS;
     await rm(dataRoot, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
+    await new Promise<void>((resolvePromise) => {
+      if (!backendLogHandle) return resolvePromise();
+      backendLogHandle.end(resolvePromise);
+      backendLogHandle = undefined;
+    });
   };
 }
