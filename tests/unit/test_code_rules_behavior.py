@@ -111,8 +111,8 @@ CASES: dict[str, tuple[str, str, str]] = {
         "src/api.js",
     ),
     "REQUEST-NO-SCHEMA": (
-        "const body = req.body",
-        "const body = zod.parse(req.body)",
+        "const body = req.body; await db.insert(body)",
+        "const body = schema.parse(req.body); await db.insert(body)",
         "src/api.js",
     ),
     "LOGIN-NO-RATE-LIMIT": (
@@ -121,7 +121,7 @@ CASES: dict[str, tuple[str, str, str]] = {
         "src/api/login.js",
     ),
     "UPLOAD-NO-CHECKS": (
-        "const upload = multer()",
+        "const upload = multer(); upload.single('file')",
         "const upload = multer({ limits: { fileSize: 1000 }, fileFilter })",
         "src/upload.js",
     ),
@@ -173,6 +173,128 @@ def test_rule_has_positive_and_negative_behavioral_fixture(tmp_path: Path, rule_
     }, f"negative fixture unexpectedly triggered {rule_id}"
 
 
+def test_upload_rule_ignores_file_existence_suffix_and_reads(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    path = root / "src" / "files.ts"
+    path.parent.mkdir()
+    text = "if (path.is_file() && path.endsWith('.zip')) { await readFile(path); }"
+    path.write_text(text, encoding="utf-8")
+    assert "UPLOAD-NO-CHECKS" not in {
+        item.rule_id for item in analyze_source(root, path, text, is_test=False)
+    }
+
+
+def test_upload_with_controls_reports_them_without_an_absence_finding(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    path = root / "src" / "upload.ts"
+    path.parent.mkdir(parents=True)
+    text = "const handler = multer({ limits: { fileSize: 1000 }, fileFilter });"
+    findings = analyze_source(root, path, text, is_test=False)
+    assert "UPLOAD-NO-CHECKS" not in {item.rule_id for item in findings}
+    observed = next(item for item in findings if item.rule_id == "UPLOAD-CONTROLS-OBSERVED")
+    assert "File size limits: found" in observed.explanation.controls_considered
+
+
+def test_request_schema_evidence_uses_unvalidated_sink_line(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    path = root / "route.ts"
+    text = "const body = await request.json();\nawait db.insert(body);"
+    path.write_text(text, encoding="utf-8")
+    findings = analyze_source(root, path, text, is_test=False)
+    finding = next(item for item in findings if item.rule_id == "REQUEST-NO-SCHEMA")
+    assert finding.line_numbers == [2]
+    assert finding.code_excerpt == "await db.insert(body);"
+    assert finding.explanation is not None
+    assert finding.explanation.observed == finding.code_excerpt
+
+
+def test_empty_catch_includes_body_and_known_fallback_is_info(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    path = root / "src" / "fallback.js"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = "try { JSON.parse(value); } catch (error) { /* ignored */ }"
+    path.write_text(text, encoding="utf-8")
+    findings = analyze_source(root, path, text, is_test=False)
+    finding = next(item for item in findings if item.rule_id == "EMPTY-CATCH")
+    assert "catch (error) { /* ignored */ }" in finding.code_excerpt
+    assert finding.severity.value == "info"
+
+
+def test_empty_catch_around_auth_failure_is_elevated(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    path = root / "src" / "auth.js"
+    path.parent.mkdir(parents=True)
+    text = "try { await authService.login(); } catch (error) {}"
+    findings = analyze_source(root, path, text, is_test=False)
+    finding = next(item for item in findings if item.rule_id == "EMPTY-CATCH")
+    assert finding.severity.value == "high"
+
+
+def test_verbose_error_through_fixed_mapper_is_downgraded(tmp_path: Path) -> None:
+    path = tmp_path / "src" / "api.js"
+    path.parent.mkdir(parents=True)
+    text = "res.json({ message: errorMap(error.code, error.message) });"
+    findings = analyze_source(tmp_path, path, text, is_test=False)
+    finding = next(item for item in findings if item.rule_id == "VERBOSE-ERROR-EXPOSURE")
+    assert finding.severity.value == "info"
+    assert "Fixed/mapped error handler: found" in finding.explanation.controls_considered
+
+
+@pytest.mark.parametrize(
+    ("relative", "positive", "negative", "rule_id"),
+    [
+        (
+            "lib/config.dart",
+            'const api = "ghp_' + "A" * 36 + '";',
+            'const api = "example";',
+            "HARDCODED-SECRET-SHAPE",
+        ),
+        (
+            "android/AndroidManifest.xml",
+            '<application usesCleartextTraffic="true"/>',
+            '<application usesCleartextTraffic="false"/>',
+            "ANDROID-CLEARTEXT-TRAFFIC",
+        ),
+        (
+            "supabase/migrations/001.sql",
+            "CREATE TABLE users (id int);",
+            "CREATE TABLE users (id int);\nALTER TABLE users ENABLE ROW LEVEL SECURITY;",
+            "SUPABASE-MIGRATION-RLS",
+        ),
+    ],
+)
+def test_cross_language_first_pass_rules_have_true_and_false_fixtures(
+    tmp_path: Path, relative: str, positive: str, negative: str, rule_id: str
+) -> None:
+    root = tmp_path / "repo"
+    path = root / relative
+    path.parent.mkdir(parents=True)
+    path.write_text(positive, encoding="utf-8")
+    assert rule_id in {item.rule_id for item in analyze_source(root, path, positive, is_test=False)}
+    assert rule_id not in {
+        item.rule_id for item in analyze_source(root, path, negative, is_test=False)
+    }
+
+
+def test_service_role_usage_is_limited_to_client_mobile_source(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    mobile = root / "mobile" / "main.dart"
+    mobile.parent.mkdir(parents=True)
+    text = "final key = SUPABASE_SERVICE_ROLE_KEY;"
+    mobile.write_text(text, encoding="utf-8")
+    assert "SUPABASE-SERVICE-ROLE-CLIENT" in {
+        item.rule_id for item in analyze_source(root, mobile, text, is_test=False)
+    }
+    server = root / "server.py"
+    server.write_text(text, encoding="utf-8")
+    assert "SUPABASE-SERVICE-ROLE-CLIENT" not in {
+        item.rule_id for item in analyze_source(root, server, text, is_test=False)
+    }
+
+
 def test_behavior_fixture_table_covers_every_rule() -> None:
     assert set(CASES) == {rule.rule_id for rule in RULES}
 
@@ -209,7 +331,7 @@ def test_context_dependent_match_stays_possible(tmp_path: Path) -> None:
     assert finding.confidence.value == "POSSIBLE"
 
 
-def test_jwt_none_algorithm_keyword_is_high_potential_impact_not_critical(tmp_path: Path) -> None:
+def test_jwt_none_keyword_possible_confidence_caps_at_medium(tmp_path: Path) -> None:
     path = tmp_path / "src" / "auth.js"
     path.parent.mkdir(parents=True)
     findings = analyze_source(
@@ -219,11 +341,11 @@ def test_jwt_none_algorithm_keyword_is_high_potential_impact_not_critical(tmp_pa
         is_test=False,
     )
     finding = next(item for item in findings if item.rule_id == "JWT-ALG-NONE")
-    assert finding.severity.value == "high"
+    assert finding.severity.value == "medium"
     assert finding.confidence.value == "POSSIBLE"
     assert finding.explanation is not None
-    assert finding.explanation.classification_policy_version == "static-impact-v1"
-    assert "does not establish" in (finding.explanation.severity_rationale or "")
+    assert finding.explanation.classification_policy_version == "signal-quality-v2"
+    assert "verifier use is unknown" in (finding.explanation.severity_rationale or "")
     assert not any(rule.severity.value == "critical" for rule in RULES)
 
 
@@ -317,10 +439,10 @@ def test_code_pattern_risk_ledger_reconciles_caps_and_bonuses(tmp_path: Path) ->
     assert by_signal["tutorial_default"].raw_count == 4
     assert by_signal["tutorial_default"].effective_count == 3
     assert by_signal["tutorial_default"].contribution == 54
-    assert by_signal["client_validation"].contribution == 24
-    assert "server-side validation not established" in by_signal["client_validation"].description
+    assert by_signal["client_validation"].contribution == 0
+    assert by_signal["client_validation"].raw_count == 0
     assert by_signal["route_handlers_without_controls"].contribution == 12
-    assert risk.score == 90
+    assert risk.score == 66
 
 
 def test_legacy_score_has_explicit_versioned_ledger(tmp_path: Path) -> None:
@@ -329,6 +451,6 @@ def test_legacy_score_has_explicit_versioned_ledger(tmp_path: Path) -> None:
     from chinescan.core.orchestration.code_rules import vibe_risk
 
     risk = vibe_risk(SimpleNamespace(source_files=(), root=tmp_path))
-    assert risk.score == 0
+    assert risk.score is None
     assert risk.contributions
     assert all(item.raw_count == 0 and item.contribution == 0 for item in risk.contributions)

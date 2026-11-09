@@ -25,6 +25,30 @@ def test_detects_python_and_node_projects() -> None:
     assert any(path.name == "app.py" for path in python_project.source_files)
 
 
+def test_coverage_reports_detected_and_unanalyzed_language_counts(tmp_path: Path) -> None:
+    project = tmp_path / "mixed"
+    project.mkdir()
+    (project / "main.py").write_text("print('synthetic')", encoding="utf-8")
+    (project / "Main.java").write_text("class Main {}", encoding="utf-8")
+    (project / "AndroidManifest.xml").write_text("<manifest/>", encoding="utf-8")
+    result = CodeScanService([BuiltinRuleScanner()]).scan(project)
+    assert result.coverage is not None
+    assert result.coverage.languages_detected == {
+        "Python": 1,
+        "Java": 1,
+        "XML config": 1,
+    }
+    assert result.coverage.files_scanned_by_language == {
+        "Python": 1,
+        "Java": 1,
+        "XML config": 1,
+    }
+    assert result.coverage.language_analyzer_status["Java"] == (
+        "generic first-pass only; no analyzer for this language"
+    )
+    assert any("Supabase RLS" in item for item in result.coverage.not_assessed)
+
+
 def test_oversized_source_is_reported_as_scan_failure(tmp_path: Path) -> None:
     project = tmp_path / "large-project"
     project.mkdir()

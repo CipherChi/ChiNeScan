@@ -40,10 +40,47 @@ SOURCE_SUFFIXES = {
     ".cjs",
     ".ts",
     ".tsx",
+    ".dart",
+    ".kt",
     ".java",
-    ".go",
-    ".rb",
+    ".swift",
+    ".rs",
+    ".c",
+    ".cpp",
+    ".sql",
+    ".yaml",
+    ".yml",
+    ".xml",
 }
+_COVERAGE_LANGUAGE = {
+    ".js": "JavaScript",
+    ".jsx": "JavaScript",
+    ".mjs": "JavaScript",
+    ".cjs": "JavaScript",
+    ".tsx": "TypeScript",
+    ".dart": "Dart",
+    ".kt": "Kotlin",
+    ".java": "Java",
+    ".swift": "Swift",
+    ".rs": "Rust",
+    ".c": "C",
+    ".cpp": "C++",
+    ".sql": "SQL",
+    ".ts": "TypeScript",
+    ".py": "Python",
+    ".yaml": "YAML config",
+    ".yml": "YAML config",
+    ".xml": "XML config",
+}
+_NOT_ASSESSED = [
+    "Dart, Kotlin, Java, and SQL static analysis",
+    "Supabase RLS policies and migrations",
+    "AndroidManifest.xml and network-security-config.xml",
+    "Dependency vulnerabilities from pubspec.lock, package-lock.json, and Cargo.lock",
+    "Cross-file data flow",
+    "Git history",
+    "Runtime response headers",
+]
 IGNORED_DIRS = {
     ".git",
     ".venv",
@@ -576,12 +613,23 @@ def _coverage_for_project(
     long_lines = 0
     symlinks = 0
     unreadable = 0
+    languages_detected: dict[str, int] = {}
+    files_scanned_by_language: dict[str, int] = {}
+    scanned_paths = {path.relative_to(profile.root).as_posix() for path in profile.source_files}
     if not bounds:
         for directory, dirnames, filenames in os.walk(profile.root, followlinks=False):
             dirnames[:] = sorted(name for name in dirnames if name not in IGNORED_DIRS)
             current = Path(directory)
             for name in sorted(filenames):
                 path = current / name
+                language = _COVERAGE_LANGUAGE.get(path.suffix.casefold())
+                if language:
+                    languages_detected[language] = languages_detected.get(language, 0) + 1
+                    relative_path = path.relative_to(profile.root).as_posix()
+                    if relative_path in scanned_paths:
+                        files_scanned_by_language[language] = (
+                            files_scanned_by_language.get(language, 0) + 1
+                        )
                 if path.suffix.lower() not in SOURCE_SUFFIXES:
                     continue
                 if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
@@ -595,6 +643,12 @@ def _coverage_for_project(
                             long_lines += 1
                 except OSError:
                     unreadable += 1
+    else:
+        for path in profile.source_files:
+            language = _COVERAGE_LANGUAGE.get(path.suffix.casefold())
+            if language:
+                languages_detected[language] = languages_detected.get(language, 0) + 1
+                files_scanned_by_language[language] = files_scanned_by_language.get(language, 0) + 1
     if long_lines:
         gaps.append(
             CoverageGap(
@@ -651,6 +705,17 @@ def _coverage_for_project(
         },
         excluded=dict(profile.excluded_counts or {}),
         gaps=gaps,
+        languages_detected=languages_detected,
+        files_scanned_by_language=files_scanned_by_language,
+        language_analyzer_status={
+            language: (
+                "built-in heuristic analyzer"
+                if language in {"Python", "JavaScript", "TypeScript"}
+                else "generic first-pass only; no analyzer for this language"
+            )
+            for language in sorted(languages_detected)
+        },
+        not_assessed=_NOT_ASSESSED,
     )
 
 

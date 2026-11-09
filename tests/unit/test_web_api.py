@@ -130,6 +130,22 @@ def _login(
     )
 
 
+def test_modules_endpoint_is_authenticated_and_reports_planned_guards(tmp_path):
+    _app, client, _credential, _database = _fixture(tmp_path)
+    assert client.get("/api/modules").status_code == 401
+    assert _login(client).status_code == 200
+    response = client.get("/api/modules")
+    assert response.status_code == 200
+    modules = {item["name"]: item for item in response.json()}
+    assert modules["Network Scanner"]["status"] == "planned"
+    assert (
+        "explicit target authorization"
+        in " ".join(modules["Network Scanner"]["authorization_guards"]).casefold()
+    )
+    assert modules["File Analyzer"]["status"] == "partial"
+    assert modules["Security Dashboard"]["status"] == "partial"
+
+
 def test_project_approval_uses_20_per_60_second_default_despite_test_environment(
     tmp_path, monkeypatch
 ):
@@ -718,7 +734,7 @@ def test_external_report_import_is_inert_separate_and_escaped(tmp_path: Path) ->
             item["source"] == "scanity" for item in report["external_scanner_results"]["findings"]
         )
         assert all(entry["finding_id"] != imported["finding_id"] for entry in report["fix_first"])
-        assert report["summary"]["vibe_coding_risk_score"] == 0
+        assert report["summary"]["vibe_coding_risk_score"] is None
     finally:
         client.close()
 

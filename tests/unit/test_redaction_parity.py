@@ -2,8 +2,8 @@ import json
 import os
 import secrets
 import time
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -97,6 +97,20 @@ def test_python_and_rust_outputs_match_the_full_corpus(tmp_path: Path) -> None:
     for value in _all_parity_inputs(tmp_path):
         expected = redaction._redact_text_python(value)
         assert native.redact_text(value) == expected, repr(value[:160])
+
+
+def test_python_and_rust_preserve_source_names_and_locations() -> None:
+    native = _native_or_skip()
+    values = [
+        "def get_api_key_status(self):",
+        "scripts/secret_rotation_audit.py:101",
+        "api_key = SyntheticCanaryValue-1234567890",
+    ]
+    for value in values:
+        assert native.redact_text(value) == redaction._redact_text_python(value)
+    assert native.redact_text(values[0]) == values[0]
+    assert native.redact_text(values[1]) == values[1]
+    assert "[REDACTED]" in native.redact_text(values[2])
 
 
 def test_engine_info_reports_build_versions() -> None:

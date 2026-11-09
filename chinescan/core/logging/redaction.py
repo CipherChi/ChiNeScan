@@ -36,6 +36,22 @@ MAX_REDACT_STRING_CHARS = 1_000_000
 MAX_REDACT_TOTAL_CHARS = 8_000_000
 MAX_REDACT_DEPTH = 32
 MAX_REDACT_NODES = 100_000
+MAX_SENSITIVE_KEY_CHARS = 256
+_SOURCE_EXTENSIONS = (
+    ".py",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".jsx",
+    ".rs",
+    ".go",
+    ".java",
+    ".cs",
+    ".rb",
+    ".php",
+    ".sh",
+    ".ps1",
+)
 
 _ENGINE_REQUESTED = os.environ.get("CHINESCAN_ENGINE", "auto").strip().lower() or "auto"
 if _ENGINE_REQUESTED not in {"auto", "python", "rust"}:
@@ -49,9 +65,7 @@ else:
     except ImportError:
         _rust_engine = None
 if _ENGINE_REQUESTED == "rust" and _rust_engine is None:
-    raise RuntimeError(
-        "CHINESCAN_ENGINE=rust requires the chinescan_engine extension"
-    ) from None
+    raise RuntimeError("CHINESCAN_ENGINE=rust requires the chinescan_engine extension") from None
 _ENGINE_IN_USE = (
     "rust"
     if _ENGINE_REQUESTED == "rust" or (_ENGINE_REQUESTED == "auto" and _rust_engine is not None)
@@ -132,11 +146,14 @@ def _redact_string_python(value: str) -> str:
             candidate = match.group(0)
             if _UUID.fullmatch(candidate) or re.fullmatch(r"(?i)[a-f0-9]{32,}", candidate):
                 return candidate
-            classes = sum(
-                bool(re.search(pattern, candidate))
-                for pattern in (r"[a-z]", r"[A-Z]", r"[0-9]", r"[_-]")
+            # Separators are common in source symbols and project paths. They
+            # do not add entropy by themselves; require mixed case or digits.
+            has_letters = bool(re.search(r"[A-Za-z]", candidate))
+            high_entropy_shape = has_letters and (
+                bool(re.search(r"[0-9]", candidate))
+                or (bool(re.search(r"[a-z]", candidate)) and bool(re.search(r"[A-Z]", candidate)))
             )
-            return REDACTED if classes >= 2 else candidate
+            return REDACTED if high_entropy_shape else candidate
 
         value = _TOKEN_RUN.sub(token_replacement, value)
         return value
@@ -174,7 +191,21 @@ def _redact_assignments(value: str) -> str:
             key_start -= 1
         key = value[key_start:key_end]
         valid_start = bool(key) and (key[0].isalpha() or key[0] == "_")
-        if valid_start and _SENSITIVE_KEY.search(key):
+        if value[delimiter] == ":":
+            path_value_start = delimiter + 1
+            while path_value_start < value_length and value[path_value_start].isspace():
+                path_value_start += 1
+            path_value = _ASSIGNMENT_VALUE.match(value, path_value_start)
+            if path_value and path_value.group(0).isdigit():
+                preceding = value[:delimiter].rsplit(None, 1)[-1].casefold()
+                if (
+                    "/" in preceding
+                    or "\\" in preceding
+                    or preceding.endswith(_SOURCE_EXTENSIONS)
+                ):
+                    search_from = delimiter + 1
+                    continue
+        if valid_start and _sensitive_key_match(key):
             value_start = delimiter + 1
             while value_start < value_length and value[value_start].isspace():
                 value_start += 1
@@ -198,6 +229,16 @@ def _redact_assignments(value: str) -> str:
     return "".join(output)
 
 
+def _sensitive_key_match(key: str) -> bool:
+    """Match long keys in bounded overlapping windows without missing a suffix."""
+    overlap = 32
+    step = MAX_SENSITIVE_KEY_CHARS - overlap
+    return any(
+        _SENSITIVE_KEY.search(key[start : start + MAX_SENSITIVE_KEY_CHARS])
+        for start in range(0, len(key), step)
+    )
+
+
 def redact(value: Any) -> Any:
     """Redact recursively within explicit resource bounds; fail closed on overflow."""
     budget = [0, 0]
@@ -206,7 +247,7 @@ def redact(value: Any) -> Any:
     except _RedactionLimitExceeded:
         return REDACTION_LIMIT_MARKER
     except _RustRedactionFailure as failure:
-        raise failure.native_error
+        raise failure.native_error from None
     except Exception:
         return REDACTED
 

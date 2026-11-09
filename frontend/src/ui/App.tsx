@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, safeLocalUrl, setCsrfToken, UnauthorizedError } from '../api';
-import type { Finding, Overview, Page, Scan } from '../types';
+import type { Finding, ModuleCapability, Overview, Page, Scan } from '../types';
 import { CasesWorkspace } from './CasesWorkspace';
 import { CodeJobsWorkspace } from './CodeJobsWorkspace';
 import { ChainTraceWorkspace } from './ChainTraceWorkspace';
@@ -10,7 +10,7 @@ import { ProjectsWorkspace } from './ProjectsWorkspace';
 import { ScanityReportImport } from './ScanityReportImport';
 import { SystemStatus } from './SystemStatus';
 
-type Section = 'overview' | 'scans' | 'findings' | 'cases' | 'jobs' | 'projects' | 'logs' | 'malware' | 'chain' | 'status';
+type Section = 'overview' | 'scans' | 'findings' | 'cases' | 'jobs' | 'projects' | 'logs' | 'malware' | 'chain' | 'status' | 'modules';
 type Detail = { kind: 'scan'; id: string } | { kind: 'finding'; id: string } | null;
 type AuthPage = 'login' | 'signup' | 'forgot' | 'forgot-confirmed' | 'reset';
 
@@ -38,6 +38,8 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [authPage, setAuthPage] = useState<AuthPage>(routeFromPath());
   const [caseScanId, setCaseScanId] = useState('');
+  const [modules, setModules] = useState<ModuleCapability[]>([]);
+  const loadModules = useCallback(async () => setModules(await api.modules()), []);
   const [backgroundEnabled, setBackgroundEnabled] = useState(() => {
     try {
       const legacy = window.localStorage.getItem('gnet-scan-terminal-motion');
@@ -130,7 +132,7 @@ export function App() {
           ? <RecoveryInstructions onBack={() => navigateAuth('login', setAuthPage)} onReset={() => navigateAuth('reset', setAuthPage)}/>
           : <Login error={error} busy={busy} signupAvailable={signupAvailable} onSubmit={submitLogin} onRetry={() => window.location.reload()} onSignup={() => { navigateAuth('signup', setAuthPage); setError(''); }} onForgot={() => { navigateAuth('forgot', setAuthPage); setError(''); }} />;
 
-  const title = section === 'chain' ? 'On-chain tracing' : section === 'overview' ? 'Overview' : section === 'scans' ? 'Scan history' : section === 'findings' ? 'Findings' : section === 'cases' ? 'Cases' : section === 'jobs' ? 'Code assessments' : section === 'projects' ? 'Projects' : section === 'malware' ? 'Malware triage' : section === 'status' ? 'System status' : 'Log analysis';
+  const title = section === 'chain' ? 'On-chain tracing' : section === 'overview' ? 'Overview' : section === 'scans' ? 'Scan history' : section === 'findings' ? 'Findings' : section === 'cases' ? 'Cases' : section === 'jobs' ? 'Code assessments' : section === 'projects' ? 'Projects' : section === 'malware' ? 'Malware triage' : section === 'status' ? 'System status' : section === 'modules' ? 'Modules' : 'Log analysis';
   const nav = (id: Section, label: string, glyph: string) => <button className={`nav-link ${section === id ? 'active' : ''}`} key={id} onClick={() => { setSection(id); setPage(0); setFilter(''); setDetail(null); }}><span className="nav-glyph" aria-hidden="true">{glyph}</span>{label}{id === 'scans' && overview ? <span className="nav-count">{overview.scan_count}</span> : null}</button>;
 
   return <div className="app-shell">
@@ -138,13 +140,13 @@ export function App() {
     <aside className="sidebar">
       <div className="brand"><div className="brand-mark" aria-hidden="true"><span>C</span><i /></div><div><strong>ChiNeScan</strong><small>LOCAL SECURITY WORKSTATION</small></div></div>
       <div className="nav-caption">WORKSPACE</div>
-      <nav aria-label="Main navigation">{nav('overview', 'Overview', '⌂')}{nav('projects', 'Projects', '▧')}{nav('jobs', 'Code assessments', '⌘')}{nav('logs', 'Log analysis', '≋')}{nav('malware', 'Malware triage', '◇')}{nav('chain', 'On-chain tracing', '◎')}{nav('scans', 'Scans', '⌕')}{nav('findings', 'Findings', '◈')}{nav('cases', 'Cases', '▤')}{nav('status', 'System status', '◉')}</nav>
+      <nav aria-label="Main navigation">{nav('overview', 'Overview', '⌂')}{nav('projects', 'Projects', '▧')}{nav('jobs', 'Code assessments', '⌘')}{nav('logs', 'Log analysis', '≋')}{nav('malware', 'Malware triage', '◇')}{nav('chain', 'On-chain tracing', '◎')}{nav('scans', 'Scans', '⌕')}{nav('findings', 'Findings', '◈')}{nav('cases', 'Cases', '▤')}{nav('modules', 'Modules', '▦')}{nav('status', 'System status', '◉')}</nav>
       <div className="sidebar-bottom"><div className="local-indicator"><span />LOCAL INSTANCE</div><p>Assessment data stays on this device.</p><div className="profile"><div className="avatar">{email.slice(0, 1).toUpperCase()}</div><div className="profile-name"><strong>{email}</strong><small>Local operator</small></div><button className="icon-button" onClick={logout} disabled={busy} aria-label="Sign out" title="Sign out">↗</button></div></div>
     </aside>
     <main className="main-content">
       <header className="topbar"><div className="breadcrumbs"><span>ChiNeScan</span><b>/</b><strong>{title}</strong></div><div className="topbar-right"><button className="motion-toggle" type="button" aria-pressed={backgroundEnabled} onClick={() => { const next = !backgroundEnabled; setBackgroundEnabled(next); try { window.localStorage.setItem('chinescan-terminal-motion', next ? 'on' : 'off'); } catch { /* Storage can be unavailable in hardened browser contexts. */ } }}>{backgroundEnabled ? 'Pause ambient motion' : 'Resume ambient motion'}</button><span className="secure-pill"><span>●</span> Loopback secured</span><div className="top-avatar">{email.slice(0, 1).toUpperCase()}</div></div></header>
       <section className="page-content">
-        <div className="page-heading"><div><div className="eyebrow">LOCAL ANALYST WORKSPACE</div><h1>{title}</h1><p>{section === 'overview' ? 'A clear view of your locally stored assessment activity.' : section === 'scans' ? 'Review completed and partial local assessments.' : section === 'findings' ? 'Triage heuristic findings with evidence and uncertainty in view.' : section === 'cases' ? 'Investigate persisted scans with notes, links, timelines, and reports.' : section === 'jobs' ? 'Start and review bounded assessments of operator-approved local projects.' : section === 'projects' ? 'Organize approved code folders and review their assessment history.' : section === 'malware' ? 'Static triage of operator-registered samples. No execution.' : section === 'status' ? 'Check local service connectivity, readiness, and recent errors.' : 'Analyze operator-approved local exports with bounded parsing and local detections.'}</p></div>{section !== 'overview' && section !== 'cases' && section !== 'jobs' && section !== 'logs' && section !== 'projects' && section !== 'status' && <div className="list-controls"><label className="filter-control"><span aria-hidden="true">⌕</span><select aria-label={section === 'scans' ? 'Filter scan status' : 'Filter finding severity'} value={filter} onChange={(event) => { setPage(0); setFilter(event.target.value); }}><option value="">All {section === 'scans' ? 'statuses' : 'severities'}</option>{section === 'scans' ? <><option value="complete">Complete</option><option value="partial">Partial</option></> : <>{['critical','high','medium','low','info'].map((value) => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</>}</select></label></div>}</div>
+        <div className="page-heading"><div><div className="eyebrow">LOCAL ANALYST WORKSPACE</div><h1>{title}</h1><p>{section === 'overview' ? 'A clear view of your locally stored assessment activity.' : section === 'scans' ? 'Review completed and partial local assessments.' : section === 'findings' ? 'Triage heuristic findings with evidence and uncertainty in view.' : section === 'cases' ? 'Investigate persisted scans with notes, links, timelines, and reports.' : section === 'jobs' ? 'Start and review bounded assessments of operator-approved local projects.' : section === 'projects' ? 'Organize approved code folders and review their assessment history.' : section === 'malware' ? 'Static triage of operator-registered samples. No execution.' : section === 'status' ? 'Check local service connectivity, readiness, and recent errors.' : section === 'modules' ? 'Review what each module can assess today and where its coverage stops.' : 'Analyze operator-approved local exports with bounded parsing and local detections.'}</p></div>{section !== 'overview' && section !== 'cases' && section !== 'jobs' && section !== 'logs' && section !== 'projects' && section !== 'status' && section !== 'modules' && <div className="list-controls"><label className="filter-control"><span aria-hidden="true">⌕</span><select aria-label={section === 'scans' ? 'Filter scan status' : 'Filter finding severity'} value={filter} onChange={(event) => { setPage(0); setFilter(event.target.value); }}><option value="">All {section === 'scans' ? 'statuses' : 'severities'}</option>{section === 'scans' ? <><option value="complete">Complete</option><option value="partial">Partial</option></> : <>{['critical','high','medium','low','info'].map((value) => <option key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</option>)}</>}</select></label></div>}</div>
         {error && <div className="alert-error" role="alert"><span>!</span><div><strong>We couldn’t load this view</strong><p>{error}</p></div><button onClick={() => void loadSection(section, page * 20, filter)}>Retry</button></div>}
         {busy && <div className="loading-line" aria-label="Loading"><span /></div>}
         {section === 'overview' && <OverviewPanel data={overview} onScans={() => setSection('scans')} onFindings={() => setSection('findings')} onOpen={(id) => setDetail({ kind: 'scan', id })} />}
@@ -157,9 +159,29 @@ export function App() {
         {section === 'malware' && <MalwareWorkspace onUnauthorized={signOut} onOpenProjects={() => setSection('projects')} />}
         {section === 'cases' && <CasesWorkspace onUnauthorized={signOut} initialScanId={caseScanId}/>}
         {section === 'status' && <SystemStatus onUnauthorized={signOut} />}
+        {section === 'modules' && <ModulesWorkspace modules={modules} onLoad={loadModules} onUnauthorized={signOut} />}
       </section>
     </main>
     {detail && <DetailPanel detail={detailData} kind={detail.kind} onClose={() => setDetail(null)} onOpenFinding={(id) => setDetail({ kind: 'finding', id })} onRefreshScan={async (id) => { setDetailData(await api.scan(id)); }} onUnauthorized={signOut} onCreateCase={(id) => { setCaseScanId(id); setDetail(null); setSection('cases'); }} />}
+  </div>;
+}
+
+function ModulesWorkspace({ modules, onLoad, onUnauthorized }: { modules: ModuleCapability[]; onLoad: () => Promise<void>; onUnauthorized: () => void }) {
+  useEffect(() => {
+    onLoad().catch((reason: unknown) => {
+      if (reason instanceof UnauthorizedError) onUnauthorized();
+    });
+  }, [onLoad, onUnauthorized]);
+  const planned = modules.filter((item) => item.status === 'planned');
+  return <div className="modules-grid" aria-label="Module capabilities">
+    {modules.filter((item) => ['Network Scanner', 'Website Auditor', 'SSL Analyzer', 'File Analyzer', 'Vulnerability Reporter', 'Security Dashboard'].includes(item.name)).map((item) => <article className="panel module-card" key={item.name}>
+      <div className="module-title"><h2>{item.name}</h2><span className={`status-badge module-${item.status}`}>{item.status}</span></div>
+      <p>{item.does_today}</p>
+      {item.status === 'planned' && <p className="module-planned-note">Planned: this module does not run assessments yet.</p>}
+      <h3>Not assessed</h3><ul>{item.not_assessed.map((value) => <li key={value}>{value}</li>)}</ul>
+      <h3>Authorization guards</h3><ul>{item.authorization_guards.map((value) => <li key={value}>{value}</li>)}</ul>
+    </article>)}
+    {planned.length > 0 && <p className="module-scope-note">Planned network modules require explicit authorization, address blocking with redirect re-checks, and passive GET/HEAD or handshake-only checks.</p>}
   </div>;
 }
 
@@ -232,7 +254,7 @@ function DecorativeTerminal({ enabled }: { enabled: boolean }) {
     return () => { query?.removeEventListener?.('change', update); document.removeEventListener('visibilitychange', onVisibility); };
   }, []);
   const active = enabled && visible && !reduced;
-  return <div className={`terminal-ambient ${active ? 'is-active' : ''}`} aria-hidden="true"><div className="terminal-glow"/><div className="terminal-window"><div className="terminal-window-head"><span/><span/><span/><b>ChiNeScan / local analysis</b></div><div className="terminal-lines"><p><i>›</i> workspace.local <em>ready</em></p><p><i>›</i> ruleset snapshot loaded</p><p><i>›</i> evidence boundary maintained</p><p><i>›</i> checking local source map <em>idle</em></p><p><i>›</i> report channel <em>secured</em></p><p><i>›</i> waiting for operator input<span className="terminal-cursor">▍</span></p></div></div><div className="ambient-grid"/></div>;
+  return <div className={`terminal-ambient ${active ? 'is-active' : ''}`} aria-hidden="true"><div className="terminal-glow"/><div className="terminal-window terminal-window-main"><div className="terminal-window-head"><span/><span/><span/><b>local / shell</b></div><div className="terminal-lines terminal-scroll"><div className="terminal-output"><p><i>›</i> ls <em>workspace/ modules/ reports/</em></p><p><i>›</i> ps <em>service ready · workers idle</em></p><p><i>›</i> tail -f status.log <em>listening locally</em></p><p><i>›</i> git status <em>working tree inspected</em></p><p><i>›</i> scan --scope local <em>awaiting operator</em></p><p><i>›</i> <span className="terminal-cursor">▍</span></p><p><i>›</i> ls <em>workspace/ modules/ reports/</em></p><p><i>›</i> ps <em>service ready · workers idle</em></p><p><i>›</i> tail -f status.log <em>listening locally</em></p></div></div></div><div className="terminal-window terminal-window-back" aria-hidden="true"><div className="terminal-window-head"><span/><span/><span/><b>system / monitor</b></div><div className="terminal-lines"><p><i>$</i> uptime <em>online</em></p><p><i>$</i> df -h <em>local storage ready</em></p><p><i>$</i> journalctl -f <em>no new events</em></p></div></div><div className="ambient-grid"/></div>;
 }
 
 function FindingTable({ data, page, onPage, onOpen }: { data: Page<Finding> | null; page: number; onPage: (page: number) => void; onOpen: (id: string) => void }) {
@@ -331,7 +353,7 @@ function ScanDetail({ scan, onCreateCase, onOpenFinding, onRefreshScan, onUnauth
       <h3>Code assessment</h3>
       <p>{scan.code_assessment.files_scanned} files scanned · {scan.code_assessment.files_excluded} excluded</p>
       {risk && <>
-        <p><strong>{risk.name}: {risk.score}/100</strong> ({risk.confidence}) · {risk.interpretation}</p>
+        <p><strong>{risk.name}: {risk.score === null ? 'insufficient evidence' : `${risk.score}/100`}</strong> ({risk.confidence}) · {risk.interpretation}</p>
         <p>{risk.confidence_rationale || 'Legacy score: no contribution rationale was stored.'}</p>
         {risk.algorithm_version && <p>Algorithm: {risk.algorithm_version}</p>}
         <div className="score-ledger">
@@ -359,6 +381,8 @@ function ScanDetail({ scan, onCreateCase, onOpenFinding, onRefreshScan, onUnauth
         {gap.code}: {gap.reason} ({gap.count})
       </li>) ?? <li>Coverage details are not recorded.</li>}</ul>
       {scan.coverage?.excluded && Object.entries(scan.coverage.excluded).map(([reason, count]) => <p key={reason}>{reason}: {count} excluded</p>)}
+      {scan.coverage?.languages_detected && <><h4>Language coverage</h4><ul>{Object.entries(scan.coverage.languages_detected).map(([language, detected]) => <li key={language}>{language}: {detected} detected; {scan.coverage?.files_scanned_by_language?.[language] ?? 0} scanned; {scan.coverage?.language_analyzer_status?.[language] ?? 'analyzer status unavailable'}</li>)}</ul></>}
+      {!!scan.coverage?.not_assessed?.length && <><h4>Not assessed</h4><ul>{scan.coverage.not_assessed.map((item) => <li key={item}>{item}</li>)}</ul></>}
     </section>
     {!!scan.finding_count && <section className="evidence-section">
       <h3>Persisted findings</h3>

@@ -17,7 +17,7 @@ from chinescan.core.cases import CaseWorkflow
 from chinescan.core.logging.redaction import redact
 from chinescan.core.models.common import Severity
 from chinescan.core.models.finding import Finding
-from chinescan.core.models.investigation import Alert, Scan
+from chinescan.core.models.investigation import Alert, CoverageReport, Scan
 from chinescan.core.storage.repository import Repository
 from chinescan.core.verdict import VERDICT_CAVEAT
 from chinescan.malware_analysis.managed import safe_display_name
@@ -255,6 +255,7 @@ def render_report(scan: Scan, findings: list[Finding], output_format: str) -> st
                     "",
                 ]
             )
+            lines.extend(_coverage_language_lines(scan.coverage))
             lines.extend(["Coverage gaps:", ""])
             lines.extend(
                 [f"- {gap.code}: {gap.reason} (count: {gap.count})" for gap in scan.coverage.gaps]
@@ -306,7 +307,31 @@ def render_report(scan: Scan, findings: list[Finding], output_format: str) -> st
             or "<li>None recorded.</li>"
         )
         examined = ", ".join(f"{k}: {v}" for k, v in scan.coverage.examined.items())
-        coverage_html = f"<h2>Coverage</h2><p>{html.escape(examined)}</p><ul>{gaps}</ul>"
+        language_rows = (
+            "".join(
+                "<li>"
+                + html.escape(language)
+                + f": {count} detected; "
+                + f"{(scan.coverage.files_scanned_by_language or {}).get(language, 0)} scanned; "
+                + html.escape(
+                    (scan.coverage.language_analyzer_status or {}).get(
+                        language, "analyzer status unavailable"
+                    )
+                )
+                + "</li>"
+                for language, count in sorted((scan.coverage.languages_detected or {}).items())
+            )
+            or "<li>No language inventory recorded.</li>"
+        )
+        not_assessed = "".join(
+            f"<li>{html.escape(item)}</li>" for item in scan.coverage.not_assessed
+        )
+        coverage_html = (
+            f"<h2>Coverage</h2><p>{html.escape(examined)}</p>"
+            f"<h3>Languages detected</h3><ul>{language_rows}</ul>"
+            + (f"<h3>Not assessed</h3><ul>{not_assessed}</ul>" if not_assessed else "")
+            + f"<h3>Coverage gaps</h3><ul>{gaps}</ul>"
+        )
     verdict_html = (
         "<h2>Verdict</h2><p><strong>"
         + html.escape(scan.verdict.value)
@@ -467,7 +492,7 @@ def _code_report_json(
             "files_excluded": summary.files_excluded if summary else 0,
             "vibe_coding_risk_score": summary.vibe_coding_risk.score
             if summary and summary.vibe_coding_risk
-            else 0,
+            else None,
             "grouped_findings": sum(grouped_totals.values()),
             "grouped_issue_total": sum(grouped_totals.values()),
             "returned_grouped_findings": min(len(likely), 20)
@@ -651,6 +676,7 @@ def _code_report_markdown(
         ]
     )
     if scan.coverage:
+        lines.extend(_coverage_language_lines(scan.coverage))
         lines.extend(["Excluded files and paths:", ""])
         lines.extend(
             [
@@ -675,7 +701,11 @@ def _code_report_markdown(
                 "",
                 "## Code pattern risk",
                 "",
-                f"Score: **{risk.score}/100**; confidence: **{risk.confidence.value}**.",
+                (
+                    f"Score: **{risk.score}/100**; confidence: **{risk.confidence.value}**."
+                    if risk.score is not None
+                    else "**Insufficient evidence** for a validated signal score."
+                ),
                 "",
                 f"Algorithm: `{risk.algorithm_version or 'legacy/unavailable'}`. {risk.direction}",
                 "",
@@ -698,7 +728,17 @@ def _code_report_markdown(
             f"| {_markdown(item.description)} | {item.raw_count} | {item.effective_count} | {item.weight} | {_markdown(item.adjustment)} | {item.contribution} |"  # noqa: E501
             for item in risk.contributions
         )
-        lines.extend(["", f"**Final score:** {risk.score}/100", ""])
+        lines.extend(
+            [
+                "",
+                (
+                    f"**Final score:** {risk.score}/100"
+                    if risk.score is not None
+                    else "**Final score:** insufficient evidence"
+                ),
+                "",
+            ]
+        )
     for heading, items in (
         ("Rule-supported candidates (not independently verified)", likely[:10]),
         ("Needs manual review (low confidence)", review[:10]),
@@ -1424,6 +1464,24 @@ def _markdown(value: str, *, untrusted: bool = False) -> str:
     if untrusted:
         pattern = r"([\\`*_{}\[\]()#+!|>~-])"
     return re.sub(pattern, r"\\\1", escaped)
+
+
+def _coverage_language_lines(coverage: CoverageReport) -> list[str]:
+    lines = ["Languages detected:"]
+    detected = coverage.languages_detected or {}
+    scanned = coverage.files_scanned_by_language or {}
+    status = coverage.language_analyzer_status or {}
+    lines.extend(
+        f"- {language}: {count} detected; {scanned.get(language, 0)} scanned; "
+        f"{status.get(language, 'analyzer status unavailable')}"
+        for language, count in sorted(detected.items())
+    )
+    if not detected:
+        lines.append("- No language inventory recorded.")
+    if coverage.not_assessed:
+        lines.extend(["", "Not assessed:"])
+        lines.extend(f"- {_markdown(item)}" for item in coverage.not_assessed)
+    return lines
 
 
 def _csv_safe(value: object) -> object:

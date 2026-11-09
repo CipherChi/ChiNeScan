@@ -27,6 +27,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 
 from chinescan.chain_trace.export import export_graph
 from chinescan.chain_trace.registry import load_registry, normalize_address
+from chinescan.core.capabilities import module_capabilities
 from chinescan.core.cases import (
     CaseNotFoundError,
     CaseRecordNotFoundError,
@@ -1710,6 +1711,10 @@ def create_app(
             ),
             "historical_views_available": True,
         }
+
+    @application.get("/api/modules")
+    def list_modules(_session: Session = Depends(current_session)) -> list[dict[str, object]]:  # noqa: B008
+        return module_capabilities()
 
     @application.get("/api/malware/samples", response_model=list[MalwareSampleResponse])
     def malware_samples(_session: Session = Depends(current_session)) -> list[dict[str, Any]]:  # noqa: B008

@@ -31,6 +31,10 @@ class CoverageReport(SchemaRecord):
     examined: dict[str, int] = Field(default_factory=dict)
     excluded: dict[str, int] = Field(default_factory=dict)
     gaps: list[CoverageGap] = Field(default_factory=list)
+    languages_detected: dict[str, int] | None = None
+    files_scanned_by_language: dict[str, int] | None = None
+    language_analyzer_status: dict[str, str] | None = None
+    not_assessed: list[str] = Field(default_factory=list)
 
 
 class ScoreEvidence(SchemaRecord):
@@ -51,7 +55,7 @@ class ScoreContribution(SchemaRecord):
 
 
 class VibeCodingRisk(SchemaRecord):
-    score: int = Field(ge=0, le=100)
+    score: int | None = Field(default=None, ge=0, le=100)
     confidence: Confidence
     signals: list[str] = Field(default_factory=list)
     disclaimer: str = "Heuristic risk indicators only; this score is not proof of AI authorship."

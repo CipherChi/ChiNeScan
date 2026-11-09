@@ -3,7 +3,8 @@ export type Verdict = 'leads_found' | 'no_matches_with_gaps' | 'no_matches_in_sc
 export type EvidenceKind = 'confirmed_artifact' | 'pattern_match' | 'reference_only' | 'context_only';
 export type ScoreEvidence = { file: string; line_numbers: number[]; code_excerpt: string | null };
 export type ScoreContribution = { signal_id: string; description: string; raw_count: number; effective_count: number; weight: number; adjustment: string; contribution: number; evidence: ScoreEvidence[] };
-export type CodePatternRisk = { score: number; confidence: string; signals: string[]; disclaimer: string; name: string; direction: string; interpretation: string; algorithm_version: string | null; contributions: ScoreContribution[]; coverage_limitations: string[]; confidence_rationale: string | null };
+export type CodePatternRisk = { score: number | null; confidence: string; signals: string[]; disclaimer: string; name: string; direction: string; interpretation: string; algorithm_version: string | null; contributions: ScoreContribution[]; coverage_limitations: string[]; confidence_rationale: string | null };
+export type ModuleCapability = { name: string; status: 'available' | 'partial' | 'planned'; does_today: string; not_assessed: string[]; authorization_guards: string[] };
 export type FindingExplanation = { version: string; classification_policy_version?: string | null; observed: string | null; match_reason: string | null; established: string[]; inferred: string[]; severity_rationale: string | null; confidence_rationale: string | null; exposure_rationale: string | null; attack_prerequisites: string[]; conditional_impact: string | null; controls_considered: string[]; false_positive_considerations: string[]; verification_steps: string[]; remediation_rationale: string | null; limitations: string[]; ruleset_version: string | null };
 export type ChainJob = { job_id: string; status: 'queued'|'running'|'succeeded'|'failed'|'interrupted'; created_at: string; scan_id: string|null; error: string|null };
 export type ChainLabel = { address: string; chain: string; category: string; name: string; source: string; date: string };
@@ -22,7 +23,7 @@ export type Scan = {
   verdict?: 'leads_found' | 'no_matches_with_gaps' | 'no_matches_in_scope' | 'scan_failed' | null;
   coverage_gap_count?: number;
   finding_ids?: string[];
-  coverage?: { examined: Record<string, number>; excluded?: Record<string, number>; gaps: Array<{ code: string; reason: string; count: number }> } | null;
+  coverage?: { examined: Record<string, number>; excluded?: Record<string, number>; gaps: Array<{ code: string; reason: string; count: number }>; languages_detected?: Record<string, number> | null; files_scanned_by_language?: Record<string, number> | null; language_analyzer_status?: Record<string, string> | null; not_assessed?: string[] } | null;
   code_assessment?: { files_scanned: number; files_excluded: number; excluded_paths: string[]; vibe_coding_risk?: CodePatternRisk | null } | null;
   failures?: Record<string, string>;
 };

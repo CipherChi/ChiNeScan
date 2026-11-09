@@ -90,6 +90,31 @@ describe('dashboard authentication and overview', () => {
     expect(document.querySelector('.terminal-ambient')).toHaveAttribute('aria-hidden', 'true');
   });
 
+  it('shows module status and authorization requirements from the backend registry', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = String(input);
+      if (path === '/api/auth/session') return json({ authenticated: true, email_masked: 'a***@example.test', signup_available: false });
+      if (path === '/api/auth/csrf') return json({ csrf_token: 'csrf-value' });
+      if (path === '/api/overview') return json({ scan_count: 0, finding_count: 0, findings_by_severity: { critical: 0, high: 0, medium: 0, low: 0, info: 0 }, recent_scans: [] });
+      if (path === '/api/modules') return json([
+        { name: 'Network Scanner', status: 'planned', does_today: 'No network scanner is implemented.', not_assessed: ['Network exposure'], authorization_guards: ['Explicit target authorization confirmation'] },
+        { name: 'Website Auditor', status: 'planned', does_today: 'No auditor yet.', not_assessed: ['Web headers'], authorization_guards: ['Explicit authorization'] },
+        { name: 'SSL Analyzer', status: 'planned', does_today: 'No TLS analyzer yet.', not_assessed: ['TLS'], authorization_guards: ['Handshake only'] },
+        { name: 'File Analyzer', status: 'partial', does_today: 'Static triage.', not_assessed: ['Archive listing'], authorization_guards: ['Operator local'] },
+        { name: 'Vulnerability Reporter', status: 'partial', does_today: 'Local reports.', not_assessed: ['Complete coverage'], authorization_guards: ['Authenticated operator'] },
+        { name: 'Security Dashboard', status: 'partial', does_today: 'Authenticated dashboard.', not_assessed: ['Alerts panel', 'Per-module scores'], authorization_guards: ['Authenticated operator'] },
+      ]);
+      throw new Error(`Unexpected API call: ${path}`);
+    });
+    render(<App/>);
+    await screen.findByRole('heading', { name: 'Overview' });
+    fireEvent.click(screen.getByRole('button', { name: 'Modules' }));
+    expect(await screen.findByText('Explicit target authorization confirmation')).toBeInTheDocument();
+    expect(screen.getAllByText('planned', { selector: '.module-planned' })).toHaveLength(3);
+    expect(screen.getByText('Alerts panel')).toBeInTheDocument();
+    expect(screen.getAllByText(/does not run assessments yet/i)).toHaveLength(3);
+  });
+
   it('shows complete-export limit failures without creating a downloadable partial file', async () => {
     const scanSummary = {
       scan_id: 'scan-limit', started_at: '2026-01-01T00:00:00Z', finished_at: '2026-01-01T00:01:00Z',
@@ -153,7 +178,7 @@ describe('dashboard authentication and overview', () => {
     await screen.findByRole('heading', { name: 'Finding details' });
     expect(screen.getByText(/potential impact if the preconditions hold/)).toBeInTheDocument();
     expect(screen.getByText(/data provenance is unresolved/)).toBeInTheDocument();
-    expect(screen.getByText('static-impact-v1')).toBeInTheDocument();
+    expect(screen.getByText('signal-quality-v2')).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent('redaction-canary');
     fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Main navigation' })).getByRole('button', { name: /findings/i }));

@@ -1,4 +1,4 @@
-import type { ApprovedFolder, CaseData, CaseSummary, CodeJob, CodeProject, Finding, FolderPreview, Overview, Page, Scan, LogSource, LogSourceRegistryStatus, LogJob, LogAlert, LogEvent, LogTimeline, MalwareAnalysis, MalwareCapability, MalwareJob, MalwareSample, ProjectDetail, ProjectSummary, ProjectLogLocation, ProjectLogSuggestion, ProjectLogJob, ProjectMalwareJob, MalwareHostHint, FsDirectory, FsPage, GitHubImportCapabilities, GitHubImportPreview, GitHubImportJob, ChainInfo, ChainJob, ChainGraph } from './types';
+import type { ApprovedFolder, CaseData, CaseSummary, CodeJob, CodeProject, Finding, FolderPreview, ModuleCapability, Overview, Page, Scan, LogSource, LogSourceRegistryStatus, LogJob, LogAlert, LogEvent, LogTimeline, MalwareAnalysis, MalwareCapability, MalwareJob, MalwareSample, ProjectDetail, ProjectSummary, ProjectLogLocation, ProjectLogSuggestion, ProjectLogJob, ProjectMalwareJob, MalwareHostHint, FsDirectory, FsPage, GitHubImportCapabilities, GitHubImportPreview, GitHubImportJob, ChainInfo, ChainJob, ChainGraph } from './types';
 
 export function safeLocalUrl(value: unknown): string | null {
   if (typeof value !== 'string' || value.trim() !== value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return null;
@@ -41,6 +41,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export class UnauthorizedError extends Error {}
 export class ApiError extends Error { constructor(message: string, readonly code?: string) { super(message); } }
 export const api = {
+  modules: () => request<ModuleCapability[]>('/api/modules'),
   chainChains: () => request<ChainInfo[]>('/api/chain/chains'),
   chainStart: (body: { address: string; chain: string; depth: number; min_amount: string; allow_network: boolean; import_text?: string; import_format?: 'csv'|'json' }) => request<ChainJob>('/api/chain/jobs', { method: 'POST', body: JSON.stringify(body) }),
   chainJobs: () => request<Page<ChainJob>>('/api/chain/jobs?limit=50&offset=0'),

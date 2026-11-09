@@ -381,7 +381,7 @@ RULES: tuple[Rule, ...] = (
     ),
     _rule(
         "VERBOSE-ERROR-EXPOSURE",
-        r"(?:json|send|Response\.json)\s*\([^\n]*(?:err|error)\.(?:message|stack)",
+        r"(?:json|send|Response\.json)\s*\([^\n]*(?:(?:err|error|exc|exception)\.(?:message|stack)|str\s*\(\s*(?:err|error|exc|exception)\s*\)|\b(?:err|error|exc|exception)\b\s*[,)}])",
         Severity.MEDIUM,
         "CWE-209",
         "An error object may be returned to a client and disclose internal details.",
@@ -431,7 +431,10 @@ RULES: tuple[Rule, ...] = (
     ),
     _rule(
         "UPLOAD-NO-CHECKS",
-        r"(?:File\(|multer\(|upload\.single|request\.formData\(|multipart/form-data)",
+        r"(?:\b(?:multer|busboy|formidable)\s*\(|\bUploadFile\b|"
+        r"\.storage\.from\s*\([^\n]*\)\.upload\s*\(|"
+        r"request\.formData\s*\(\)[\s\S]{0,500}?\bFile\b|"
+        r"formData\.get\s*\(\s*['\"][^'\"]*(?:file|upload))",
         Severity.MEDIUM,
         "CWE-434",
         "An upload path is present; type and size enforcement need verification.",
@@ -507,7 +510,7 @@ def _excerpt(line: str) -> str:
 
 def _source_line(text: str, number: int) -> str:
     lines = text.splitlines()
-    return _excerpt(lines[number - 1]) if 1 <= number <= len(lines) else ""
+    return lines[number - 1].strip() if 1 <= number <= len(lines) else ""
 
 
 def _match_confidence(rule: Rule, snippets: list[str], *, is_test: bool) -> Confidence:
@@ -726,6 +729,217 @@ def _cookie_call_has_flags(text: str, call: str) -> bool:
     return secure and http_only and same_site
 
 
+_REQUEST_BODY = re.compile(
+    r"(?:\b(?:req|request)\.body\b|\bawait\s+request\.(?:json|formData)\s*\(\))",
+    re.I,
+)
+_REQUEST_SINK = re.compile(
+    r"(?:\b(?:create|insert|update|upsert|execute|query|writeFile|writeFileSync|send|emit)\s*\(|"
+    r"\bfetch\s*\(|\b(?:email|mailer|push|notification)\w*\s*\.\s*(?:send|publish|push)\s*\()",
+    re.I,
+)
+_SCHEMA_VALIDATION = re.compile(
+    r"\.(?:safeParse|parse|validate|validateSync|validateAsync)\s*\(|"
+    r"\b(?:safeParse|parse|validate|validateSchema|check)\w*\s*\(",
+    re.I,
+)
+_VALIDATOR_IMPORT = re.compile(r"import\s*\{([^}]+)\}", re.I)
+_MANUAL_VALIDATION = re.compile(
+    r"\btypeof\s+\w+|\.length\s*(?:===|!==|<=|>=|<|>)|\.test\s*\(|"
+    r"\bArray\.isArray\s*\(|\b(?:isinstance|re\.fullmatch)\s*\(",
+    re.I,
+)
+
+
+def _request_sink_lines(text: str) -> list[int]:
+    """Return sink evidence only where a parsed request body is used unvalidated."""
+    sources = list(_REQUEST_BODY.finditer(text))
+    if not sources:
+        return []
+    imported_validators: set[str] = set()
+    for imported in _VALIDATOR_IMPORT.finditer(text):
+        imported_validators.update(
+            name
+            for name in re.findall(r"\b[A-Za-z_$][\w$]*\b", imported.group(1))
+            if re.search(r"validate|validator|parse|schema|check", name, re.I)
+        )
+    hits: list[int] = []
+    for sink in _REQUEST_SINK.finditer(text):
+        prefix = text[max(0, sink.start() - 1200) : sink.start()]
+        if not any(source.start() < sink.start() for source in sources):
+            continue
+        schema_use = _SCHEMA_VALIDATION.search(prefix)
+        imported_call = any(
+            re.search(
+                rf"\b{re.escape(name)}\s*\(\s*(?:body|data|payload|request\.body|req\.body)\b",
+                prefix,
+                re.I,
+            )
+            for name in imported_validators
+        )
+        if schema_use or imported_call:
+            continue
+        manual_use = _MANUAL_VALIDATION.search(prefix)
+        if manual_use and re.search(
+            r"\b(?:body|data|payload|request|req)\b",
+            prefix[max(0, manual_use.start() - 80) : manual_use.end() + 80],
+            re.I,
+        ):
+            continue
+        hits.append(_line_number(text, sink.start()))
+    return sorted(set(hits))
+
+
+def _empty_catch_matches(text: str, suffix: str) -> list[re.Match[str]]:
+    uncommented = _mask_comments(text, suffix)
+    if suffix.casefold() in {".py", ".pyi"}:
+        pattern = re.compile(
+            r"(?m)^[ \t]*except\b[^:]*:[ \t]*\n((?:[ \t]+(?:pass)?[ \t]*(?:\n|$))+)"
+        )
+    else:
+        pattern = re.compile(r"\bcatch\s*(?:\([^)]*\))?\s*\{([^{}]*)\}", re.I)
+    return [
+        match
+        for match in pattern.finditer(uncommented)
+        if not match.group(1).strip() or re.fullmatch(r"[ \t]*pass[ \t\r\n]*", match.group(1))
+    ]
+
+
+def _mapped_error_message(text: str, line_numbers: list[int]) -> bool:
+    lines = text.splitlines()
+    return any(
+        re.search(
+            r"(?:ERROR_MESSAGES|errorMap|errorCodes|publicErrorMessages|safeErrorEnum)",
+            lines[number - 1],
+            re.I,
+        )
+        for number in line_numbers
+        if 1 <= number <= len(lines)
+    )
+
+
+def _generic_first_pass(root: Path, path: Path, text: str) -> list[Finding]:
+    """Apply only narrow, fixtureable cross-language signals to unsupported syntax."""
+    relative = path.relative_to(root).as_posix()
+    lines = text.splitlines()
+    hits: dict[str, list[int]] = {}
+    secret_shapes = re.compile(
+        r"\b(?:ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{50,}|"
+        r"xox[baprs]-[A-Za-z0-9-]{20,}|sk_live_[A-Za-z0-9]{16,}|"
+        r"AIza[0-9A-Za-z_-]{35})\b"
+    )
+    for match in secret_shapes.finditer(text):
+        hits.setdefault("HARDCODED-SECRET-SHAPE", []).append(_line_number(text, match.start()))
+    path_parts = {part.casefold() for part in path.parts}
+    mobile_client = path.suffix.casefold() in {".dart", ".swift"} or bool(
+        path_parts & {"mobile", "android", "ios", "client"}
+    ) or (
+        path.suffix.casefold() in {".ts", ".tsx", ".js", ".jsx"}
+        and "use client" in text
+    )
+    if mobile_client:
+        for match in re.finditer(r"\bSUPABASE_SERVICE_ROLE_KEY\b", text, re.I):
+            hits.setdefault("SUPABASE-SERVICE-ROLE-CLIENT", []).append(
+                _line_number(text, match.start())
+            )
+    if path.name.casefold() == "androidmanifest.xml":
+        for rule_id, pattern in (
+            ("ANDROID-CLEARTEXT-TRAFFIC", r"usesCleartextTraffic\s*=\s*['\"]true['\"]"),
+            ("ANDROID-DEBUGGABLE", r"debuggable\s*=\s*['\"]true['\"]"),
+        ):
+            hits[rule_id] = [
+                _line_number(text, match.start()) for match in re.finditer(pattern, text, re.I)
+            ]
+    if path.suffix.casefold() == ".sql" and any(
+        part.casefold() in {"migration", "migrations"} for part in path.parts
+    ):
+        for match in re.finditer(
+            r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([\w.\"]+)", text, re.I
+        ):
+            table = match.group(1).strip('"').split(".")[-1]
+            rls = re.compile(
+                rf"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:[\w.]+\.)?{re.escape(table)}\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY",
+                re.I,
+            )
+            if not rls.search(text):
+                hits.setdefault("SUPABASE-MIGRATION-RLS", []).append(
+                    _line_number(text, match.start())
+                )
+    titles = {
+        "HARDCODED-SECRET-SHAPE": "Provider token shape in source",
+        "SUPABASE-SERVICE-ROLE-CLIENT": "Supabase service-role key used in client code",
+        "ANDROID-CLEARTEXT-TRAFFIC": "Android cleartext traffic enabled",
+        "ANDROID-DEBUGGABLE": "Android debuggable build setting enabled",
+        "SUPABASE-MIGRATION-RLS": "Migration table without visible RLS enablement",
+    }
+    output: list[Finding] = []
+    for rule_id, numbers in hits.items():
+        numbers = sorted(set(numbers))
+        if not numbers:
+            continue
+        excerpt = " | ".join(
+            dict.fromkeys(
+                _excerpt(secret_shapes.sub("[REDACTED]", lines[number - 1]))
+                for number in numbers
+                if number <= len(lines)
+            )
+        )[:360]
+        title = titles[rule_id]
+        controls_by_rule = {
+            "HARDCODED-SECRET-SHAPE": ["Known provider token formats: found"],
+            "SUPABASE-SERVICE-ROLE-CLIENT": [
+                "Service-role key identifier in client/mobile source: found"
+            ],
+            "ANDROID-CLEARTEXT-TRAFFIC": ["Android usesCleartextTraffic=true: found"],
+            "ANDROID-DEBUGGABLE": ["Android debuggable=true: found"],
+            "SUPABASE-MIGRATION-RLS": [
+                "CREATE TABLE statement: found",
+                "Corresponding ENABLE ROW LEVEL SECURITY: not found",
+            ],
+        }
+        explanation = FindingExplanation(
+            observed=excerpt,
+            match_reason=f"A narrow first-pass pattern for {title.casefold()} matched.",
+            established=[f"The listed source locations matched {rule_id}."],
+            inferred=["The configuration or value requires operator review."],
+            severity_rationale="Impact: possible credential exposure or weakened access control. Exposure: file content only. Controls: matching source configuration was inspected. Evidence strength: exact token/configuration pattern; no runtime confirmation. Assigned tier: informational review.",
+            confidence_rationale="Possible: narrow textual matching without framework or runtime analysis.",
+            controls_considered=controls_by_rule[rule_id],
+            limitations=[
+                "No cross-file analysis; migration policies themselves are not evaluated."
+            ],
+            ruleset_version="builtin-3",
+            classification_policy_version="signal-quality-v2",
+        )
+        output.append(
+            make_finding(
+                target=root,
+                scanner="builtin",
+                rule_id=rule_id,
+                title=title,
+                severity=(
+                    Severity.MEDIUM
+                    if rule_id in {"SUPABASE-MIGRATION-RLS", "SUPABASE-SERVICE-ROLE-CLIENT"}
+                    else Severity.INFO
+                ),
+                category="SAST",
+                confidence=Confidence.POSSIBLE.value,
+                location=f"{relative}:{numbers[0]}",
+                description=f"{title} requires review; static first-pass evidence only.",
+                evidence=EvidenceKind.PATTERN_MATCH,
+                tags=["heuristic", "local", "first-pass"],
+            ).model_copy(
+                update={
+                    "source": "builtin",
+                    "line_numbers": numbers,
+                    "code_excerpt": excerpt,
+                    "explanation": explanation,
+                }
+            )
+        )
+    return output
+
+
 def _specific_explanation(
     rule: Rule,
     relative: str,
@@ -735,9 +949,131 @@ def _specific_explanation(
     severity: Severity,
     confidence: Confidence,
     sql_input_known: bool = False,
+    observed_excerpt: str | None = None,
 ) -> FindingExplanation | None:
     snippets = [_source_line(text, number) for number in line_numbers]
-    excerpt = " | ".join(dict.fromkeys(snippets))[:360]
+    excerpt = (
+        observed_excerpt
+        if observed_excerpt is not None
+        else " | ".join(dict.fromkeys(snippets))[:360]
+    )
+    if rule.rule_id == "UPLOAD-NO-CHECKS":
+        return FindingExplanation(
+            observed=excerpt,
+            match_reason="A recognized upload handler is present and no same-file size, type, or authorization control was found.",
+            established=["An upload-handling API is used in production source."],
+            inferred=["The upload may accept oversized or unexpected content."],
+            severity_rationale=f"Impact: untrusted file storage can affect availability or downstream processing. Exposure: upload sink observed. Controls: no size, type, or authorization check matched. Evidence: handler pattern only; content flow was not executed. Assigned tier: {severity.value}.",
+            confidence_rationale="Possible: upload API and same-file controls were inspected, but framework middleware and imported guards are not traced.",
+            controls_considered=[
+                "File size limits: not found",
+                "Content type or signature validation: not found",
+                "Authentication/authorization: not found",
+            ],
+            false_positive_considerations=[
+                "Controls may be provided by imported middleware or a storage service."
+            ],
+            verification_steps=[
+                "Trace the upload to storage and confirm effective size, type, and authorization checks."
+            ],
+            limitations=["No framework execution or cross-file control-flow analysis."],
+            ruleset_version="builtin-3",
+            classification_policy_version="signal-quality-v2",
+        )
+    if rule.rule_id == "REQUEST-NO-SCHEMA":
+        return FindingExplanation(
+            observed=excerpt,
+            match_reason="A request body reaches a recognized side-effect sink without a same-file schema or manual validation match.",
+            established=["The evidence line is a database, network, file, or delivery sink."],
+            inferred=["Unvalidated request data may influence the side effect."],
+            severity_rationale=f"Impact: input can alter the operation at the observed sink. Exposure: request parsing and sink are present. Controls: schema/manual validation patterns searched and not found on the path. Evidence: same-file source-to-sink order only. Assigned tier: {severity.value}.",
+            confidence_rationale="Possible: source, sink, and validation patterns are matched textually; inter-file validators and control flow are not resolved.",
+            controls_considered=[
+                "Zod, Yup, Valibot, Joi, AJV, TypeBox and safeParse/parse calls: not found on the path",
+                "typeof, length, regex and Array.isArray checks: not found on the path",
+            ],
+            false_positive_considerations=[
+                "Imported validators and middleware may validate before this handler."
+            ],
+            verification_steps=[
+                "Trace the parsed body through the sink and inspect imported validation helpers."
+            ],
+            limitations=["No AST-based or cross-file data-flow analysis."],
+            ruleset_version="builtin-3",
+            classification_policy_version="signal-quality-v2",
+        )
+    if rule.rule_id == "EMPTY-CATCH":
+        context = " ".join(
+            _source_line(text, number)
+            for number in range(
+                max(1, line_numbers[0] - 2), min(len(text.splitlines()), line_numbers[-1] + 2) + 1
+            )
+        ).casefold()
+        sensitive = bool(
+            re.search(r"auth|payment|database|\bdb\b|notification|push|webhook", context)
+        )
+        benign = bool(re.search(r"json\.parse|localStorage|sessionStorage|setAll\s*\(", context))
+        return FindingExplanation(
+            observed=excerpt,
+            match_reason="The catch body is empty or contains only comments; its surrounding operation was reviewed for sensitive failure handling.",
+            established=["The excerpt shows a catch body with no executable handling."],
+            inferred=[
+                "The exception is discarded without a visible diagnostic or recovery action."
+            ],
+            severity_rationale=(
+                f"Impact: {'authentication, payment, database, or delivery failure may be hidden' if sensitive else 'operation impact is not identified'}. Exposure: local catch scope. Controls: no body handling found. Evidence strength: empty/comment-only body; {'sensitive operation keyword present' if sensitive else 'no sensitive operation keyword present'}. Assigned tier: {severity.value}."
+            ),
+            confidence_rationale="Likely: the catch body is syntactically empty after comments are removed.",
+            controls_considered=[
+                "Executable catch-body handling: not found",
+                "Sensitive operation context: found"
+                if sensitive
+                else "Sensitive operation context: not found",
+                "Known fallback idiom: found" if benign else "Known fallback idiom: not found",
+            ],
+            false_positive_considerations=[
+                "Framework-level or surrounding recovery may change the effect of this catch."
+            ],
+            verification_steps=[
+                "Confirm whether this catch surrounds authentication, payments, database writes, or delivery and add safe handling where needed."
+            ],
+            limitations=["Static same-file context only; exception propagation is not executed."],
+            ruleset_version="builtin-3",
+            classification_policy_version="signal-quality-v2",
+        )
+    if rule.rule_id == "VERBOSE-ERROR-EXPOSURE":
+        mapped = _mapped_error_message(text, line_numbers)
+        return FindingExplanation(
+            observed=excerpt,
+            match_reason=(
+                "Raw error details pass through a visible fixed or mapped error handler."
+                if mapped
+                else "Raw error.message or error.stack is passed to a response construction call."
+            ),
+            established=["An exception detail expression appears in the response line."],
+            inferred=[
+                "A mapped handler may constrain the exposed value."
+                if mapped
+                else "The response may disclose internal implementation details."
+            ],
+            severity_rationale=(
+                f"Impact: internal error details can disclose implementation context. Exposure: response body sink is visible. Controls: {'fixed/mapped handler found' if mapped else 'fixed/mapped response string not found'}. Evidence strength: direct response construction expression. Assigned tier: {severity.value}."
+            ),
+            confidence_rationale="Likely: a raw error property is syntactically nested in a response body expression.",
+            controls_considered=[
+                f"Fixed/mapped error handler: {'found' if mapped else 'not found'}",
+                f"Raw error.message/stack response sink: {'found' if not mapped else 'wrapped'}",
+            ],
+            false_positive_considerations=[
+                "The endpoint may be restricted to a trusted local operator or apply response filtering elsewhere."
+            ],
+            verification_steps=[
+                "Check the serialized response and replace raw details with a fixed or validated error code."
+            ],
+            limitations=["No runtime response or framework serializer inspection."],
+            ruleset_version="builtin-3",
+            classification_policy_version="signal-quality-v2",
+        )
     if rule.rule_id == "SQL-INJECTION":
         return FindingExplanation(
             observed=excerpt,
@@ -750,7 +1086,9 @@ def _specific_explanation(
             ),
             inferred=["The dynamic value may alter the SQL statement."]
             + ([] if sql_input_known else ["Input provenance is unknown."]),
-            severity_rationale="High describes potential impact if unsafe SQL reaches a database with attacker-controlled data; exploitability was not tested.",  # noqa: E501
+            severity_rationale=(
+                f"Impact: query integrity/confidentiality if attacker-controlled input reaches the database. Derived exposure: database sink observed; network reachability unknown. Control status: bound parameters not established. Evidence strength: SQL construction matched; taint not proven. Assigned tier: {severity.value}."
+            ),
             confidence_rationale="Possible: static matching found an SQL sink and interpolation/concatenation, but did not prove taint or runtime execution.",  # noqa: E501
             exposure_rationale="The source uses a database-like API; deployment exposure is not established.",  # noqa: E501
             attack_prerequisites=[
@@ -769,7 +1107,7 @@ def _specific_explanation(
                 "Heuristic only; no AST, inter-file taint analysis, database execution, or exploit verification."  # noqa: E501
             ],
             ruleset_version="builtin-2",
-            classification_policy_version="static-impact-v1",
+            classification_policy_version="signal-quality-v2",
         )
     if rule.rule_id == "JWT-ALG-NONE":
         return FindingExplanation(
@@ -777,7 +1115,9 @@ def _specific_explanation(
             match_reason="A JWT algorithm option contains the literal `none`.",
             established=["The inspected source includes a JWT-related algorithm option."],
             inferred=["The option may permit unsigned-token verification if used in a verifier."],
-            severity_rationale="High is the potential impact if the option controls verification of security-sensitive tokens; a keyword match alone does not establish that behavior.",  # noqa: E501
+            severity_rationale=(
+                f"Impact: token authentication could be bypassed if unsigned tokens are accepted. Derived exposure: verifier use is unknown. Control status: algorithm allowlist not verified. Evidence strength: `none` option literal only. Assigned tier: {severity.value}."
+            ),
             confidence_rationale="Possible: this is a local text match without API-role, runtime, or token-validation analysis.",  # noqa: E501
             exposure_rationale="Runtime reachability and token audience are not established within the inspected scope.",  # noqa: E501
             attack_prerequisites=[
@@ -796,7 +1136,7 @@ def _specific_explanation(
                 "No AST, framework call graph, runtime token test, or exploit verification is performed."  # noqa: E501
             ],
             ruleset_version="builtin-2",
-            classification_policy_version="static-impact-v1",
+            classification_policy_version="signal-quality-v2",
         )
     if rule.rule_id == "NEXT-PUBLIC-SECRET":
         return FindingExplanation(
@@ -808,7 +1148,9 @@ def _specific_explanation(
             inferred=[
                 "The name may refer to a sensitive value; its privileges and actual client use are unknown."  # noqa: E501
             ],
-            severity_rationale="Medium is a review priority for a credential-like public configuration name, not a claim that a privileged secret is exposed.",  # noqa: E501
+            severity_rationale=(
+                f"Impact: privilege exposure only if the public value grants privileged access. Derived exposure: public-prefixed name found; bundle use unknown. Control status: provider permissions not checked. Evidence strength: name only. Assigned tier: {severity.value}."
+            ),
             confidence_rationale="Possible: classification is based on the variable name, not on the value or an observed production bundle.",  # noqa: E501
             exposure_rationale="The framework prefix suggests public client configuration; actual inclusion was not verified.",  # noqa: E501
             conditional_impact="If the value grants privileged access and reaches an untrusted client, that access could be misused. Public/anonymous identifiers may be intentionally client-visible.",  # noqa: E501
@@ -825,7 +1167,7 @@ def _specific_explanation(
                 "Access policies, credential privileges, and deployment bundles were not inspected."
             ],
             ruleset_version="builtin-2",
-            classification_policy_version="static-impact-v1",
+            classification_policy_version="signal-quality-v2",
         )
     if rule.rule_id == "CLIENT-COMPONENT-SECRET":
         return FindingExplanation(
@@ -837,7 +1179,9 @@ def _specific_explanation(
             inferred=[
                 "The value could be exposed if included in a client bundle; inclusion and privilege are unresolved."  # noqa: E501
             ],
-            severity_rationale="High reflects potential impact for a privileged value shipped to a client; no such value was verified.",  # noqa: E501
+            severity_rationale=(
+                f"Impact: privilege exposure if a privileged value reaches a client. Derived exposure: client directive and secret-like reference found; bundle inclusion unknown. Control status: runtime inclusion not verified. Evidence strength: source names only. Assigned tier: {severity.value}."
+            ),
             confidence_rationale="Possible: source naming and client directive were matched, without build-output or privilege analysis.",  # noqa: E501
             exposure_rationale="Client-component source context is present; actual bundle exposure is not established.",  # noqa: E501
             conditional_impact="If a privileged value is bundled, users could retrieve and misuse it.",  # noqa: E501
@@ -850,7 +1194,7 @@ def _specific_explanation(
             ],
             limitations=["No framework compilation or secret privilege analysis is performed."],
             ruleset_version="builtin-2",
-            classification_policy_version="static-impact-v1",
+            classification_policy_version="signal-quality-v2",
         )
     if rule.rule_id == "MISSING-SECURITY-HEADERS":
         return FindingExplanation(
@@ -858,7 +1202,9 @@ def _specific_explanation(
             match_reason="A recognized header configuration point was found in a Next.js config or middleware file.",  # noqa: E501
             established=["Some security-header configuration is present in the inspected file."],
             inferred=["One or more expected header names were not recognized in this file."],
-            severity_rationale="Medium indicates a configuration review lead; effective response headers were not observed.",  # noqa: E501
+            severity_rationale=(
+                f"Impact: browser policy gaps may increase client-side attack effects. Derived exposure: framework header configuration file found. Control status: one or more expected headers not recognized in this file; proxy settings unknown. Evidence strength: local configuration text. Assigned tier: {severity.value}."
+            ),
             confidence_rationale="Possible: local configuration text was inspected, not the deployed response.",  # noqa: E501
             exposure_rationale="Project configuration scope only; the deployment layer may add headers.",  # noqa: E501
             false_positive_considerations=[
@@ -869,7 +1215,7 @@ def _specific_explanation(
             ],
             limitations=["No live requests or deployment-layer inspection was performed."],
             ruleset_version="builtin-2",
-            classification_policy_version="static-impact-v1",
+            classification_policy_version="signal-quality-v2",
         )
     if rule.rule_id == "LOGIN-NO-RATE-LIMIT":
         return FindingExplanation(
@@ -881,7 +1227,9 @@ def _specific_explanation(
             inferred=[
                 "The handler may lack abuse controls; shared middleware and imported helpers were not resolved."  # noqa: E501
             ],
-            severity_rationale="Medium is a potential abuse-impact review level; request reachability and controls are unknown.",  # noqa: E501
+            severity_rationale=(
+                f"Impact: repeated sensitive requests may enable guessing or resource abuse. Derived exposure: route/handler candidate found. Control status: same-file rate limiter not found; shared middleware unknown. Evidence strength: handler name and local scan. Assigned tier: {severity.value}."
+            ),
             confidence_rationale="Possible: route/handler shape is heuristic and cross-file control flow is unresolved.",  # noqa: E501
             attack_prerequisites=[
                 "An attacker must be able to repeatedly reach a sensitive operation without an effective shared limit."  # noqa: E501
@@ -895,7 +1243,7 @@ def _specific_explanation(
             ],
             limitations=["No inter-file call graph or deployment policy analysis."],
             ruleset_version="builtin-2",
-            classification_policy_version="static-impact-v1",
+            classification_policy_version="signal-quality-v2",
         )
     if rule.rule_id == "COOKIE-FLAGS":
         return FindingExplanation(
@@ -905,7 +1253,9 @@ def _specific_explanation(
             inferred=[
                 "Security attributes may be missing or may be supplied through an unresolved helper."  # noqa: E501
             ],
-            severity_rationale="Medium is a configuration review priority; cookie purpose and runtime defaults matter.",  # noqa: E501
+            severity_rationale=(
+                f"Impact: cookie theft or cross-site use if security attributes are ineffective. Derived exposure: cookie-setting call found. Control status: required attributes were not resolved in inline/simple options. Evidence strength: call-site inspection only. Assigned tier: {severity.value}."
+            ),
             confidence_rationale="Possible: the scanner resolves only nearby literal option objects and simple variables.",  # noqa: E501
             exposure_rationale="Cookie behavior is server/framework dependent and was not exercised.",  # noqa: E501
             false_positive_considerations=[
@@ -916,29 +1266,33 @@ def _specific_explanation(
             ],
             limitations=["Imported helpers and runtime framework defaults are not traced."],
             ruleset_version="builtin-2",
-            classification_policy_version="static-impact-v1",
+            classification_policy_version="signal-quality-v2",
         )
-    rationale = (
-        "The rule is configured as a manual-review heuristic; no vulnerability verification or probability calibration is performed."  # noqa: E501
-        if rule.review
-        else "This is the rule's configured static severity; contextual exploitability was not evaluated."  # noqa: E501
-    )
     confidence_rationale = (
-        "Possible: this finding is marked for manual review by the rule configuration."
+        "Possible: a local source pattern matched; control flow, imported validators, and runtime reachability were not established."
         if confidence == Confidence.POSSIBLE
-        else "Confidence follows the rule's configured heuristic category; it is not a calibrated probability or proof of exploitability."  # noqa: E501
+        else "Likely: a direct source pattern matched; runtime behavior and deployment exposure remain unverified."
     )
     return FindingExplanation(
         observed=excerpt,
         match_reason=rule.description,
-        established=[f"The {rule.rule_id} source pattern matched in this file."],
+        established=[f"The evidence matches the {rule.title.casefold()} predicate in this file."],
         inferred=[
-            "The security condition described by the rule may be present; runtime behavior and surrounding controls were not verified."  # noqa: E501
+            f"{rule.description} Runtime behavior and surrounding controls were not verified."
         ],
-        severity_rationale=f"{severity.value.capitalize()} is the rule's configured potential-impact label. {rationale}",  # noqa: E501
+        severity_rationale=(
+            f"Impact: {rule.title} if reachable. Derived exposure: {rule.exposure} code context; "
+            f"deployment reachability is unknown. Control status: contextual controls were not "
+            f"fully resolved. Evidence strength: {confidence.value} static pattern. Assigned tier: "
+            f"{severity.value}."
+        ),
         confidence_rationale=confidence_rationale,
-        exposure_rationale=f"Exposure is the rule's configured value ({rule.exposure}); it was not derived from deployment evidence.",  # noqa: E501
+        exposure_rationale=f"Matched source context is classified as {rule.exposure}; deployment exposure was not inspected.",  # noqa: E501
         conditional_impact="Impact depends on the condition described by the rule being reachable and exploitable.",  # noqa: E501
+        controls_considered=[
+            f"{rule.title} source predicate: found",
+            "Same-file and imported contextual controls: not fully assessed",
+        ],
         false_positive_considerations=[
             "The match may be a non-executable example, a safe wrapper, or protected by context not analyzed by this rule."  # noqa: E501
         ],
@@ -949,21 +1303,43 @@ def _specific_explanation(
         limitations=[
             "Static heuristic only; no execution, comprehensive AST analysis, inter-file data-flow analysis, or exploit verification."  # noqa: E501
         ],
-        ruleset_version="builtin-2",
-        classification_policy_version="static-impact-v1",
+        ruleset_version="builtin-3",
+        classification_policy_version="signal-quality-v2",
     )
 
 
 def analyze_source(root: Path, path: Path, text: str, *, is_test: bool) -> list[Finding]:
     """Run rules and return one grouped finding per rule and file."""
     relative = path.relative_to(root).as_posix()
+    findings = _generic_first_pass(root, path, text)
+    if path.suffix.casefold() not in {
+        ".py",
+        ".pyi",
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".cjs",
+        ".ts",
+        ".tsx",
+    }:
+        return findings
     lines = text.splitlines()
     matched: dict[str, tuple[Rule, list[int], list[str]]] = {}
     analysis_text = _mask_comments(text, path.suffix)
     lowered = analysis_text.lower()
     sql_input_known = False
     for rule in RULES:
-        if rule.rule_id == "SQL-INJECTION":
+        if rule.rule_id == "EMPTY-CATCH":
+            matches = _empty_catch_matches(text, path.suffix)
+            hits = []
+            for match in matches:
+                first = _line_number(text, match.start())
+                last = _line_number(text, max(match.start(), match.end() - 1))
+                hits.extend((line, _source_line(text, line)) for line in range(first, last + 1))
+        elif rule.rule_id == "REQUEST-NO-SCHEMA":
+            sink_lines = _request_sink_lines(text)
+            hits = [(line, _source_line(text, line)) for line in sink_lines]
+        elif rule.rule_id == "SQL-INJECTION":
             sql_hits = _sql_unsafe_calls(text, path.suffix)
             if not sql_hits:
                 continue
@@ -1014,17 +1390,12 @@ def analyze_source(root: Path, path: Path, text: str, *, is_test: bool) -> list[
                     hits.append((_line_number(text, match.start()), call))
         elif rule.rule_id in {
             "MISSING-SECURITY-HEADERS",
-            "REQUEST-NO-SCHEMA",
             "LOGIN-NO-RATE-LIMIT",
             "UPLOAD-NO-CHECKS",
             "COOKIE-FLAGS",
         }:
             matches = list(rule.pattern.finditer(analysis_text))
             if not matches:
-                continue
-            if rule.rule_id == "REQUEST-NO-SCHEMA" and re.search(
-                r"\b(?:zod|z\.|yup)\b", analysis_text, re.I
-            ):
                 continue
             if rule.rule_id == "LOGIN-NO-RATE-LIMIT":
                 is_route = bool(re.search(r"(?:^|/)route\.[jt]sx?$|(?:^|/)api/", relative, re.I))
@@ -1052,12 +1423,14 @@ def analyze_source(root: Path, path: Path, text: str, *, is_test: bool) -> list[
                     continue
                 if re.search(r"rate.?limit|throttle|limiter", analysis_text, re.I):
                     continue
-            if rule.rule_id == "UPLOAD-NO-CHECKS" and re.search(
-                r"(?:maxSize|fileSize|sizeLimit|contentType|mimetype|fileFilter)",
-                analysis_text,
-                re.I,
-            ):
-                continue
+            if rule.rule_id == "UPLOAD-NO-CHECKS":
+                controls = re.compile(
+                    r"(?:maxSize|fileSize|sizeLimit|contentType|mimeType|fileFilter|"
+                    r"requireAuth|authorize|currentUser|session)",
+                    re.I,
+                )
+                if controls.search(analysis_text):
+                    continue
             if rule.rule_id == "COOKIE-FLAGS":
                 matches = [
                     match for match in matches if not _cookie_call_has_flags(text, match.group(0))
@@ -1087,11 +1460,24 @@ def analyze_source(root: Path, path: Path, text: str, *, is_test: bool) -> list[
     else:
         matched.pop("CLIENT-COMPONENT-SECRET", None)
 
-    findings: list[Finding] = []
     for rule, line_numbers, _matched_tokens in matched.values():
         line_numbers = sorted(set(line_numbers))
         snippets = [_source_line(text, number) for number in line_numbers]
         confidence = _match_confidence(rule, snippets, is_test=is_test)
+        local_context = " ".join(
+            lines[max(0, line_numbers[0] - 3) : min(len(lines), line_numbers[-1] + 2)]
+        ).casefold()
+        benign_catch = bool(
+            re.search(r"json\.parse|localStorage|sessionStorage|setAll\s*\(", local_context)
+        )
+        sensitive_catch = bool(
+            re.search(r"auth|payment|database|\bdb\b|notification|push|webhook", local_context)
+        )
+        mapped_error = rule.rule_id == "VERBOSE-ERROR-EXPOSURE" and _mapped_error_message(
+            text, line_numbers
+        )
+        if rule.rule_id == "EMPTY-CATCH" and sensitive_catch:
+            confidence = Confidence.LIKELY
         excerpt = " | ".join(dict.fromkeys(_excerpt(item) for item in snippets))[:360]
         if is_test and rule.rule_id == "HARDCODED-CREDENTIAL":
             description = (
@@ -1101,9 +1487,46 @@ def analyze_source(root: Path, path: Path, text: str, *, is_test: bool) -> list[
             description = rule.description
         if rule.rule_id == "SQL-INJECTION" and not sql_input_known:
             description += " Input provenance is unknown."
-        effective_severity = (
-            Severity.MEDIUM if is_test and rule.rule_id == "HARDCODED-CREDENTIAL" else rule.severity
+        parts = {part.casefold() for part in Path(relative).parts}
+        nonproduction = is_test or bool(parts & {"manual", "examples", "fixtures", "vendor"})
+        relative_name = Path(relative).name.casefold()
+        is_config = (
+            bool(parts & {"config", "configs"})
+            or relative_name.startswith(("test", "example", "sample", "config.", ".config"))
+            or ".config." in relative_name
+            or Path(relative).suffix.casefold() in {".yaml", ".yml", ".toml", ".ini"}
         )
+        if nonproduction or is_config:
+            effective_severity = Severity.INFO
+        elif rule.rule_id == "EMPTY-CATCH" and benign_catch:
+            effective_severity = Severity.INFO
+        elif rule.rule_id == "EMPTY-CATCH" and sensitive_catch:
+            effective_severity = Severity.HIGH
+        elif mapped_error:
+            effective_severity = Severity.INFO
+        elif rule.severity in {Severity.HIGH, Severity.CRITICAL} and not (
+            confidence == Confidence.LIKELY
+            and rule.rule_id
+            in {
+                "DYNAMIC-EVAL",
+                "NODE-EXEC-INTERPOLATION",
+                "PATH-TRAVERSAL",
+                "XSS-DANGEROUS-HTML",
+                "HARDCODED-CREDENTIAL",
+                "CORS-WILDCARD-CREDENTIALS",
+                "TLS-VERIFY-DISABLED",
+                "CSRF-DISABLED",
+                "EMPTY-CATCH",
+            }
+        ):
+            effective_severity = Severity.MEDIUM
+        elif confidence == Confidence.POSSIBLE and rule.severity in {
+            Severity.HIGH,
+            Severity.CRITICAL,
+        }:
+            effective_severity = Severity.MEDIUM
+        else:
+            effective_severity = rule.severity
         explanation = _specific_explanation(
             rule,
             relative,
@@ -1112,6 +1535,7 @@ def analyze_source(root: Path, path: Path, text: str, *, is_test: bool) -> list[
             severity=effective_severity,
             confidence=confidence,
             sql_input_known=sql_input_known,
+            observed_excerpt=excerpt,
         )
         finding = make_finding(
             target=root,
@@ -1125,7 +1549,9 @@ def analyze_source(root: Path, path: Path, text: str, *, is_test: bool) -> list[
             description=description,
             evidence=EvidenceKind.PATTERN_MATCH,
             tags=["heuristic", "local"]
-            + (["manual-review"] if confidence == Confidence.POSSIBLE else []),
+            + (["manual-review"] if confidence == Confidence.POSSIBLE else [])
+            + (["non-production-copy"] if nonproduction else [])
+            + (["configuration-context"] if is_config else []),
         ).model_copy(
             update={
                 "source": "builtin",
@@ -1158,11 +1584,18 @@ def analyze_source(root: Path, path: Path, text: str, *, is_test: bool) -> list[
         )
         shared_lines = set(public_finding.line_numbers) & set(component_finding.line_numbers)
         if public_names & component_names and shared_lines:
+            merged_excerpt = _excerpt(_source_line(text, min(shared_lines)))
+            merged_explanation = (
+                public_finding.explanation.model_copy(update={"observed": merged_excerpt})
+                if public_finding.explanation is not None
+                else None
+            )
             merged = public_finding.model_copy(
                 update={
                     "contributing_rule_ids": ["NEXT-PUBLIC-SECRET", "CLIENT-COMPONENT-SECRET"],
                     "line_numbers": sorted(shared_lines),
-                    "code_excerpt": _excerpt(_source_line(text, min(shared_lines))),
+                    "code_excerpt": merged_excerpt,
+                    "explanation": merged_explanation,
                 }
             )
             findings = [
@@ -1171,6 +1604,63 @@ def analyze_source(root: Path, path: Path, text: str, *, is_test: bool) -> list[
                 if item is not public_finding and item is not component_finding
             ]
             findings.append(merged)
+    upload_rule = next(rule for rule in RULES if rule.rule_id == "UPLOAD-NO-CHECKS")
+    upload_control = re.compile(
+        r"(?:maxSize|fileSize|sizeLimit|contentType|mimeType|fileFilter|"
+        r"requireAuth|authorize|currentUser|session)",
+        re.I,
+    )
+    upload_match = upload_rule.pattern.search(analysis_text)
+    control_match = upload_control.search(analysis_text)
+    if upload_match and control_match:
+        line = _line_number(text, upload_match.start())
+        excerpt = _excerpt(_source_line(text, line))
+        observed = FindingExplanation(
+            observed=excerpt,
+            match_reason="A recognized upload handler and one or more same-file controls were observed.",
+            established=[
+                "Upload handling is present; a size/type/authorization control token is also present."
+            ],
+            inferred=["The effective behavior and completeness of the control remain unverified."],
+            severity_rationale="Impact: file uploads can affect storage and downstream handling. Evidence: upload API plus control tokens in the same file. This is informational control reporting, not a vulnerability verdict.",
+            confidence_rationale="Possible: textual controls may be defaults or unrelated to the upload path.",
+            controls_considered=[
+                "File size limits: found"
+                if re.search(r"maxSize|fileSize|sizeLimit", analysis_text, re.I)
+                else "File size limits: not found",
+                "Content type checks: found"
+                if re.search(r"contentType|mimeType|fileFilter", analysis_text, re.I)
+                else "Content type checks: not found",
+                "Authorization checks: found"
+                if re.search(r"requireAuth|authorize|currentUser|session", analysis_text, re.I)
+                else "Authorization checks: not found",
+            ],
+            limitations=["No framework execution or cross-file control-flow analysis."],
+            ruleset_version="builtin-3",
+            classification_policy_version="signal-quality-v2",
+        )
+        findings.append(
+            make_finding(
+                target=root,
+                scanner="builtin",
+                rule_id="UPLOAD-CONTROLS-OBSERVED",
+                title="Upload controls observed",
+                severity=Severity.INFO,
+                category="SAST",
+                confidence=Confidence.POSSIBLE.value,
+                location=f"{relative}:{line}",
+                description="Upload handling and same-file controls were observed; verify they apply to this path.",
+                evidence=EvidenceKind.PATTERN_MATCH,
+                tags=["heuristic", "local", "controls-observed"],
+            ).model_copy(
+                update={
+                    "source": "builtin",
+                    "line_numbers": [line],
+                    "code_excerpt": excerpt,
+                    "explanation": observed,
+                }
+            )
+        )
     return findings
 
 
@@ -1230,7 +1720,24 @@ def dependency_findings(root: Path, *, is_test: bool = False) -> list[Finding]:
 
 def vibe_risk(profile: object) -> VibeCodingRisk:
     """Return the preserved legacy arithmetic with a fully inspectable contribution ledger."""
-    source_files = tuple(getattr(profile, "source_files", ()))
+    source_files = tuple(
+        path
+        for path in getattr(profile, "source_files", ())
+        if not (
+            {part.casefold() for part in path.parts}
+            & {
+                "test",
+                "tests",
+                "fixture",
+                "fixtures",
+                "__tests__",
+                "manual",
+                "examples",
+                "vendor",
+            }
+        )
+        and path.suffix.casefold() not in {".yaml", ".yml", ".toml", ".ini", ".xml"}
+    )
     root = getattr(profile, "root", None)
     signals: list[str] = []
     all_text: list[str] = []
@@ -1251,7 +1758,7 @@ def vibe_risk(profile: object) -> VibeCodingRisk:
             "tutorial_default",
             "tutorial-style insecure default",
             18,
-            r"(?:admin\s*/\s*admin|allow_origins\s*=\s*\[?['\"]\*|cors\([^\n]*\*|service_role)",
+            r"(?:\badmin\s*/\s*admin\b|allow_origins\s*=\s*\[?['\"]\*|cors\([^\n]*\*|service_role)",
         ),
         (
             "mock_data",
@@ -1273,9 +1780,9 @@ def vibe_risk(profile: object) -> VibeCodingRisk:
         ),
         (
             "client_validation",
-            "client-side validation pattern observed (server-side validation not established)",
-            8,
-            r"(?i)validate|isValid|password",
+            "client-only validation is not scored without a server-boundary trace",
+            0,
+            r"(?!)",
         ),
     )
     evidence_by_signal: dict[str, list[ScoreEvidence]] = {key: [] for key, *_ in contribution_specs}
@@ -1297,24 +1804,16 @@ def vibe_risk(profile: object) -> VibeCodingRisk:
         except ValueError:
             relative = path.name
         for key, _, _, _ in contribution_specs:
-            matched = patterns[key].search(text)
-            if key == "client_validation":
-                has_client_validation = bool(
-                    "use client" in text
-                    and patterns[key].search(text)
-                    and not re.search(r"use server|server action", text, re.I)
-                )
-                matched = patterns[key].search(text) if has_client_validation else None
+            matched = None if key == "client_validation" else patterns[key].search(text)
             if not matched:
+                continue
+            line = text.count("\n", 0, matched.start()) + 1
+            source_lines = text.splitlines()
+            excerpt = _excerpt(source_lines[line - 1]) if line <= len(source_lines) else None
+            if not excerpt or not patterns[key].search(excerpt):
                 continue
             counts[key] += 1
             if len(evidence_by_signal[key]) < 3:
-                line = text.count("\n", 0, matched.start()) + 1
-                excerpt = (
-                    _excerpt(text.splitlines()[line - 1])
-                    if line <= len(text.splitlines())
-                    else None
-                )
                 evidence_by_signal[key].append(
                     ScoreEvidence(file=relative, line_numbers=[line], code_excerpt=excerpt)
                 )
@@ -1458,12 +1957,16 @@ def vibe_risk(profile: object) -> VibeCodingRisk:
         else f"{len(signals)} signal categories were emitted; POSSIBLE applies below 3 and LIKELY at 3 or more. This is a heuristic threshold, not a probability."  # noqa: E501
     )
     return VibeCodingRisk(
-        score=score,
+        score=score if signals else None,
         confidence=confidence,
         signals=signals,
         name="Code pattern risk",
         direction="Higher scores indicate more configured code patterns in the scanned source.",
-        interpretation="Deterministic heuristic indicator; not proof of authorship, a vulnerability verdict, or scan completeness.",  # noqa: E501
+        interpretation=(
+            "Deterministic heuristic indicator; not proof of authorship, a vulnerability verdict, or scan completeness."
+            if signals
+            else "Insufficient evidence: no validated signal remained after conservative filtering."
+        ),  # noqa: E501
         algorithm_version="legacy-pattern-v1",
         contributions=contributions,
         coverage_limitations=[
