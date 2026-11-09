@@ -1,0 +1,22 @@
+[package]
+name = "chinescan-engine"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.99.1"
+publish = false
+
+[lib]
+name = "chinescan_engine"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+extension-module = ["pyo3/extension-module"]
+
+[dependencies]
+pyo3 = { version = "=0.27.1", default-features = false, features = ["abi3-py312", "macros"] }
+
+[dependencies.regex]
+version = "=1.11.3"
+default-features = false
+features = ["std", "perf", "unicode-perl", "unicode-case", "unicode-gencat"]

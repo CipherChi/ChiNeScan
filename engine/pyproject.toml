@@ -1,0 +1,15 @@
+[build-system]
+requires = ["maturin==1.16.0"]
+build-backend = "maturin"
+
+[project]
+name = "chinescan-engine"
+version = "0.1.0"
+requires-python = ">=3.12"
+description = "Optional Rust redaction engine for ChiNeScan"
+
+[tool.maturin]
+manifest-path = "Cargo.toml"
+module-name = "chinescan_engine"
+features = ["extension-module"]
+profile = "release"
