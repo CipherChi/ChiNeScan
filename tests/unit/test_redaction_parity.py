@@ -2,8 +2,8 @@ import json
 import os
 import secrets
 import time
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
