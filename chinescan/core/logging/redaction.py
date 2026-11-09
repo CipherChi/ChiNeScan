@@ -213,11 +213,7 @@ def _redact_assignments(value: str) -> str:
             )
             if numeric_value:
                 preceding = value[token_start:delimiter].casefold()
-                if (
-                    "/" in preceding
-                    or "\\" in preceding
-                    or preceding.endswith(_SOURCE_EXTENSIONS)
-                ):
+                if "/" in preceding or "\\" in preceding or preceding.endswith(_SOURCE_EXTENSIONS):
                     search_from = delimiter + 1
                     continue
         if valid_start and _sensitive_key_match(key):

@@ -154,9 +154,7 @@ def _ingest_gzip(path: Path, result: IngestResult) -> None:
             data = _read_stream(stream, max(1, total_remaining))
             truncated = False
         else:
-            data, truncated = _read_log_stream_prefix(
-                stream, min(MAX_FILE_BYTES, total_remaining)
-            )
+            data, truncated = _read_log_stream_prefix(stream, min(MAX_FILE_BYTES, total_remaining))
     member_name = path.name[:-3]
     read_size = len(data)
     if truncated:

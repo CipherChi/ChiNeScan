@@ -114,9 +114,7 @@ def test_synthetic_flutter_supabase_382_file_regression(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     for index in range(68):
-        (migrations / f"202501{index + 3:02}_noop.sql").write_text(
-            "select 1;\n", encoding="utf-8"
-        )
+        (migrations / f"202501{index + 3:02}_noop.sql").write_text("select 1;\n", encoding="utf-8")
     handler = functions / "index.ts"
     handler.write_text(
         "Deno.serve(async (req) => {\n"

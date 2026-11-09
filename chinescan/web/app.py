@@ -1300,8 +1300,7 @@ def create_app(
             )
         counts = {severity.value: int(grouped.get(severity.value, 0)) for severity in Severity}
         verdict_counts = {
-            name: int(grouped_verdict.get(name, 0))
-            for name in ("confirmed", "likely", "lead")
+            name: int(grouped_verdict.get(name, 0)) for name in ("confirmed", "likely", "lead")
         }
         top_fix_first = [
             {
@@ -2826,8 +2825,7 @@ def _malware_analysis_view(raw: dict[str, Any]) -> dict[str, Any]:
         ),
         "verdict": (
             result.get("verdict")
-            if result.get("verdict")
-            in {"clean-no-indicators", "suspicious", "likely-malicious"}
+            if result.get("verdict") in {"clean-no-indicators", "suspicious", "likely-malicious"}
             else "suspicious"
         ),
         "verdict_evidence": _safe_malware_strings(result.get("verdict_evidence"), 40, 100),

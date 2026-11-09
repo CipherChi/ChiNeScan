@@ -123,9 +123,7 @@ def test_offline_advisories_cover_npm_pub_and_cargo_with_reachability_and_fixed_
 
     npm = tmp_path / "npm"
     (npm / "src").mkdir(parents=True)
-    (npm / "package.json").write_text(
-        '{"dependencies":{"lodash":"^4.17.0"}}', encoding="utf-8"
-    )
+    (npm / "package.json").write_text('{"dependencies":{"lodash":"^4.17.0"}}', encoding="utf-8")
     (npm / "package-lock.json").write_text(
         '{"lockfileVersion":3,"packages":{"":{"dependencies":{"lodash":"^4.17.0"}},'
         '"node_modules/lodash":{"version":"4.17.20"}}}',
@@ -146,18 +144,14 @@ def test_offline_advisories_cover_npm_pub_and_cargo_with_reachability_and_fixed_
         encoding="utf-8",
     )
     assert not [
-        item
-        for item in dependency_findings(npm)
-        if item.rule_id.endswith("GHSA-35jh-r3h4-6jhm")
+        item for item in dependency_findings(npm) if item.rule_id.endswith("GHSA-35jh-r3h4-6jhm")
     ]
     (npm / "package-lock.json").write_text(
         '{"lockfileVersion":3,"packages":{"node_modules/lodash":{"version":"4.17.21-beta.1"}}}',
         encoding="utf-8",
     )
     prerelease_finding = next(
-        item
-        for item in dependency_findings(npm)
-        if item.rule_id.endswith("GHSA-35jh-r3h4-6jhm")
+        item for item in dependency_findings(npm) if item.rule_id.endswith("GHSA-35jh-r3h4-6jhm")
     )
     assert prerelease_finding.verdict.value == "likely"
     (npm / "package-lock.json").write_text(
@@ -206,9 +200,7 @@ def test_offline_advisories_cover_npm_pub_and_cargo_with_reachability_and_fixed_
         encoding="utf-8",
     )
     rust_finding = next(
-        item
-        for item in dependency_findings(rust)
-        if item.rule_id.endswith("RUSTSEC-2025-0023")
+        item for item in dependency_findings(rust) if item.rule_id.endswith("RUSTSEC-2025-0023")
     )
     assert rust_finding.verdict.value == "likely"
     assert "fixed version 1.44.2" in rust_finding.description
@@ -217,9 +209,7 @@ def test_offline_advisories_cover_npm_pub_and_cargo_with_reachability_and_fixed_
         '[[package]]\nname = "tokio"\nversion = "1.44.2"\n', encoding="utf-8"
     )
     assert not [
-        item
-        for item in dependency_findings(rust)
-        if item.rule_id.endswith("RUSTSEC-2025-0023")
+        item for item in dependency_findings(rust) if item.rule_id.endswith("RUSTSEC-2025-0023")
     ]
 
 

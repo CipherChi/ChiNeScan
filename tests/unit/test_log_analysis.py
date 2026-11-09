@@ -156,9 +156,7 @@ def test_windows_event_xml_rejects_dtd_and_non_event_xml() -> None:
 def test_oversized_plain_log_streams_bounded_prefix_and_reports_truncation(
     tmp_path: Path, monkeypatch
 ) -> None:
-    first = (
-        b'192.0.2.1 - - [10/Oct/2000:13:55:36 -0700] "GET /first HTTP/1.1" 200 12 "-" "agent"\n'
-    )
+    first = b'192.0.2.1 - - [10/Oct/2000:13:55:36 -0700] "GET /first HTTP/1.1" 200 12 "-" "agent"\n'
     second = (
         b'192.0.2.2 - - [10/Oct/2000:13:55:37 -0700] "GET /second HTTP/1.1" 200 12 "-" "agent"\n'
     )
@@ -176,9 +174,7 @@ def test_oversized_plain_log_streams_bounded_prefix_and_reports_truncation(
 def test_log_at_exact_per_file_limit_is_not_reported_as_truncated(
     tmp_path: Path, monkeypatch
 ) -> None:
-    line = (
-        b'192.0.2.1 - - [10/Oct/2000:13:55:36 -0700] "GET /only HTTP/1.1" 200 12 "-" "agent"\n'
-    )
+    line = b'192.0.2.1 - - [10/Oct/2000:13:55:36 -0700] "GET /only HTTP/1.1" 200 12 "-" "agent"\n'
     path = tmp_path / "access.log"
     path.write_bytes(line)
     monkeypatch.setattr(ingest_module, "MAX_FILE_BYTES", len(line))
@@ -251,9 +247,7 @@ def test_grouped_alert_line_evidence_uses_physical_order_not_event_time() -> Non
     ]
 
     scanner = next(
-        alert
-        for alert in run_builtin_detections(events)
-        if alert.rule_id == "CHINESCAN-WEB-002"
+        alert for alert in run_builtin_detections(events) if alert.rule_id == "CHINESCAN-WEB-002"
     )
 
     assert scanner.matching_refs == ["access.log:1", "access.log:2", "access.log:3"]
@@ -321,9 +315,7 @@ def test_impossible_time_sequence_is_a_lead_and_monotonic_log_is_not() -> None:
             update={"occurred_at": now + timedelta(minutes=20), "raw_ref": "system.log:2"}
         ),
     ]
-    assert "CHINESCAN-TIME-001" not in {
-        item.rule_id for item in run_builtin_detections(monotonic)
-    }
+    assert "CHINESCAN-TIME-001" not in {item.rule_id for item in run_builtin_detections(monotonic)}
 
 
 def test_password_spray_and_scanner_near_misses_do_not_alert() -> None:
@@ -417,9 +409,7 @@ def test_error_burst_new_admin_and_log_clear_have_line_evidence() -> None:
     assert burst.match_count == 5
     assert burst.first_match_ref == "access.log:1"
     assert burst.last_match_ref == "access.log:5"
-    account_alert = next(
-        alert for alert in alerts if alert.rule_id == "CHINESCAN-ACCOUNT-001"
-    )
+    account_alert = next(alert for alert in alerts if alert.rule_id == "CHINESCAN-ACCOUNT-001")
     assert account_alert.matching_refs == ["security.csv:20"]
 
 

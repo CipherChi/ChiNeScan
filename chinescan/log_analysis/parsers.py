@@ -236,9 +236,7 @@ def _windows_event_kind(event_id: str) -> tuple[str, str | None, str]:
     )
 
 
-def _event_record(
-    record: dict[str, Any], source_ref: str, line_number: int
-) -> Event:
+def _event_record(record: dict[str, Any], source_ref: str, line_number: int) -> Event:
     event_id = str(record.get("event_id") or "")
     kind, outcome, action = _windows_event_kind(event_id)
     user = record.get("target_user") or record.get("subject_user")

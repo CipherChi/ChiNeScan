@@ -855,11 +855,10 @@ def _generic_first_pass(root: Path, path: Path, text: str) -> list[Finding]:
     for match in firebase_key.finditer(text):
         hits.setdefault("FIREBASE-API-KEY-INFO", []).append(_line_number(text, match.start()))
     path_parts = {part.casefold() for part in path.parts}
-    mobile_client = path.suffix.casefold() in {".dart", ".swift"} or bool(
-        path_parts & {"mobile", "android", "ios", "client"}
-    ) or (
-        path.suffix.casefold() in {".ts", ".tsx", ".js", ".jsx"}
-        and "use client" in text
+    mobile_client = (
+        path.suffix.casefold() in {".dart", ".swift"}
+        or bool(path_parts & {"mobile", "android", "ios", "client"})
+        or (path.suffix.casefold() in {".ts", ".tsx", ".js", ".jsx"} and "use client" in text)
     )
     if mobile_client:
         for match in re.finditer(r"\bSUPABASE_SERVICE_ROLE_KEY\b", text, re.I):
@@ -932,15 +931,27 @@ def _generic_first_pass(root: Path, path: Path, text: str) -> list[Finding]:
             "ANDROID-CLEARTEXT-TRAFFIC": ["Android usesCleartextTraffic=true: found"],
             "ANDROID-DEBUGGABLE": ["Android debuggable=true: found"],
             "ANDROID-ALLOW-BACKUP": ["Android allowBackup=true: found"],
-            "ANDROID-EXPORTED-NO-PERMISSION": ["android:exported=true without android:permission: found"],
+            "ANDROID-EXPORTED-NO-PERMISSION": [
+                "android:exported=true without android:permission: found"
+            ],
             "ANDROID-BROAD-INTENT-FILTER": [
                 "Exported VIEW/BROWSABLE intent filter: found",
                 "Host restriction: missing or wildcard",
             ],
-            "DART-INSECURE-TOKEN-STORAGE": ["SharedPreferences token read/write: found", "FlutterSecureStorage: not found"],
-            "DART-CERTIFICATE-CHECK-DISABLED": ["Certificate validation callback accepts all certificates: found"],
-            "DART-SENSITIVE-LOGGING": ["Sensitive token/authorization value passed to a logger: found"],
-            "FIREBASE-API-KEY-INFO": ["Firebase API key literal: found", "Client API key is not an authentication secret; API restrictions were not inspected"],
+            "DART-INSECURE-TOKEN-STORAGE": [
+                "SharedPreferences token read/write: found",
+                "FlutterSecureStorage: not found",
+            ],
+            "DART-CERTIFICATE-CHECK-DISABLED": [
+                "Certificate validation callback accepts all certificates: found"
+            ],
+            "DART-SENSITIVE-LOGGING": [
+                "Sensitive token/authorization value passed to a logger: found"
+            ],
+            "FIREBASE-API-KEY-INFO": [
+                "Firebase API key literal: found",
+                "Client API key is not an authentication secret; API restrictions were not inspected",
+            ],
             "SUPABASE-MIGRATION-RLS": [
                 "CREATE TABLE statement: found",
                 "Corresponding ENABLE ROW LEVEL SECURITY: not found",
@@ -1008,9 +1019,13 @@ def _generic_first_pass(root: Path, path: Path, text: str) -> list[Finding]:
             ),
             controls_considered=controls_by_rule[rule_id],
             limitations=(
-                ["Migration policies and later migration state are not evaluated by this first-pass rule."]
+                [
+                    "Migration policies and later migration state are not evaluated by this first-pass rule."
+                ]
                 if rule_id == "SUPABASE-MIGRATION-RLS"
-                else ["A provider-shaped value does not by itself prove that a live credential is present."]
+                else [
+                    "A provider-shaped value does not by itself prove that a live credential is present."
+                ]
                 if rule_id == "HARDCODED-SECRET-SHAPE"
                 else ["API restrictions and quota settings were not inspected."]
                 if rule_id == "FIREBASE-API-KEY-INFO"
@@ -1027,7 +1042,8 @@ def _generic_first_pass(root: Path, path: Path, text: str) -> list[Finding]:
                 title=title,
                 severity=(
                     Severity.MEDIUM
-                    if rule_id in {
+                    if rule_id
+                    in {
                         "SUPABASE-MIGRATION-RLS",
                         "SUPABASE-SERVICE-ROLE-CLIENT",
                         "DART-INSECURE-TOKEN-STORAGE",
@@ -1180,13 +1196,13 @@ def _android_xml_hits(filename: str, text: str) -> list[tuple[str, int]]:
                 and isinstance(categories, set)
                 and "android.intent.category.browsable" in categories
                 and isinstance(hosts, list)
-                and (
-                    not hosts
-                    or any(host in {"", "*"} or host.startswith("*.") for host in hosts)
-                )
+                and (not hosts or any(host in {"", "*"} or host.startswith("*.") for host in hosts))
             ):
                 result.append(("ANDROID-BROAD-INTENT-FILTER", int(intent_filter["line"])))
-        elif element in {"activity", "activity-alias", "service", "receiver", "provider"} and components:
+        elif (
+            element in {"activity", "activity-alias", "service", "receiver", "provider"}
+            and components
+        ):
             components.pop()
         elif element == "application" and applications:
             applications.pop()
@@ -1226,16 +1242,60 @@ def migration_rls_findings(root: Path) -> list[Finding]:
         sql = re.sub(r"--[^\r\n]*", "", text)
         events: list[tuple[int, str, re.Match[str]]] = []
         patterns = (
-            ("create", re.compile(r"\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)", re.I)),
-            ("rls", re.compile(r"\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)\s+(?P<state>ENABLE|DISABLE)\s+ROW\s+LEVEL\s+SECURITY", re.I)),
-            ("policy", re.compile(r"\bCREATE\s+POLICY\s+(?P<policy>[\w\"]+)\s+ON\s+(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)(?P<body>[^;]*);", re.I | re.S)),
-            ("drop_policy", re.compile(r"\bDROP\s+POLICY\s+(?:IF\s+EXISTS\s+)?(?P<policy>[\w\"]+)\s+ON\s+(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)", re.I)),
-            ("grant", re.compile(r"\bGRANT\b[^;]*?\bON\s+(?:TABLE\s+)?(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)\s+TO\s+(?P<roles>[^;]+);", re.I | re.S)),
-            ("revoke", re.compile(r"\bREVOKE\b[^;]*?\bON\s+(?:TABLE\s+)?(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)\s+FROM\s+(?P<roles>[^;]+);", re.I | re.S)),
-            ("drop_table", re.compile(r"\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)", re.I)),
+            (
+                "create",
+                re.compile(
+                    r"\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)",
+                    re.I,
+                ),
+            ),
+            (
+                "rls",
+                re.compile(
+                    r"\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)\s+(?P<state>ENABLE|DISABLE)\s+ROW\s+LEVEL\s+SECURITY",
+                    re.I,
+                ),
+            ),
+            (
+                "policy",
+                re.compile(
+                    r"\bCREATE\s+POLICY\s+(?P<policy>[\w\"]+)\s+ON\s+(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)(?P<body>[^;]*);",
+                    re.I | re.S,
+                ),
+            ),
+            (
+                "drop_policy",
+                re.compile(
+                    r"\bDROP\s+POLICY\s+(?:IF\s+EXISTS\s+)?(?P<policy>[\w\"]+)\s+ON\s+(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)",
+                    re.I,
+                ),
+            ),
+            (
+                "grant",
+                re.compile(
+                    r"\bGRANT\b[^;]*?\bON\s+(?:TABLE\s+)?(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)\s+TO\s+(?P<roles>[^;]+);",
+                    re.I | re.S,
+                ),
+            ),
+            (
+                "revoke",
+                re.compile(
+                    r"\bREVOKE\b[^;]*?\bON\s+(?:TABLE\s+)?(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)\s+FROM\s+(?P<roles>[^;]+);",
+                    re.I | re.S,
+                ),
+            ),
+            (
+                "drop_table",
+                re.compile(
+                    r"\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)",
+                    re.I,
+                ),
+            ),
         )
         for kind, pattern in patterns:
-            events.extend((_line_number(sql, match.start()), kind, match) for match in pattern.finditer(sql))
+            events.extend(
+                (_line_number(sql, match.start()), kind, match) for match in pattern.finditer(sql)
+            )
         for line, kind, match in sorted(events, key=lambda event: event[0]):
             schema = (match.groupdict().get("schema") or "public").strip('"').casefold()
             if schema != "public":
@@ -1280,9 +1340,7 @@ def migration_rls_findings(root: Path) -> list[Finding]:
                     tables.pop(table, None)
                     rls_state.pop(table, None)
                     grants.pop(table, None)
-                    policies = {
-                        key: value for key, value in policies.items() if key[0] != table
-                    }
+                    policies = {key: value for key, value in policies.items() if key[0] != table}
                     dropped_tables.add(table)
 
     findings: list[Finding] = []
@@ -1362,9 +1420,13 @@ def migration_rls_findings(root: Path) -> list[Finding]:
                 "line_numbers": [line],
                 "code_excerpt": excerpt,
                 "verdict": FindingVerdict.CONFIRMED,
-                "controls_considered": ["All SQL migration files under the project root were checked for ENABLE ROW LEVEL SECURITY; none was found for this table."],
+                "controls_considered": [
+                    "All SQL migration files under the project root were checked for ENABLE ROW LEVEL SECURITY; none was found for this table."
+                ],
                 "project_impact": f"Rows in public.{table} are not protected by Postgres row-level policies when accessed through clients that rely on RLS.",
-                "exploitability_conditions": ["An application role with grants can access the table without an additional application-layer authorization control."],
+                "exploitability_conditions": [
+                    "An application role with grants can access the table without an additional application-layer authorization control."
+                ],
                 "remediation": f"Enable RLS and add least-privilege policies for public.{table}.",
                 "remediation_before": f"CREATE TABLE public.{table} (...);",
                 "remediation_after": f"ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY;",
@@ -1374,12 +1436,20 @@ def migration_rls_findings(root: Path) -> list[Finding]:
                 "explanation": FindingExplanation(
                     observed=excerpt,
                     match_reason=f"CREATE TABLE public.{table} was found, and the final ordered migration state has no RLS enablement.",
-                    established=["Every migration SQL file was processed in lexicographic migration order.", "No later ENABLE ROW LEVEL SECURITY statement was found for this table."],
-                    controls_considered=["RLS enablement: not found across migrations", "Service-role-only table: role policies not found"],
+                    established=[
+                        "Every migration SQL file was processed in lexicographic migration order.",
+                        "No later ENABLE ROW LEVEL SECURITY statement was found for this table.",
+                    ],
+                    controls_considered=[
+                        "RLS enablement: not found across migrations",
+                        "Service-role-only table: role policies not found",
+                    ],
                     severity_rationale="The table is publicly schema-scoped and RLS remains disabled; assigned tier is high. Deployed grants and compensating controls were not inspected.",
                     confidence_rationale="Confirmed: the local migration set contains the table and no enabling migration.",
                     limitations=["Local migration intent may differ from deployed database state."],
-                    verification_steps=[f"Verify pg_class.relrowsecurity for public.{table} after applying the migration set."],
+                    verification_steps=[
+                        f"Verify pg_class.relrowsecurity for public.{table} after applying the migration set."
+                    ],
                     classification_policy_version="signal-quality-v3",
                 ),
             }
@@ -1400,13 +1470,13 @@ def migration_rls_findings(root: Path) -> list[Finding]:
             re.I | re.S,
         )
         if policy_match:
-            statement = str(redact(re.sub(r"--[^\r\n]*", "", policy_match.group(0)).strip()))[
-                :1000
-            ]
-        role_match = re.search(
-            r"\bTO\s+([\w, ]+?)(?=\s+(?:USING|WITH|FOR)\b|$)", statement, re.I
+            statement = str(redact(re.sub(r"--[^\r\n]*", "", policy_match.group(0)).strip()))[:1000]
+        role_match = re.search(r"\bTO\s+([\w, ]+?)(?=\s+(?:USING|WITH|FOR)\b|$)", statement, re.I)
+        roles = (
+            {role.strip().casefold() for role in role_match.group(1).split(",")}
+            if role_match
+            else {"public"}
         )
-        roles = {role.strip().casefold() for role in role_match.group(1).split(",")} if role_match else {"public"}
         service_role_only = roles == {"service_role"}
         if service_role_only:
             line_excerpt = _source_line(text, line)
@@ -1499,7 +1569,9 @@ def migration_rls_findings(root: Path) -> list[Finding]:
             issues.append("USING (true)")
         if roles & {"anon", "public"}:
             issues.append("role is anon/public")
-        if operation in {"insert", "update"} and not re.search(r"\bWITH\s+CHECK\s*\(", statement, re.I):
+        if operation in {"insert", "update"} and not re.search(
+            r"\bWITH\s+CHECK\s*\(", statement, re.I
+        ):
             issues.append(f"{operation.upper()} policy has no WITH CHECK")
         if not issues:
             continue
@@ -1521,7 +1593,9 @@ def migration_rls_findings(root: Path) -> list[Finding]:
                 "code_excerpt": statement,
                 "verdict": FindingVerdict.LIKELY,
                 "project_impact": f"The {operation.upper()} policy may permit callers to access rows outside their intended account or tenant on public.{table}.",
-                "controls_considered": ["Policy roles, USING expression, command, and WITH CHECK clause were inspected."],
+                "controls_considered": [
+                    "Policy roles, USING expression, command, and WITH CHECK clause were inspected."
+                ],
                 "remediation_before": statement,
                 "remediation_after": f"CREATE POLICY {policy_name} ON public.{table} FOR {operation.upper()} TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);",
                 "verification_step": "Test the policy as anon and authenticated roles with rows owned by different users.",
@@ -1530,12 +1604,20 @@ def migration_rls_findings(root: Path) -> list[Finding]:
                 "explanation": FindingExplanation(
                     observed=statement,
                     match_reason="The stored policy text matches one or more permissive conditions.",
-                    established=["The migration declares the policy and target table shown in the evidence."],
-                    inferred=["Policy behavior depends on table grants and effective role membership."],
+                    established=[
+                        "The migration declares the policy and target table shown in the evidence."
+                    ],
+                    inferred=[
+                        "Policy behavior depends on table grants and effective role membership."
+                    ],
                     severity_rationale=f"Impact: {', '.join(issues)} may broaden access to public.{table}. Assigned tier: medium because effective grants and row ownership are not known.",
                     confidence_rationale="Likely: the policy text is directly observed, but effective database role and grant state are not evaluated.",
-                    controls_considered=["Policy role list, command, USING, and WITH CHECK clauses were checked."],
-                    verification_steps=["Apply the migrations and attempt cross-tenant reads/writes using the anon and authenticated roles."],
+                    controls_considered=[
+                        "Policy role list, command, USING, and WITH CHECK clauses were checked."
+                    ],
+                    verification_steps=[
+                        "Apply the migrations and attempt cross-tenant reads/writes using the anon and authenticated roles."
+                    ],
                     limitations=["No live database connection or grants inspection was performed."],
                     classification_policy_version="signal-quality-v3",
                 ),
@@ -1560,7 +1642,9 @@ def edge_function_findings(root: Path) -> list[Finding]:
         handler = re.search(r"\bDeno\.serve\s*\(", analysis_text)
         if not handler:
             continue
-        key = re.search(r"Deno\.env\.get\s*\(\s*['\"]SUPABASE_SERVICE_ROLE_KEY['\"]\s*\)", analysis_text, re.I)
+        key = re.search(
+            r"Deno\.env\.get\s*\(\s*['\"]SUPABASE_SERVICE_ROLE_KEY['\"]\s*\)", analysis_text, re.I
+        )
         if not key:
             continue
         authentication = re.search(
@@ -1579,10 +1663,7 @@ def edge_function_findings(root: Path) -> list[Finding]:
             continue
         relative = path.relative_to(root).as_posix()
         lines = [_line_number(text, key.start()), _line_number(text, sink.start())]
-        excerpts = [
-            _excerpt(_source_line(text, line))
-            for line in sorted(set(lines))
-        ]
+        excerpts = [_excerpt(_source_line(text, line)) for line in sorted(set(lines))]
         source_line, sink_line = sorted(set(lines))
         finding = make_finding(
             target=root,
@@ -1637,11 +1718,21 @@ def edge_function_findings(root: Path) -> list[Finding]:
                 "explanation": FindingExplanation(
                     observed=" | ".join(excerpts),
                     match_reason="Service-role key access and database write are present in a Deno handler with no recognized authentication guard.",
-                    established=[f"Entry point: {relative}:{_line_number(text, handler.start())}.", f"Service-role key: {relative}:{source_line}.", f"Database write sink: {relative}:{sink_line}.", "Same-file JWT/getUser checks were searched and not found."],
-                    inferred=["The handler may be callable without user authentication if deployed without an upstream JWT gate."],
+                    established=[
+                        f"Entry point: {relative}:{_line_number(text, handler.start())}.",
+                        f"Service-role key: {relative}:{source_line}.",
+                        f"Database write sink: {relative}:{sink_line}.",
+                        "Same-file JWT/getUser checks were searched and not found.",
+                    ],
+                    inferred=[
+                        "The handler may be callable without user authentication if deployed without an upstream JWT gate."
+                    ],
                     severity_rationale="The privileged key bypasses row-level security when this handler is reachable without authentication; tier is high pending deployment confirmation.",
                     confidence_rationale="Confirmed static misconfiguration: key access and write sink are visible and no local auth guard matched.",
-                    controls_considered=["JWT verification/getUser in handler: not found", "Upstream gateway verification: not inspected"],
+                    controls_considered=[
+                        "JWT verification/getUser in handler: not found",
+                        "Upstream gateway verification: not inspected",
+                    ],
                     limitations=["No deployment configuration or live endpoint was inspected."],
                     classification_policy_version="signal-quality-v3",
                 ),
@@ -1695,7 +1786,9 @@ def _specific_explanation(
         return FindingExplanation(
             observed=excerpt,
             match_reason="A request body reaches a recognized side-effect sink without a same-file schema or manual validation match.",
-            established=["The ordered evidence includes the request-body source and a database, network, file, or delivery sink."],
+            established=[
+                "The ordered evidence includes the request-body source and a database, network, file, or delivery sink."
+            ],
             inferred=["Unvalidated request data may influence the side effect."],
             severity_rationale=f"Impact: input can alter the operation at the observed sink. Exposure: request parsing and sink are present. Controls: schema/manual validation patterns searched and not found on the path. Evidence: same-file source-to-sink order only. Assigned tier: {severity.value}.",
             confidence_rationale="Possible: source, sink, and validation patterns are matched textually; inter-file validators and control flow are not resolved.",
@@ -2306,7 +2399,9 @@ def analyze_source(root: Path, path: Path, text: str, *, is_test: bool) -> list[
                     list(explanation.controls_considered) if explanation is not None else []
                 ),
                 "exploitability_conditions": (
-                    ["An external caller can reach this handler and control request JSON consumed at the sink."]
+                    [
+                        "An external caller can reach this handler and control request JSON consumed at the sink."
+                    ]
                     if rule.rule_id == "REQUEST-NO-SCHEMA"
                     else []
                 ),
@@ -2546,7 +2641,9 @@ def _read_lock_packages(path: Path) -> tuple[str, list[tuple[str, str, bool]]]:
         if suffix_name == "package-lock.json":
             lock = json.loads(text)
             packages: list[tuple[str, str, bool]] = []
-            direct = _manifest_dependency_names(path.parent / "package.json", ("dependencies", "optionalDependencies"))
+            direct = _manifest_dependency_names(
+                path.parent / "package.json", ("dependencies", "optionalDependencies")
+            )
             package_map = lock.get("packages", {}) if isinstance(lock, dict) else {}
             if isinstance(package_map, dict):
                 for install_path, value in package_map.items():
@@ -2576,7 +2673,11 @@ def _read_lock_packages(path: Path) -> tuple[str, list[tuple[str, str, bool]]]:
             packages = []
             direct = _manifest_dependency_names(path.parent / "Cargo.toml", ("dependencies",))
             for value in lock.get("package", []):
-                if isinstance(value, dict) and isinstance(value.get("name"), str) and isinstance(value.get("version"), str):
+                if (
+                    isinstance(value, dict)
+                    and isinstance(value.get("name"), str)
+                    and isinstance(value.get("version"), str)
+                ):
                     packages.append((value["name"], value["version"], value["name"] in direct))
             return "cargo", packages
     except (OSError, ValueError, TypeError, AttributeError):
@@ -2723,13 +2824,19 @@ def _offline_advisory_findings(root: Path) -> list[Finding]:
                     rule_id=f"OFFLINE-ADVISORY-{advisory_id}",
                     title=f"Vulnerable dependency: {name} {version}",
                     severity=severity if api_reached else Severity.INFO,
-                    confidence=Confidence.LIKELY.value if api_reached else Confidence.POSSIBLE.value,
+                    confidence=Confidence.LIKELY.value
+                    if api_reached
+                    else Confidence.POSSIBLE.value,
                     location=f"{relative}:{line}",
                     description=(
                         f"{advisory.get('summary', 'Known vulnerability')} ({advisory_id}). "
                         f"Installed {version}; fixed version {fixed}. {reachability}{db_notice}"
                     ),
-                    tags=["dependency", "offline-advisory", "stale-database" if stale else "current-database"],
+                    tags=[
+                        "dependency",
+                        "offline-advisory",
+                        "stale-database" if stale else "current-database",
+                    ],
                 ).model_copy(
                     update={
                         "source": "builtin",
@@ -2755,7 +2862,9 @@ def _offline_advisory_findings(root: Path) -> list[Finding]:
                             else "The lockfile confirms an affected version, but the affected API path was not demonstrated in source."
                         ),
                         "what_would_raise_it": f"A runtime call path to `{api}` with attacker-controlled input would establish stronger exploitability evidence.",
-                        "references": [Reference(title=f"{advisory_id} (OSV)", url=advisory.get("source"))],
+                        "references": [
+                            Reference(title=f"{advisory_id} (OSV)", url=advisory.get("source"))
+                        ],
                     }
                 )
                 findings.append(finding)
@@ -2767,7 +2876,21 @@ def _source_mentions_api(root: Path, api: str) -> bool:
     pattern = re.compile(rf"(?<![\w$]){re.escape(api)}\s*\(", re.I)
     visited = 0
     ignored = {".git", ".venv", "venv", "node_modules", "target", "build", "dist"}
-    nonproduction = {"test", "tests", "fixture", "fixtures", "__tests__", "examples", "example", "tutorial", "demo", "sample", "samples", "vendor", "generated"}
+    nonproduction = {
+        "test",
+        "tests",
+        "fixture",
+        "fixtures",
+        "__tests__",
+        "examples",
+        "example",
+        "tutorial",
+        "demo",
+        "sample",
+        "samples",
+        "vendor",
+        "generated",
+    }
     for directory, dirnames, filenames in os.walk(root, followlinks=False):
         dirnames[:] = sorted(
             name
@@ -2907,14 +3030,17 @@ def vibe_risk(profile: object) -> VibeCodingRisk:
                 )
                 matched = comment_code.search(text)
             else:
-                matched = None if key == "client_validation" else patterns[key].search(analysis_text)
+                matched = (
+                    None if key == "client_validation" else patterns[key].search(analysis_text)
+                )
             if not matched:
                 continue
             line = text.count("\n", 0, matched.start()) + 1
             source_lines = text.splitlines()
             excerpt = _excerpt(source_lines[line - 1]) if line <= len(source_lines) else None
             if not excerpt or (
-                key != "commented_code" and not patterns[key].search(analysis_text.splitlines()[line - 1])
+                key != "commented_code"
+                and not patterns[key].search(analysis_text.splitlines()[line - 1])
             ):
                 continue
             counts[key] += 1

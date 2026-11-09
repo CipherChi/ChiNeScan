@@ -719,8 +719,7 @@ def _coverage_for_project(
         languages_detected=languages_detected,
         files_scanned_by_language=files_scanned_by_language,
         language_analyzer_status={
-            language: _language_rule_coverage(language)
-            for language in sorted(languages_detected)
+            language: _language_rule_coverage(language) for language in sorted(languages_detected)
         },
         not_assessed=[*_NOT_ASSESSED, _offline_advisory_coverage_note()],
     )

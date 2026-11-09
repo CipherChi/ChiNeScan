@@ -248,7 +248,7 @@ def test_verbose_error_through_fixed_mapper_is_downgraded(tmp_path: Path) -> Non
     [
         (
             "lib/config.dart",
-                'const token = "ghp_' + "a1B2c3D4e5F6" * 3 + '";',
+            'const token = "ghp_' + "a1B2c3D4e5F6" * 3 + '";',
             'const api = "example";',
             "HARDCODED-SECRET-SHAPE",
         ),
@@ -419,8 +419,7 @@ def test_dart_secret_storage_tls_logging_and_firebase_classification(tmp_path: P
         "final prefs = await SharedPreferences.getInstance();\n"
         "await prefs.setString('access_token', token);\n"
         "client.badCertificateCallback = (_, __, ___) => true;\n"
-        "debugPrint(accessToken);\n"
-        + firebase
+        "debugPrint(accessToken);\n" + firebase
     )
     findings = analyze_source(root, path, text, is_test=False)
     by_id = {item.rule_id: item for item in findings}
@@ -466,8 +465,8 @@ def test_android_export_backup_and_network_config_controls(tmp_path: Path) -> No
 
     broad = (
         '<manifest><application><activity android:name=".LinkActivity" android:exported="true">'
-        "<intent-filter><action android:name=\"android.intent.action.VIEW\"/>"
-        "<category android:name=\"android.intent.category.BROWSABLE\"/>"
+        '<intent-filter><action android:name="android.intent.action.VIEW"/>'
+        '<category android:name="android.intent.category.BROWSABLE"/>'
         '<data android:scheme="https"/></intent-filter></activity></application></manifest>'
     )
     broad_findings = analyze_source(root, manifest, broad, is_test=False)
@@ -511,8 +510,7 @@ def test_android_export_backup_and_network_config_controls(tmp_path: Path) -> No
         "</application></manifest>"
     )
     assert "ANDROID-EXPORTED-NO-PERMISSION" not in {
-        item.rule_id
-        for item in analyze_source(root, manifest, inherited_permission, is_test=False)
+        item.rule_id for item in analyze_source(root, manifest, inherited_permission, is_test=False)
     }
 
     commented = (
@@ -584,7 +582,9 @@ def test_edge_service_role_requires_auth_and_maps_both_ends(tmp_path: Path) -> N
     path.write_text(secured, encoding="utf-8")
     assert not edge_function_findings(tmp_path)
 
-    no_database_sink = unguarded.replace("admin.from('pairings').insert(body)", "fetch('https://example.test')")
+    no_database_sink = unguarded.replace(
+        "admin.from('pairings').insert(body)", "fetch('https://example.test')"
+    )
     path.write_text(no_database_sink, encoding="utf-8")
     assert not edge_function_findings(tmp_path)
 

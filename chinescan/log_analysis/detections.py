@@ -32,8 +32,7 @@ def _ordered_event_refs(events: list[Event]) -> list[str]:
     if not referenced:
         return []
     parsed = [
-        (event, ref, ref.rpartition(":")[0], ref.rpartition(":")[2])
-        for event, ref in referenced
+        (event, ref, ref.rpartition(":")[0], ref.rpartition(":")[2]) for event, ref in referenced
     ]
     if len({item[2] for item in parsed}) == 1 and all(item[3].isdecimal() for item in parsed):
         parsed.sort(key=lambda item: (int(item[3]), item[0].event_id))
@@ -264,10 +263,14 @@ def run_builtin_detections(events: list[Event]) -> list[Alert]:
             for marker in ("log cleared", "clear log", "eventlog cleared", "1102", "104")
         ):
             log_clears.append(event)
-        if kind in {"account_created", "user_created"} and any(
-            marker in activity_text
-            for marker in ("user created", "created user", "account created", "new user")
-        ) and any(marker in activity_text for marker in ("admin", "administrator", "privileged")):
+        if (
+            kind in {"account_created", "user_created"}
+            and any(
+                marker in activity_text
+                for marker in ("user created", "created user", "account created", "new user")
+            )
+            and any(marker in activity_text for marker in ("admin", "administrator", "privileged"))
+        ):
             administrative_changes.append(event)
 
         if "privilege" in kind or (event.process or "").casefold() in {"sudo", "su"}:
@@ -511,25 +514,21 @@ def run_builtin_detections(events: list[Event]) -> list[Alert]:
 
     for creation_or_pair in account_evidence:
         matched_events = (
-            list(creation_or_pair)
-            if isinstance(creation_or_pair, tuple)
-            else [creation_or_pair]
+            list(creation_or_pair) if isinstance(creation_or_pair, tuple) else [creation_or_pair]
         )
         actors = sorted({event.actor for event in matched_events if event.actor})
         accounts = sorted(
-            {
-                event.target or event.user
-                for event in matched_events
-                if event.target or event.user
-            }
+            {event.target or event.user for event in matched_events if event.target or event.user}
         )
         groups = sorted({event.target_group for event in matched_events if event.target_group})
         detail = "; ".join(
-            value for value in (
+            value
+            for value in (
                 f"account {', '.join(accounts)}" if accounts else "",
                 f"group {', '.join(groups)}" if groups else "",
                 f"actor {', '.join(actors)}" if actors else "",
-            ) if value
+            )
+            if value
         )
         alerts.append(
             make_alert(
