@@ -17,7 +17,7 @@ from chinescan.log_analysis.detections import (
     run_sigma_rules,
 )
 from chinescan.log_analysis.ingest import IngestResult, ingest_path
-from chinescan.log_analysis.ioc_matching import correlate_iocs, load_iocs
+from chinescan.log_analysis.ioc_matching import correlate_iocs, extract_event_iocs, load_iocs
 
 
 @dataclass
@@ -35,12 +35,16 @@ class LogAnalysisResult:
         counts: dict[str, int] = {}
         for alert in self.alerts:
             counts[alert.severity.value] = counts.get(alert.severity.value, 0) + 1
+        verdict_counts = {verdict: 0 for verdict in ("confirmed", "likely", "lead")}
+        for alert in self.alerts:
+            verdict_counts[alert.verdict.value] += 1
         return {
             "scan_id": self.scan_id,
             "source_count": self.source_count,
             "event_count": self.events,
             "alert_count": len(self.alerts),
             "severity_counts": counts,
+            "verdict_counts": verdict_counts,
             "parse_error_count": len(self.errors),
             "alerts": [
                 {
@@ -49,6 +53,11 @@ class LogAnalysisResult:
                     "severity": alert.severity.value,
                     "rule_id": redact(alert.rule_id),
                     "event_count": len(alert.event_ids),
+                    "verdict": alert.verdict.value,
+                    "match_count": alert.match_count,
+                    "first_match_ref": alert.first_match_ref,
+                    "last_match_ref": alert.last_match_ref,
+                    "log_limitations": alert.log_limitations,
                 }
                 for alert in self.alerts
             ],
@@ -127,7 +136,7 @@ class LogAnalysisService:
                 events=events,
                 alerts=alerts,
                 timeline=timeline,
-                indicators=correlated.indicators,
+                indicators=[*correlated.indicators, *extract_event_iocs(events)],
                 errors=errors,
                 sources=sorted({event.source for event in events}),
             )

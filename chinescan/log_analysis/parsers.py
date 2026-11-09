@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Any
+from xml.parsers import expat
 
 from chinescan.core.models.investigation import Event
 from chinescan.log_analysis.normalization import normalize_record
@@ -76,6 +77,8 @@ def parse_log_data(data: bytes, name: str, source_ref: str) -> ParseBatch:
         return _parse_json(text, suffix, source_ref)
     if suffix == ".csv":
         return _parse_csv(text, source_ref)
+    if suffix == ".xml":
+        return _parse_windows_event_xml(text, source_ref)
     iis_batch = _parse_iis_access(text, source_ref)
     if iis_batch is not None:
         return iis_batch
@@ -182,6 +185,8 @@ def _parse_csv(text: str, source_ref: str) -> ParseBatch:
         reader = csv.DictReader(io.StringIO(text, newline=""))
         if not reader.fieldnames:
             return ParseBatch(errors=[f"{source_ref}: CSV header is missing"])
+        if _is_windows_event_csv(reader.fieldnames):
+            return _parse_windows_event_csv(text, source_ref)
         for line_number, row in enumerate(reader, start=2):
             if len(batch.events) >= MAX_RECORDS_PER_SOURCE:
                 batch.errors.append(f"{source_ref}: event count limit reached")
@@ -201,6 +206,267 @@ def _parse_csv(text: str, source_ref: str) -> ParseBatch:
             batch.events.append(event)
     except csv.Error:
         batch.errors.append(f"{source_ref}: malformed CSV input")
+    return batch
+
+
+def _is_windows_event_csv(fieldnames: list[str | None]) -> bool:
+    normalized = {re.sub(r"[^a-z0-9]", "", (name or "").casefold()) for name in fieldnames}
+    timestamp_fields = {"timecreated", "systemtime", "timestamp", "dateandtime", "datetime", "time"}
+    return "eventid" in normalized and bool(normalized & timestamp_fields)
+
+
+def _windows_event_kind(event_id: str) -> tuple[str, str | None, str]:
+    messages = {
+        "4624": ("authentication_success", "success", "logon succeeded"),
+        "4625": ("authentication_failure", "failure", "logon failed"),
+        "4634": ("session_ended", None, "logoff"),
+        "4648": ("explicit_credentials", None, "explicit credentials used"),
+        "4672": ("privilege_change", "success", "special privileges assigned"),
+        "1102": ("log_cleared", "success", "security audit log cleared"),
+        "4720": ("user_created", "success", "user created"),
+        "4722": ("user_enabled", "success", "user account enabled"),
+        "4724": ("password_reset", "success", "password reset attempted"),
+        "4726": ("user_deleted", "success", "user account deleted"),
+        "4728": ("privilege_change", "success", "user added to a security group"),
+        "4732": ("privilege_change", "success", "user added to a local security group"),
+        "4756": ("privilege_change", "success", "user added to a universal security group"),
+    }
+    return messages.get(
+        event_id, (f"windows_event_{event_id or 'unknown'}", None, "event recorded")
+    )
+
+
+def _event_record(
+    record: dict[str, Any], source_ref: str, line_number: int
+) -> Event:
+    event_id = str(record.get("event_id") or "")
+    kind, outcome, action = _windows_event_kind(event_id)
+    user = record.get("target_user") or record.get("subject_user")
+    group = record.get("target_group") or record.get("group_name")
+    details = " ".join(str(value) for value in (user, group) if value)
+    summary = f"Windows Event {event_id}: {action}"
+    if details:
+        summary += f" ({details})"
+    normalized: dict[str, Any] = {
+        "occurred_at": record.get("occurred_at"),
+        "kind": event_id or kind,
+        "summary": summary,
+        "source_ip": record.get("source_ip"),
+        "destination_ip": record.get("destination_ip"),
+        "user": user,
+        "actor": record.get("subject_user"),
+        "target": record.get("target_user"),
+        "target_group": group,
+        "host": record.get("host"),
+        "process": record.get("process"),
+        "command_line": record.get("command_line"),
+        "file": record.get("file"),
+        "event_outcome": outcome or record.get("event_outcome"),
+    }
+    return normalize_record(
+        normalized,
+        source="windows_event_export",
+        raw_ref=f"{source_ref}:{line_number}",
+    )
+
+
+def _parse_windows_event_csv(text: str, source_ref: str) -> ParseBatch:
+    batch = ParseBatch()
+    try:
+        reader = csv.DictReader(io.StringIO(text, newline=""))
+        for line_number, row in enumerate(reader, start=2):
+            if line_number > MAX_LINES_PER_SOURCE:
+                batch.errors.append(f"{source_ref}: line count limit reached")
+                break
+            if len(batch.events) >= MAX_RECORDS_PER_SOURCE:
+                batch.errors.append(f"{source_ref}: event count limit reached")
+                break
+            if None in row:
+                batch.errors.append(f"{source_ref}:{line_number}: malformed CSV row")
+                continue
+            values = {
+                re.sub(r"[^a-z0-9]", "", (key or "").casefold()): value
+                for key, value in row.items()
+            }
+            event_id = values.get("eventid", "")
+            kind, outcome, action = _windows_event_kind(event_id)
+            target_user = values.get("targetusername") or values.get("accountname")
+            subject_user = values.get("subjectusername") or values.get("username")
+            group = values.get("targetgroupname") or values.get("groupname")
+            member_user = values.get("membername") or values.get("member")
+            if event_id in {"4728", "4732", "4756"}:
+                group = group or target_user
+                target_user = member_user or values.get("membername") or values.get("member")
+                if target_user and target_user.casefold().startswith("cn="):
+                    target_user = target_user[3:].split(",", maxsplit=1)[0]
+            summary = f"Windows Event {event_id}: {action}"
+            details = " ".join(
+                str(value) for value in (target_user or subject_user, group) if value
+            )
+            if details:
+                summary += f" ({details})"
+            record = {
+                "occurred_at": (
+                    values.get("timecreated")
+                    or values.get("systemtime")
+                    or values.get("timestamp")
+                    or values.get("dateandtime")
+                    or values.get("datetime")
+                    or values.get("time")
+                ),
+                "kind": event_id or kind,
+                "summary": summary,
+                "source_ip": values.get("ipaddress") or values.get("sourceipaddress"),
+                "destination_ip": values.get("destinationipaddress"),
+                "user": target_user or subject_user,
+                "actor": subject_user,
+                "target": target_user,
+                "target_group": group,
+                "host": values.get("computer") or values.get("computername"),
+                "process": values.get("processname") or values.get("newprocessname"),
+                "command_line": values.get("commandline") or values.get("processcommandline"),
+                "file": values.get("targetfilename") or values.get("filename"),
+                "event_outcome": outcome or values.get("level"),
+            }
+            try:
+                batch.events.append(
+                    normalize_record(
+                        record,
+                        source="windows_event_export",
+                        raw_ref=f"{source_ref}:{line_number}",
+                    )
+                )
+            except (TypeError, ValueError):
+                batch.errors.append(f"{source_ref}:{line_number}: invalid Windows event fields")
+    except csv.Error:
+        batch.errors.append(f"{source_ref}: malformed CSV input")
+    return batch
+
+
+def _parse_windows_event_xml(text: str, source_ref: str) -> ParseBatch:
+    batch = ParseBatch()
+    lines = text.splitlines()
+    if len(lines) > MAX_LINES_PER_SOURCE:
+        return ParseBatch(errors=[f"{source_ref}: line count limit reached"])
+    for number, line in enumerate(lines, start=1):
+        if len(line.encode("utf-8")) > MAX_LINE_BYTES:
+            return ParseBatch(errors=[f"{source_ref}:{number}: line exceeds size limit"])
+
+    parser = expat.ParserCreate()
+    parser.SetParamEntityParsing(expat.XML_PARAM_ENTITY_PARSING_NEVER)
+    current: dict[str, Any] | None = None
+    current_line = 1
+    capture_tag: str | None = None
+    capture_name: str | None = None
+    capture_text: list[str] = []
+    found_event = False
+
+    def reject_doctype(*_args: object) -> None:
+        raise ValueError("DTD and entity declarations are not accepted in Windows event XML")
+
+    parser.StartDoctypeDeclHandler = reject_doctype
+    parser.EntityDeclHandler = reject_doctype
+    parser.ExternalEntityRefHandler = lambda *_args: 0
+
+    def local_name(value: str) -> str:
+        return value.rsplit("}", 1)[-1].rsplit(":", 1)[-1].casefold()
+
+    def start(tag: str, attributes: dict[str, str]) -> None:
+        nonlocal current, current_line, capture_tag, capture_name, capture_text, found_event
+        element = local_name(tag)
+        attrs = {local_name(key): value for key, value in attributes.items()}
+        if element == "event":
+            current = {"data": {}}
+            current_line = parser.CurrentLineNumber
+            found_event = True
+        elif current is not None:
+            if element == "provider":
+                current["provider"] = attrs.get("name")
+            elif element == "timecreated":
+                current["occurred_at"] = attrs.get("systemtime")
+            elif element == "security":
+                current["subject_user"] = attrs.get("userid")
+            elif element == "data":
+                capture_tag = element
+                capture_name = attrs.get("name", "").casefold()
+                capture_text = []
+            elif element in {"eventid", "computer", "eventrecordid"}:
+                capture_tag = element
+                capture_name = None
+                capture_text = []
+
+    def characters(value: str) -> None:
+        if capture_tag:
+            capture_text.append(value)
+
+    def end(tag: str) -> None:
+        nonlocal current, capture_tag, capture_name, capture_text
+        element = local_name(tag)
+        if current is not None and capture_tag == element:
+            value = "".join(capture_text).strip()
+            if capture_tag == "data":
+                data = current["data"]
+                if isinstance(data, dict) and capture_name:
+                    data[capture_name] = value
+            else:
+                current[element] = value
+            capture_tag = None
+            capture_name = None
+            capture_text = []
+        if element == "event" and current is not None:
+            data = current.pop("data", {})
+            if not isinstance(data, dict):
+                data = {}
+            event_id = str(current.get("eventid", ""))
+            member_user = data.get("membername") or data.get("member")
+            if member_user and member_user.casefold().startswith("cn="):
+                member_user = member_user[3:].split(",", maxsplit=1)[0]
+            try:
+                if len(batch.events) >= MAX_RECORDS_PER_SOURCE:
+                    raise OverflowError
+                batch.events.append(
+                    _event_record(
+                        {
+                            "event_id": event_id,
+                            "occurred_at": current.get("occurred_at"),
+                            "target_user": (
+                                member_user
+                                if event_id in {"4728", "4732", "4756"}
+                                else data.get("targetusername") or data.get("accountname")
+                            ),
+                            "subject_user": data.get("subjectusername")
+                            or current.get("subject_user"),
+                            "target_group": (
+                                data.get("targetgroupname")
+                                or data.get("groupname")
+                                or (data.get("targetusername") if event_id in {"4728", "4732", "4756"} else None)
+                            ),
+                            "source_ip": data.get("ipaddress") or data.get("sourceipaddress"),
+                            "destination_ip": data.get("destinationipaddress"),
+                            "host": current.get("computer"),
+                            "process": data.get("processname") or data.get("newprocessname"),
+                            "command_line": data.get("commandline"),
+                            "file": data.get("targetfilename") or data.get("filename"),
+                        },
+                        source_ref,
+                        current_line,
+                    )
+                )
+            except OverflowError:
+                batch.errors.append(f"{source_ref}:{current_line}: event count limit reached")
+            except (TypeError, ValueError):
+                batch.errors.append(f"{source_ref}:{current_line}: invalid Windows event fields")
+            current = None
+
+    parser.StartElementHandler = start
+    parser.CharacterDataHandler = characters
+    parser.EndElementHandler = end
+    try:
+        parser.Parse(text, True)
+    except (expat.ExpatError, ValueError):
+        return ParseBatch(errors=[f"{source_ref}: malformed or unsafe Windows Event XML"])
+    if not found_event:
+        return ParseBatch(errors=[f"{source_ref}: no Windows Event records found in XML export"])
     return batch
 
 

@@ -72,14 +72,10 @@ def ingest_path(path: Path) -> IngestResult:
         except OSError:
             result.errors.append(f"{candidate}: could not read file metadata")
             continue
-        if (
-            size > MAX_FILE_BYTES
-            and candidate.suffix.lower() not in _ARCHIVES
-            and not candidate.name.lower().endswith((".tar.gz", ".tar.bz2", ".tar.xz"))
-        ):
-            result.errors.append(f"{candidate}: file exceeds size limit")
-            continue
-        total_bytes += size
+        is_archive = candidate.suffix.lower() in _ARCHIVES or candidate.name.lower().endswith(
+            (".tar.gz", ".tar.bz2", ".tar.xz")
+        )
+        total_bytes += size if is_archive else min(size, MAX_FILE_BYTES)
         if total_bytes > MAX_TOTAL_BYTES:
             raise LogIngestionError("Input exceeds the total ingestion size limit.")
         result.source_count += 1
@@ -134,8 +130,17 @@ def _ingest_file(path: Path, result: IngestResult) -> None:
         elif lower.endswith(".gz"):
             _ingest_gzip(path, result)
         else:
-            data = _read_bounded(path, _remaining_member_budget(result))
+            data, truncated = _read_log_prefix(path, _remaining_member_budget(result))
+            read_size = len(data)
+            if truncated:
+                data = _complete_lines_prefix(data)
             _parse_member(data, path.name, str(path), result)
+            result.bytes_processed += read_size - len(data)
+            if truncated:
+                result.errors.append(
+                    f"{path}: truncated at the per-file limit after reading {read_size} bytes; "
+                    "remaining log data was not analyzed."
+                )
     except _ExpansionLimitReached:
         result.errors.append(f"{path}: total expanded-byte limit reached")
     except Exception as exc:  # isolate malformed/untrusted input with an explicit diagnostic
@@ -144,9 +149,47 @@ def _ingest_file(path: Path, result: IngestResult) -> None:
 
 def _ingest_gzip(path: Path, result: IngestResult) -> None:
     with gzip.open(path, "rb") as stream:
-        data = _read_stream(stream, _remaining_member_budget(result))
+        total_remaining = MAX_TOTAL_BYTES - result.bytes_processed
+        if total_remaining < MAX_FILE_BYTES:
+            data = _read_stream(stream, max(1, total_remaining))
+            truncated = False
+        else:
+            data, truncated = _read_log_stream_prefix(
+                stream, min(MAX_FILE_BYTES, total_remaining)
+            )
     member_name = path.name[:-3]
+    read_size = len(data)
+    if truncated:
+        data = _complete_lines_prefix(data)
     _parse_member(data, member_name, f"{path}::{member_name}", result)
+    result.bytes_processed += read_size - len(data)
+    if truncated:
+        result.errors.append(
+            f"{path}: decompressed log truncated at the per-file limit after reading "
+            f"{read_size} bytes; remaining log data was not analyzed."
+        )
+
+
+def _read_log_prefix(path: Path, limit: int) -> tuple[bytes, bool]:
+    with path.open("rb") as stream:
+        return _read_log_stream_prefix(stream, limit)
+
+
+def _read_log_stream_prefix(stream: BinaryReader, limit: int) -> tuple[bytes, bool]:
+    """Read one bounded log prefix and distinguish true truncation from an exact-size file."""
+    output = bytearray()
+    while len(output) < limit:
+        chunk = stream.read(min(64 * 1024, limit - len(output)))
+        if not chunk:
+            return bytes(output), False
+        output.extend(chunk)
+    return bytes(output), bool(stream.read(1))
+
+
+def _complete_lines_prefix(data: bytes) -> bytes:
+    """Drop only the incomplete trailing record from a prefix known to be truncated."""
+    boundary = data.rfind(b"\n")
+    return data[: boundary + 1] if boundary >= 0 else b""
 
 
 def _ingest_zip(path: Path, result: IngestResult) -> None:
