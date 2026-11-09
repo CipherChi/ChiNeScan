@@ -266,10 +266,10 @@ def test_scanner_and_persistence_failures_have_distinct_persisted_outcomes(
     repository = SQLiteRepository(tmp_path / "records.sqlite3")
     manager = CodeJobManager(repository, threading.RLock(), ProjectRegistry(config, []))
 
-    def broken_scanner(_scanner, _target):
+    def broken_scanner(_scanner, _profile):
         raise ScannerError("synthetic scanner problem")
 
-    monkeypatch.setattr(BuiltinRuleScanner, "scan", broken_scanner)
+    monkeypatch.setattr(BuiltinRuleScanner, "scan_profile", broken_scanner)
     manager.start()
     scan_job = manager.submit("fixture")
     deadline = time.monotonic() + 5
