@@ -43,6 +43,12 @@ class EvidenceKind(StrEnum):
     CONTEXT_ONLY = "context_only"
 
 
+class FindingVerdict(StrEnum):
+    CONFIRMED = "confirmed"
+    LIKELY = "likely"
+    LEAD = "lead"
+
+
 class ScanVerdict(StrEnum):
     LEADS_FOUND = "leads_found"
     NO_MATCHES_WITH_GAPS = "no_matches_with_gaps"

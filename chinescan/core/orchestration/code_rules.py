@@ -3,13 +3,22 @@
 from __future__ import annotations
 
 import json
+import math
+import os
 import re
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from xml.parsers import expat
 
 from chinescan.core.logging.redaction import redact
-from chinescan.core.models.common import Confidence, EvidenceKind, Severity
-from chinescan.core.models.finding import Finding, FindingExplanation, Reference
+from chinescan.core.models.common import Confidence, EvidenceKind, FindingVerdict, Severity
+from chinescan.core.models.finding import (
+    EvidenceLocation,
+    Finding,
+    FindingExplanation,
+    Reference,
+)
 from chinescan.core.models.investigation import ScoreContribution, ScoreEvidence, VibeCodingRisk
 from chinescan.core.orchestration.code_scan import make_finding
 
@@ -730,7 +739,7 @@ def _cookie_call_has_flags(text: str, call: str) -> bool:
 
 
 _REQUEST_BODY = re.compile(
-    r"(?:\b(?:req|request)\.body\b|\bawait\s+request\.(?:json|formData)\s*\(\))",
+    r"(?:\b(?:req|request)\.body\b|\bawait\s+(?:req|request)\.(?:json|formData)\s*\(\))",
     re.I,
 )
 _REQUEST_SINK = re.compile(
@@ -786,7 +795,11 @@ def _request_sink_lines(text: str) -> list[int]:
             re.I,
         ):
             continue
-        hits.append(_line_number(text, sink.start()))
+        source = max(
+            (item for item in sources if item.start() < sink.start()),
+            key=lambda item: item.start(),
+        )
+        hits.extend((_line_number(text, source.start()), _line_number(text, sink.start())))
     return sorted(set(hits))
 
 
@@ -825,11 +838,22 @@ def _generic_first_pass(root: Path, path: Path, text: str) -> list[Finding]:
     hits: dict[str, list[int]] = {}
     secret_shapes = re.compile(
         r"\b(?:ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{50,}|"
-        r"xox[baprs]-[A-Za-z0-9-]{20,}|sk_live_[A-Za-z0-9]{16,}|"
-        r"AIza[0-9A-Za-z_-]{35})\b"
+        r"xox[baprs]-[A-Za-z0-9-]{20,}|sk_live_[A-Za-z0-9]{16,})\b"
     )
     for match in secret_shapes.finditer(text):
-        hits.setdefault("HARDCODED-SECRET-SHAPE", []).append(_line_number(text, match.start()))
+        line = _line_number(text, match.start())
+        source_line = _source_line(text, line)
+        if _literal_entropy(match.group(0)) < 3.2:
+            continue
+        key_named = bool(
+            re.search(r"(?i)(?:token|secret|api[_-]?key|credential|private[_-]?key)", source_line)
+        )
+        if not key_named and _literal_entropy(match.group(0)) < 4.0:
+            continue
+        hits.setdefault("HARDCODED-SECRET-SHAPE", []).append(line)
+    firebase_key = re.compile(r"\bapiKey\s*[:=]\s*['\"]AIza[0-9A-Za-z_-]{35}['\"]", re.I)
+    for match in firebase_key.finditer(text):
+        hits.setdefault("FIREBASE-API-KEY-INFO", []).append(_line_number(text, match.start()))
     path_parts = {part.casefold() for part in path.parts}
     mobile_client = path.suffix.casefold() in {".dart", ".swift"} or bool(
         path_parts & {"mobile", "android", "ios", "client"}
@@ -842,27 +866,35 @@ def _generic_first_pass(root: Path, path: Path, text: str) -> list[Finding]:
             hits.setdefault("SUPABASE-SERVICE-ROLE-CLIENT", []).append(
                 _line_number(text, match.start())
             )
-    if path.name.casefold() == "androidmanifest.xml":
-        for rule_id, pattern in (
-            ("ANDROID-CLEARTEXT-TRAFFIC", r"usesCleartextTraffic\s*=\s*['\"]true['\"]"),
-            ("ANDROID-DEBUGGABLE", r"debuggable\s*=\s*['\"]true['\"]"),
-        ):
-            hits[rule_id] = [
-                _line_number(text, match.start()) for match in re.finditer(pattern, text, re.I)
-            ]
-    if path.suffix.casefold() == ".sql" and any(
-        part.casefold() in {"migration", "migrations"} for part in path.parts
-    ):
-        for match in re.finditer(
-            r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([\w.\"]+)", text, re.I
-        ):
-            table = match.group(1).strip('"').split(".")[-1]
-            rls = re.compile(
-                rf"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:[\w.]+\.)?{re.escape(table)}\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY",
+    if path.name.casefold() in {"androidmanifest.xml", "network_security_config.xml"}:
+        for rule_id, line in _android_xml_hits(path.name.casefold(), text):
+            hits.setdefault(rule_id, []).append(line)
+    if path.suffix.casefold() == ".dart":
+        if not re.search(r"FlutterSecureStorage", text, re.I):
+            for match in re.finditer(
+                r"\.(?:setString|getString)\s*\([^\n]*(?:access[_-]?token|refresh[_-]?token|jwt|\btoken\b)",
+                text,
                 re.I,
+            ):
+                hits.setdefault("DART-INSECURE-TOKEN-STORAGE", []).append(
+                    _line_number(text, match.start())
+                )
+        for match in re.finditer(
+            r"(?:badCertificateCallback\s*=\s*[^;\n]*true|onBadCertificate\s*:\s*\([^)]*\)\s*=>\s*true)",
+            text,
+            re.I,
+        ):
+            hits.setdefault("DART-CERTIFICATE-CHECK-DISABLED", []).append(
+                _line_number(text, match.start())
             )
-            if not rls.search(text):
-                hits.setdefault("SUPABASE-MIGRATION-RLS", []).append(
+        for match in re.finditer(
+            r"\b(?:print|debugPrint|log|logger\.(?:info|warning|error))\s*\([^\n]*(?:access[_-]?token|refresh[_-]?token|\btoken\b|authorization)",
+            text,
+            re.I,
+        ):
+            excerpt = _source_line(text, _line_number(text, match.start()))
+            if not re.search(r"(?i)redact|mask|sanitize", excerpt):
+                hits.setdefault("DART-SENSITIVE-LOGGING", []).append(
                     _line_number(text, match.start())
                 )
     titles = {
@@ -870,6 +902,13 @@ def _generic_first_pass(root: Path, path: Path, text: str) -> list[Finding]:
         "SUPABASE-SERVICE-ROLE-CLIENT": "Supabase service-role key used in client code",
         "ANDROID-CLEARTEXT-TRAFFIC": "Android cleartext traffic enabled",
         "ANDROID-DEBUGGABLE": "Android debuggable build setting enabled",
+        "ANDROID-ALLOW-BACKUP": "Android application backup is enabled",
+        "ANDROID-EXPORTED-NO-PERMISSION": "Android exported component has no permission gate",
+        "ANDROID-BROAD-INTENT-FILTER": "Android exported browsable intent filter is broad",
+        "DART-INSECURE-TOKEN-STORAGE": "Token stored in SharedPreferences",
+        "DART-CERTIFICATE-CHECK-DISABLED": "Dart TLS certificate validation is disabled",
+        "DART-SENSITIVE-LOGGING": "Sensitive authentication value logged",
+        "FIREBASE-API-KEY-INFO": "Firebase client API key observed",
         "SUPABASE-MIGRATION-RLS": "Migration table without visible RLS enablement",
     }
     output: list[Finding] = []
@@ -892,22 +931,91 @@ def _generic_first_pass(root: Path, path: Path, text: str) -> list[Finding]:
             ],
             "ANDROID-CLEARTEXT-TRAFFIC": ["Android usesCleartextTraffic=true: found"],
             "ANDROID-DEBUGGABLE": ["Android debuggable=true: found"],
+            "ANDROID-ALLOW-BACKUP": ["Android allowBackup=true: found"],
+            "ANDROID-EXPORTED-NO-PERMISSION": ["android:exported=true without android:permission: found"],
+            "ANDROID-BROAD-INTENT-FILTER": [
+                "Exported VIEW/BROWSABLE intent filter: found",
+                "Host restriction: missing or wildcard",
+            ],
+            "DART-INSECURE-TOKEN-STORAGE": ["SharedPreferences token read/write: found", "FlutterSecureStorage: not found"],
+            "DART-CERTIFICATE-CHECK-DISABLED": ["Certificate validation callback accepts all certificates: found"],
+            "DART-SENSITIVE-LOGGING": ["Sensitive token/authorization value passed to a logger: found"],
+            "FIREBASE-API-KEY-INFO": ["Firebase API key literal: found", "Client API key is not an authentication secret; API restrictions were not inspected"],
             "SUPABASE-MIGRATION-RLS": [
                 "CREATE TABLE statement: found",
                 "Corresponding ENABLE ROW LEVEL SECURITY: not found",
             ],
+        }
+        fix_by_rule = {
+            "DART-INSECURE-TOKEN-STORAGE": (
+                "Before: preferences.setString('access_token', token)",
+                "After: await secureStorage.write(key: 'access_token', value: token)",
+                "Add a test confirming the token is absent from SharedPreferences and readable only through the secure-storage API.",
+            ),
+            "DART-CERTIFICATE-CHECK-DISABLED": (
+                "Before: badCertificateCallback = (_, __, ___) => true",
+                "After: remove the override and use the platform certificate verifier",
+                "Connect with an invalid certificate in a test and assert the TLS handshake fails.",
+            ),
+            "DART-SENSITIVE-LOGGING": (
+                "Before: debugPrint(accessToken)",
+                "After: debugPrint('Authentication request completed')",
+                "Capture test logs and assert token and Authorization values are absent.",
+            ),
+            "ANDROID-ALLOW-BACKUP": (
+                'Before: android:allowBackup="true"',
+                'After: android:allowBackup="false"',
+                "Inspect the merged release manifest and confirm allowBackup is false.",
+            ),
+            "ANDROID-EXPORTED-NO-PERMISSION": (
+                'Before: android:exported="true" with no android:permission',
+                'After: android:exported="true" android:permission="your.signature.permission"',
+                "Verify an untrusted application cannot invoke the exported component.",
+            ),
+            "ANDROID-BROAD-INTENT-FILTER": (
+                'Before: <data android:scheme="https" />',
+                'After: <data android:scheme="https" android:host="links.example.invalid" />',
+                "Inspect the merged release manifest and verify unrelated hosts cannot resolve to this activity.",
+            ),
+            "FIREBASE-API-KEY-INFO": (
+                "Before: Firebase API key with unreviewed restrictions",
+                "After: restrict the key to required Firebase APIs and the app's package/signing identity",
+                "Review provider-side key restrictions and verify unauthorized API calls are rejected.",
+            ),
         }
         explanation = FindingExplanation(
             observed=excerpt,
             match_reason=f"A narrow first-pass pattern for {title.casefold()} matched.",
             established=[f"The listed source locations matched {rule_id}."],
             inferred=["The configuration or value requires operator review."],
-            severity_rationale="Impact: possible credential exposure or weakened access control. Exposure: file content only. Controls: matching source configuration was inspected. Evidence strength: exact token/configuration pattern; no runtime confirmation. Assigned tier: informational review.",
-            confidence_rationale="Possible: narrow textual matching without framework or runtime analysis.",
+            severity_rationale=(
+                "Firebase client API keys are identifiers intended for client use; this is informational. "
+                "API restrictions and quota controls were not inspected."
+                if rule_id == "FIREBASE-API-KEY-INFO"
+                else f"The Android manifest or network security XML explicitly sets {title.casefold()}; assigned tier: medium. Runtime merge and device policy were not inspected."
+                if rule_id.startswith("ANDROID-")
+                else f"Impact: {title} can expose a credential or weaken access control if active. "
+                f"Evidence: {relative}:{numbers[0]}. Controls: {'; '.join(controls_by_rule[rule_id])}. "
+                f"Runtime confirmation is unavailable. Assigned tier: "
+                f"{'medium' if rule_id in {'SUPABASE-MIGRATION-RLS', 'SUPABASE-SERVICE-ROLE-CLIENT', 'DART-INSECURE-TOKEN-STORAGE', 'DART-CERTIFICATE-CHECK-DISABLED', 'DART-SENSITIVE-LOGGING', 'ANDROID-ALLOW-BACKUP', 'ANDROID-EXPORTED-NO-PERMISSION'} else 'informational'}."
+            ),
+            confidence_rationale=(
+                "Informational: Firebase client API-key format was found; the key does not authenticate a user."
+                if rule_id == "FIREBASE-API-KEY-INFO"
+                else "Confirmed: the Android XML explicitly contains the insecure setting; whether it reaches a release build is unverified."
+                if rule_id.startswith("ANDROID-")
+                else "Possible: narrow textual matching without framework or runtime analysis."
+            ),
             controls_considered=controls_by_rule[rule_id],
-            limitations=[
-                "No cross-file analysis; migration policies themselves are not evaluated."
-            ],
+            limitations=(
+                ["Migration policies and later migration state are not evaluated by this first-pass rule."]
+                if rule_id == "SUPABASE-MIGRATION-RLS"
+                else ["A provider-shaped value does not by itself prove that a live credential is present."]
+                if rule_id == "HARDCODED-SECRET-SHAPE"
+                else ["API restrictions and quota settings were not inspected."]
+                if rule_id == "FIREBASE-API-KEY-INFO"
+                else ["No runtime or deployment analysis was performed."]
+            ),
             ruleset_version="builtin-3",
             classification_policy_version="signal-quality-v2",
         )
@@ -919,14 +1027,34 @@ def _generic_first_pass(root: Path, path: Path, text: str) -> list[Finding]:
                 title=title,
                 severity=(
                     Severity.MEDIUM
-                    if rule_id in {"SUPABASE-MIGRATION-RLS", "SUPABASE-SERVICE-ROLE-CLIENT"}
+                    if rule_id in {
+                        "SUPABASE-MIGRATION-RLS",
+                        "SUPABASE-SERVICE-ROLE-CLIENT",
+                        "DART-INSECURE-TOKEN-STORAGE",
+                        "DART-CERTIFICATE-CHECK-DISABLED",
+                        "DART-SENSITIVE-LOGGING",
+                        "ANDROID-ALLOW-BACKUP",
+                        "ANDROID-EXPORTED-NO-PERMISSION",
+                        "ANDROID-CLEARTEXT-TRAFFIC",
+                        "ANDROID-DEBUGGABLE",
+                    }
                     else Severity.INFO
                 ),
                 category="SAST",
-                confidence=Confidence.POSSIBLE.value,
+                confidence=(
+                    Confidence.INFORMATIONAL.value
+                    if rule_id == "FIREBASE-API-KEY-INFO"
+                    else Confidence.CONFIRMED.value
+                    if rule_id.startswith("ANDROID-")
+                    else Confidence.POSSIBLE.value
+                ),
                 location=f"{relative}:{numbers[0]}",
                 description=f"{title} requires review; static first-pass evidence only.",
-                evidence=EvidenceKind.PATTERN_MATCH,
+                evidence=(
+                    EvidenceKind.CONTEXT_ONLY
+                    if rule_id == "FIREBASE-API-KEY-INFO"
+                    else EvidenceKind.PATTERN_MATCH
+                ),
                 tags=["heuristic", "local", "first-pass"],
             ).model_copy(
                 update={
@@ -934,10 +1062,593 @@ def _generic_first_pass(root: Path, path: Path, text: str) -> list[Finding]:
                     "line_numbers": numbers,
                     "code_excerpt": excerpt,
                     "explanation": explanation,
+                    "verdict": (
+                        FindingVerdict.CONFIRMED
+                        if rule_id.startswith("ANDROID-")
+                        else FindingVerdict.LEAD
+                    ),
+                    "controls_considered": controls_by_rule[rule_id],
+                    "remediation": (
+                        "\n".join(
+                            (
+                                "Before: " + fix_by_rule[rule_id][0].removeprefix("Before: "),
+                                "After: " + fix_by_rule[rule_id][1].removeprefix("After: "),
+                            )
+                        )
+                        if rule_id in fix_by_rule
+                        else None
+                    ),
+                    "remediation_before": fix_by_rule[rule_id][0]
+                    if rule_id in fix_by_rule
+                    else None,
+                    "remediation_after": fix_by_rule[rule_id][1]
+                    if rule_id in fix_by_rule
+                    else None,
+                    "verification_step": fix_by_rule[rule_id][2]
+                    if rule_id in fix_by_rule
+                    else None,
+                    "why_not_higher": "The scan did not inspect runtime behavior or deployed controls.",
+                    "what_would_raise_it": "A runtime test demonstrating the insecure behavior is reachable in the production build.",
+                    "project_impact": (
+                        "The value is a Firebase client API key format and is not, by itself, an authentication secret. API restrictions were not checked."
+                        if rule_id == "FIREBASE-API-KEY-INFO"
+                        else None
+                    ),
                 }
             )
         )
     return output
+
+
+def _android_xml_hits(filename: str, text: str) -> list[tuple[str, int]]:
+    """Parse Android XML with Expat, rejecting DTDs and preserving element lines."""
+    parser = expat.ParserCreate()
+    parser.SetParamEntityParsing(expat.XML_PARAM_ENTITY_PARSING_NEVER)
+    result: list[tuple[str, int]] = []
+    applications: list[dict[str, str]] = []
+    components: list[dict[str, object]] = []
+    filters: list[dict[str, object]] = []
+    lower_filename = filename.casefold()
+
+    def forbid_doctype(*_args: object) -> None:
+        raise ValueError("DTD declarations are not accepted in Android config XML")
+
+    parser.StartDoctypeDeclHandler = forbid_doctype
+    parser.EntityDeclHandler = forbid_doctype
+    parser.ExternalEntityRefHandler = lambda *_args: 0
+
+    def start(tag: str, attributes: dict[str, str]) -> None:
+        element = tag.rsplit(":", 1)[-1].casefold()
+        normalized = {key.rsplit(":", 1)[-1].casefold(): value for key, value in attributes.items()}
+        line = parser.CurrentLineNumber
+        if lower_filename == "androidmanifest.xml":
+            if element == "application":
+                applications.append(normalized)
+                for attribute, rule_id in (
+                    ("usescleartexttraffic", "ANDROID-CLEARTEXT-TRAFFIC"),
+                    ("debuggable", "ANDROID-DEBUGGABLE"),
+                    ("allowbackup", "ANDROID-ALLOW-BACKUP"),
+                ):
+                    if normalized.get(attribute, "").casefold() == "true":
+                        result.append((rule_id, line))
+            elif element in {"activity", "activity-alias", "service", "receiver", "provider"}:
+                components.append(
+                    {
+                        "element": element,
+                        "line": line,
+                        "exported": normalized.get("exported", "").casefold() == "true",
+                        "permission": bool(normalized.get("permission"))
+                        or bool(applications and applications[-1].get("permission")),
+                    }
+                )
+                component = components[-1]
+                if component["exported"] and not component["permission"]:
+                    result.append(("ANDROID-EXPORTED-NO-PERMISSION", line))
+            elif element == "intent-filter" and components:
+                filters.append({"line": line, "actions": set(), "categories": set(), "hosts": []})
+            elif element in {"action", "category"} and filters:
+                value = normalized.get("name", "").casefold()
+                field = "actions" if element == "action" else "categories"
+                collection = filters[-1][field]
+                if isinstance(collection, set):
+                    collection.add(value)
+            elif element == "data" and filters:
+                hosts = filters[-1]["hosts"]
+                if isinstance(hosts, list) and "host" in normalized:
+                    hosts.append(normalized["host"].casefold())
+        elif lower_filename == "network_security_config.xml" and element in {
+            "base-config",
+            "domain-config",
+        }:
+            if normalized.get("cleartexttrafficpermitted", "").casefold() == "true":
+                result.append(("ANDROID-CLEARTEXT-TRAFFIC", line))
+
+    def end(tag: str) -> None:
+        element = tag.rsplit(":", 1)[-1].casefold()
+        if lower_filename != "androidmanifest.xml":
+            return
+        if element == "intent-filter" and filters:
+            intent_filter = filters.pop()
+            component = components[-1] if components else {}
+            actions = intent_filter["actions"]
+            categories = intent_filter["categories"]
+            hosts = intent_filter["hosts"]
+            if (
+                component.get("exported") is True
+                and isinstance(actions, set)
+                and "android.intent.action.view" in actions
+                and isinstance(categories, set)
+                and "android.intent.category.browsable" in categories
+                and isinstance(hosts, list)
+                and (
+                    not hosts
+                    or any(host in {"", "*"} or host.startswith("*.") for host in hosts)
+                )
+            ):
+                result.append(("ANDROID-BROAD-INTENT-FILTER", int(intent_filter["line"])))
+        elif element in {"activity", "activity-alias", "service", "receiver", "provider"} and components:
+            components.pop()
+        elif element == "application" and applications:
+            applications.pop()
+
+    parser.StartElementHandler = start
+    parser.EndElementHandler = end
+    try:
+        parser.Parse(text, True)
+    except (expat.ExpatError, ValueError):
+        # Invalid or DTD-based manifests cannot support a concrete configuration finding.
+        return []
+    return result
+
+
+def migration_rls_findings(root: Path) -> list[Finding]:
+    """Resolve public table RLS and policy state across migrations in file order."""
+    migrations = sorted(
+        (
+            path
+            for path in root.rglob("*.sql")
+            if {part.casefold() for part in path.relative_to(root).parts}
+            & {"migration", "migrations"}
+        ),
+        key=lambda path: path.relative_to(root).as_posix().casefold(),
+    )
+    tables: dict[str, tuple[str, int, str]] = {}
+    rls_state: dict[str, tuple[bool, str | None]] = {}
+    policies: dict[tuple[str, str], tuple[str, int, str]] = {}
+    grants: dict[str, set[str]] = {}
+    dropped_tables: set[str] = set()
+    for path in migrations:
+        relative = path.relative_to(root).as_posix()
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        sql = re.sub(r"--[^\r\n]*", "", text)
+        events: list[tuple[int, str, re.Match[str]]] = []
+        patterns = (
+            ("create", re.compile(r"\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)", re.I)),
+            ("rls", re.compile(r"\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)\s+(?P<state>ENABLE|DISABLE)\s+ROW\s+LEVEL\s+SECURITY", re.I)),
+            ("policy", re.compile(r"\bCREATE\s+POLICY\s+(?P<policy>[\w\"]+)\s+ON\s+(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)(?P<body>[^;]*);", re.I | re.S)),
+            ("drop_policy", re.compile(r"\bDROP\s+POLICY\s+(?:IF\s+EXISTS\s+)?(?P<policy>[\w\"]+)\s+ON\s+(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)", re.I)),
+            ("grant", re.compile(r"\bGRANT\b[^;]*?\bON\s+(?:TABLE\s+)?(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)\s+TO\s+(?P<roles>[^;]+);", re.I | re.S)),
+            ("revoke", re.compile(r"\bREVOKE\b[^;]*?\bON\s+(?:TABLE\s+)?(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)\s+FROM\s+(?P<roles>[^;]+);", re.I | re.S)),
+            ("drop_table", re.compile(r"\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:(?P<schema>[\w\"]+)\s*\.\s*)?(?P<table>[\w\"]+)", re.I)),
+        )
+        for kind, pattern in patterns:
+            events.extend((_line_number(sql, match.start()), kind, match) for match in pattern.finditer(sql))
+        for line, kind, match in sorted(events, key=lambda event: event[0]):
+            schema = (match.groupdict().get("schema") or "public").strip('"').casefold()
+            if schema != "public":
+                continue
+            table = match.group("table").strip('"').casefold()
+            if kind == "create":
+                table_location = (relative, line, _source_line(text, line))
+                if table in dropped_tables:
+                    tables[table] = table_location
+                    dropped_tables.remove(table)
+                else:
+                    tables.setdefault(table, table_location)
+            elif kind == "rls":
+                enabled = match.group("state").casefold() == "enable"
+                rls_state[table] = (enabled, f"{relative}:{line}" if enabled else None)
+            elif kind == "policy":
+                policy_name = match.group("policy").strip('"').casefold()
+                policy_line = _line_number(text, match.start())
+                policies[(table, policy_name)] = (
+                    relative,
+                    policy_line,
+                    _source_line(text, policy_line),
+                )
+            else:
+                if kind == "drop_policy":
+                    policy_name = match.group("policy").strip('"').casefold()
+                    policies.pop((table, policy_name), None)
+                elif kind in {"grant", "revoke"}:
+                    role_text = match.group("roles")
+                    role_text = re.sub(r"\s+WITH\s+GRANT\s+OPTION\s*$", "", role_text, flags=re.I)
+                    role_text = re.sub(r"\s+(?:CASCADE|RESTRICT)\s*$", "", role_text, flags=re.I)
+                    roles = {
+                        role.strip().strip('"').casefold()
+                        for role in role_text.split(",")
+                        if role.strip()
+                    }
+                    if kind == "grant":
+                        grants.setdefault(table, set()).update(roles)
+                    else:
+                        grants.setdefault(table, set()).difference_update(roles)
+                elif kind == "drop_table":
+                    tables.pop(table, None)
+                    rls_state.pop(table, None)
+                    grants.pop(table, None)
+                    policies = {
+                        key: value for key, value in policies.items() if key[0] != table
+                    }
+                    dropped_tables.add(table)
+
+    findings: list[Finding] = []
+    for table, (relative, line, excerpt) in sorted(tables.items()):
+        enabled, enabled_at = rls_state.get(table, (False, None))
+        if enabled:
+            continue
+        table_roles = grants.get(table, set())
+        service_role_only = bool(table_roles) and table_roles <= {"service_role"}
+        if service_role_only:
+            findings.append(
+                make_finding(
+                    target=root,
+                    scanner="builtin",
+                    rule_id="SUPABASE-TABLE-SERVICE-ROLE-INFO",
+                    title=f"Public table {table} is granted only to service_role",
+                    severity=Severity.INFO,
+                    category="SAST",
+                    confidence=Confidence.CONFIRMED.value,
+                    location=f"{relative}:{line}",
+                    description=(
+                        f"No migration enables RLS for public.{table}, but the scanned migration "
+                        "grants table access only to service_role. Treat this as informational; "
+                        "service-role access bypasses RLS by design."
+                    ),
+                    evidence=EvidenceKind.CONFIRMED_ARTIFACT,
+                    tags=["local", "service-role-only", "informational"],
+                ).model_copy(
+                    update={
+                        "line_numbers": [line],
+                        "code_excerpt": excerpt,
+                        "verdict": FindingVerdict.CONFIRMED,
+                        "controls_considered": [
+                            "All SQL migrations were checked for RLS enablement and ordered GRANT/REVOKE statements; only service_role retains an explicit table grant.",
+                            "Implicit, default, and deployed database grants were not inspected.",
+                        ],
+                        "project_impact": (
+                            f"The migration set limits explicit grants for public.{table} to the "
+                            "privileged service_role; this does not demonstrate client access."
+                        ),
+                        "exploitability_conditions": [
+                            "A caller would need a service-role credential or a backend path that exposes it."
+                        ],
+                        "remediation_before": excerpt,
+                        "remediation_after": (
+                            f"Keep public.{table} granted only to service_role and keep that "
+                            "credential in trusted server-side code."
+                        ),
+                        "verification_step": (
+                            "Apply migrations and verify anon/authenticated lack table privileges "
+                            "while the service-role credential remains server-side."
+                        ),
+                        "why_not_higher": (
+                            "The scanned migration grants are service-role-only; deployed defaults and implicit grants remain unknown."
+                        ),
+                        "what_would_raise_it": (
+                            "A client-role grant or a reachable endpoint exposing service-role access would establish client risk."
+                        ),
+                    }
+                )
+            )
+            continue
+        finding = make_finding(
+            target=root,
+            scanner="builtin",
+            rule_id="SUPABASE-MIGRATION-RLS",
+            title=f"Public table {table} has RLS disabled",
+            severity=Severity.HIGH,
+            category="SAST",
+            confidence=Confidence.CONFIRMED.value,
+            location=f"{relative}:{line}",
+            description=f"No migration enables row-level security for public.{table} in the scanned migration set.",
+            evidence=EvidenceKind.CONFIRMED_ARTIFACT,
+            tags=["local", "migration-state-confirmed"],
+        ).model_copy(
+            update={
+                "line_numbers": [line],
+                "code_excerpt": excerpt,
+                "verdict": FindingVerdict.CONFIRMED,
+                "controls_considered": ["All SQL migration files under the project root were checked for ENABLE ROW LEVEL SECURITY; none was found for this table."],
+                "project_impact": f"Rows in public.{table} are not protected by Postgres row-level policies when accessed through clients that rely on RLS.",
+                "exploitability_conditions": ["An application role with grants can access the table without an additional application-layer authorization control."],
+                "remediation": f"Enable RLS and add least-privilege policies for public.{table}.",
+                "remediation_before": f"CREATE TABLE public.{table} (...);",
+                "remediation_after": f"ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY;",
+                "verification_step": f"Apply migrations to a test database and assert pg_class.relrowsecurity is true for public.{table}.",
+                "why_not_higher": "The scan does not inspect deployed grants, data sensitivity, or application compensating controls.",
+                "what_would_raise_it": "A reachable client role with table grants and sensitive rows would establish greater exposure.",
+                "explanation": FindingExplanation(
+                    observed=excerpt,
+                    match_reason=f"CREATE TABLE public.{table} was found, and the final ordered migration state has no RLS enablement.",
+                    established=["Every migration SQL file was processed in lexicographic migration order.", "No later ENABLE ROW LEVEL SECURITY statement was found for this table."],
+                    controls_considered=["RLS enablement: not found across migrations", "Service-role-only table: role policies not found"],
+                    severity_rationale="The table is publicly schema-scoped and RLS remains disabled; assigned tier is high. Deployed grants and compensating controls were not inspected.",
+                    confidence_rationale="Confirmed: the local migration set contains the table and no enabling migration.",
+                    limitations=["Local migration intent may differ from deployed database state."],
+                    verification_steps=[f"Verify pg_class.relrowsecurity for public.{table} after applying the migration set."],
+                    classification_policy_version="signal-quality-v3",
+                ),
+            }
+        )
+        findings.append(finding)
+
+    for (table, policy_name), (relative, line, excerpt) in sorted(policies.items()):
+        statement = excerpt
+        # Re-read the owning file and collect the complete policy statement as evidence.
+        full_path = root / relative
+        try:
+            text = full_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        policy_match = re.search(
+            rf"\bCREATE\s+POLICY\s+{re.escape(policy_name)}\s+ON\s+(?:public\.)?{re.escape(table)}\b[^;]*;",
+            text,
+            re.I | re.S,
+        )
+        if policy_match:
+            statement = str(redact(re.sub(r"--[^\r\n]*", "", policy_match.group(0)).strip()))[
+                :1000
+            ]
+        role_match = re.search(
+            r"\bTO\s+([\w, ]+?)(?=\s+(?:USING|WITH|FOR)\b|$)", statement, re.I
+        )
+        roles = {role.strip().casefold() for role in role_match.group(1).split(",")} if role_match else {"public"}
+        service_role_only = roles == {"service_role"}
+        if service_role_only:
+            line_excerpt = _source_line(text, line)
+            findings.append(
+                make_finding(
+                    target=root,
+                    scanner="builtin",
+                    rule_id="SUPABASE-POLICY-SERVICE-ROLE-INFO",
+                    title=f"Service-role-only policy on public.{table}",
+                    severity=Severity.INFO,
+                    category="SAST",
+                    confidence=Confidence.CONFIRMED.value,
+                    location=f"{relative}:{line}",
+                    description=(
+                        f"Policy {policy_name} grants access only to service_role. This is "
+                        "informational because service-role access bypasses RLS by design."
+                    ),
+                    evidence=EvidenceKind.CONFIRMED_ARTIFACT,
+                    tags=["local", "policy-text", "informational"],
+                ).model_copy(
+                    update={
+                        "line_numbers": [line],
+                        "code_excerpt": statement,
+                        "verdict": FindingVerdict.CONFIRMED,
+                        "source_location": EvidenceLocation(
+                            file=relative,
+                            line=line,
+                            excerpt=_excerpt(line_excerpt),
+                        ),
+                        "controls_considered": [
+                            "Policy role list was inspected: service_role only.",
+                            "Live grants and deployed policies were not inspected.",
+                        ],
+                        "project_impact": (
+                            f"Only the privileged service_role policy {policy_name} is visible "
+                            f"for public.{table}; this does not establish client access."
+                        ),
+                        "exploitability_conditions": [
+                            "A caller would need a service-role credential or a backend path that exposes it."
+                        ],
+                        "remediation_before": statement,
+                        "remediation_after": (
+                            "Keep this policy restricted to service_role; do not place the "
+                            "service-role key in client code."
+                        ),
+                        "verification_step": (
+                            "Test that anon and authenticated roles are denied by table grants "
+                            "and policies, and confirm the service-role key is server-side only."
+                        ),
+                        "why_not_higher": (
+                            "The policy is service-role-only and does not itself expose rows to client roles."
+                        ),
+                        "what_would_raise_it": (
+                            "A client-role policy or grant that permits unauthorized row access would be a separate finding."
+                        ),
+                        "explanation": FindingExplanation(
+                            observed=statement,
+                            match_reason="The policy role list contains only service_role.",
+                            established=[
+                                f"Policy text: {relative}:{line}.",
+                                "No anon or public role appears in this policy.",
+                            ],
+                            inferred=[
+                                "Effective access still depends on deployed grants and other policies."
+                            ],
+                            severity_rationale=(
+                                "Informational: service-role access bypasses RLS by design, but "
+                                "this policy does not grant client-role access."
+                            ),
+                            confidence_rationale=(
+                                "Confirmed: the role list is directly visible in migration text."
+                            ),
+                            controls_considered=[
+                                "Policy role list: service_role only.",
+                                "Deployed grants: not inspected.",
+                            ],
+                            limitations=[
+                                "No live database connection or grant inspection was performed."
+                            ],
+                            classification_policy_version="signal-quality-v3",
+                        ),
+                    }
+                )
+            )
+            continue
+        command = re.search(r"\bFOR\s+(SELECT|INSERT|UPDATE|DELETE|ALL)\b", statement, re.I)
+        operation = command.group(1).casefold() if command else "all"
+        issues: list[str] = []
+        if re.search(r"\bUSING\s*\(\s*true\s*\)", statement, re.I):
+            issues.append("USING (true)")
+        if roles & {"anon", "public"}:
+            issues.append("role is anon/public")
+        if operation in {"insert", "update"} and not re.search(r"\bWITH\s+CHECK\s*\(", statement, re.I):
+            issues.append(f"{operation.upper()} policy has no WITH CHECK")
+        if not issues:
+            continue
+        finding = make_finding(
+            target=root,
+            scanner="builtin",
+            rule_id="SUPABASE-POLICY-PERMISSIVE",
+            title=f"Permissive policy {policy_name} on public.{table}",
+            severity=Severity.MEDIUM,
+            category="SAST",
+            confidence=Confidence.LIKELY.value,
+            location=f"{relative}:{line}",
+            description="Policy text contains a permissive condition: " + ", ".join(issues),
+            evidence=EvidenceKind.CONFIRMED_ARTIFACT,
+            tags=["local", "policy-text"],
+        ).model_copy(
+            update={
+                "line_numbers": [line],
+                "code_excerpt": statement,
+                "verdict": FindingVerdict.LIKELY,
+                "project_impact": f"The {operation.upper()} policy may permit callers to access rows outside their intended account or tenant on public.{table}.",
+                "controls_considered": ["Policy roles, USING expression, command, and WITH CHECK clause were inspected."],
+                "remediation_before": statement,
+                "remediation_after": f"CREATE POLICY {policy_name} ON public.{table} FOR {operation.upper()} TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);",
+                "verification_step": "Test the policy as anon and authenticated roles with rows owned by different users.",
+                "why_not_higher": "The analyzer does not know grants, table data, or whether the policy is reachable from the application.",
+                "what_would_raise_it": "A role-level test proving unauthorized rows are returned or modified.",
+                "explanation": FindingExplanation(
+                    observed=statement,
+                    match_reason="The stored policy text matches one or more permissive conditions.",
+                    established=["The migration declares the policy and target table shown in the evidence."],
+                    inferred=["Policy behavior depends on table grants and effective role membership."],
+                    severity_rationale=f"Impact: {', '.join(issues)} may broaden access to public.{table}. Assigned tier: medium because effective grants and row ownership are not known.",
+                    confidence_rationale="Likely: the policy text is directly observed, but effective database role and grant state are not evaluated.",
+                    controls_considered=["Policy role list, command, USING, and WITH CHECK clauses were checked."],
+                    verification_steps=["Apply the migrations and attempt cross-tenant reads/writes using the anon and authenticated roles."],
+                    limitations=["No live database connection or grants inspection was performed."],
+                    classification_policy_version="signal-quality-v3",
+                ),
+            }
+        )
+        findings.append(finding)
+    return findings
+
+
+def edge_function_findings(root: Path) -> list[Finding]:
+    """Find Deno edge handlers that use a service role without a visible auth guard."""
+    findings: list[Finding] = []
+    functions_root = root / "supabase" / "functions"
+    if not functions_root.is_dir():
+        return findings
+    for path in sorted(functions_root.rglob("*.ts"), key=lambda item: item.as_posix().casefold()):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        analysis_text = _mask_comments(text, ".ts")
+        handler = re.search(r"\bDeno\.serve\s*\(", analysis_text)
+        if not handler:
+            continue
+        key = re.search(r"Deno\.env\.get\s*\(\s*['\"]SUPABASE_SERVICE_ROLE_KEY['\"]\s*\)", analysis_text, re.I)
+        if not key:
+            continue
+        authentication = re.search(
+            r"(?:\.auth\.getUser\s*\(|\bgetUser\s*\(|verifyJWT\s*\(|jwtVerify\s*\(|verify_jwt\b|verifyToken\s*\()",
+            analysis_text,
+            re.I,
+        )
+        if authentication:
+            continue
+        sink = re.search(
+            r"\.from\s*\([^)]{1,160}\)\s*\.(?:insert|update|upsert|delete)\s*\(|\.rpc\s*\(",
+            analysis_text,
+            re.I,
+        )
+        if not sink:
+            continue
+        relative = path.relative_to(root).as_posix()
+        lines = [_line_number(text, key.start()), _line_number(text, sink.start())]
+        excerpts = [
+            _excerpt(_source_line(text, line))
+            for line in sorted(set(lines))
+        ]
+        source_line, sink_line = sorted(set(lines))
+        finding = make_finding(
+            target=root,
+            scanner="builtin",
+            rule_id="DENO-SERVICE-ROLE-NO-AUTH",
+            title="Unauthenticated edge handler uses the Supabase service role",
+            severity=Severity.HIGH,
+            category="SAST",
+            confidence=Confidence.CONFIRMED.value,
+            location=f"{relative}:{source_line}",
+            description="A Deno.serve handler reads the service-role key and performs a database write without a recognizable JWT or user-authentication check.",
+            evidence=EvidenceKind.CONFIRMED_ARTIFACT,
+            tags=["local", "edge-function", "auth-control-missing"],
+        ).model_copy(
+            update={
+                "line_numbers": sorted(set(lines)),
+                "code_excerpt": " | ".join(excerpts),
+                "verdict": FindingVerdict.CONFIRMED,
+                "entry_point": EvidenceLocation(
+                    file=relative,
+                    line=_line_number(text, handler.start()),
+                    excerpt=_excerpt(_source_line(text, _line_number(text, handler.start()))),
+                ),
+                "source_location": EvidenceLocation(
+                    file=relative,
+                    line=source_line,
+                    excerpt=_excerpt(_source_line(text, source_line)),
+                ),
+                "sink_location": EvidenceLocation(
+                    file=relative,
+                    line=sink_line,
+                    excerpt=_excerpt(_source_line(text, sink_line)),
+                ),
+                "controls_considered": [
+                    "Service-role key access: found",
+                    "Database write sink: found",
+                    "JWT verification/getUser guard: not found in this handler file",
+                ],
+                "exploitability_conditions": [
+                    "The function is deployed and a caller can reach it without an upstream gateway requiring a valid JWT."
+                ],
+                "project_impact": "A caller may use the function's elevated database privileges to create or modify Supabase rows outside user-level row policies.",
+                "remediation": (
+                    "Before: createClient(url, Deno.env.get('SUPABASE_URL'), serviceRoleKey) and write from the handler\n"
+                    "After: validate the caller with auth.getUser(accessToken), authorize the requested record, then use the anon client for user-scoped writes"
+                ),
+                "remediation_before": "Use the service-role client in a handler without a user check.",
+                "remediation_after": "Verify the caller JWT, authorize the operation, and use the anon client for user-scoped writes.",
+                "verification_step": "Invoke the handler without a JWT and assert 401; invoke with a user JWT and assert writes are limited to that user's rows.",
+                "why_not_higher": "The scan does not verify deployment, API gateway JWT settings, database grants, or the sensitivity of affected rows.",
+                "what_would_raise_it": "A deployed unauthenticated request that changes another user's row would demonstrate exploitation and impact.",
+                "explanation": FindingExplanation(
+                    observed=" | ".join(excerpts),
+                    match_reason="Service-role key access and database write are present in a Deno handler with no recognized authentication guard.",
+                    established=[f"Entry point: {relative}:{_line_number(text, handler.start())}.", f"Service-role key: {relative}:{source_line}.", f"Database write sink: {relative}:{sink_line}.", "Same-file JWT/getUser checks were searched and not found."],
+                    inferred=["The handler may be callable without user authentication if deployed without an upstream JWT gate."],
+                    severity_rationale="The privileged key bypasses row-level security when this handler is reachable without authentication; tier is high pending deployment confirmation.",
+                    confidence_rationale="Confirmed static misconfiguration: key access and write sink are visible and no local auth guard matched.",
+                    controls_considered=["JWT verification/getUser in handler: not found", "Upstream gateway verification: not inspected"],
+                    limitations=["No deployment configuration or live endpoint was inspected."],
+                    classification_policy_version="signal-quality-v3",
+                ),
+            }
+        )
+        findings.append(finding)
+    return findings
 
 
 def _specific_explanation(
@@ -984,7 +1695,7 @@ def _specific_explanation(
         return FindingExplanation(
             observed=excerpt,
             match_reason="A request body reaches a recognized side-effect sink without a same-file schema or manual validation match.",
-            established=["The evidence line is a database, network, file, or delivery sink."],
+            established=["The ordered evidence includes the request-body source and a database, network, file, or delivery sink."],
             inferred=["Unvalidated request data may influence the side effect."],
             severity_rationale=f"Impact: input can alter the operation at the observed sink. Exposure: request parsing and sink are present. Controls: schema/manual validation patterns searched and not found on the path. Evidence: same-file source-to-sink order only. Assigned tier: {severity.value}.",
             confidence_rationale="Possible: source, sink, and validation patterns are matched textually; inter-file validators and control flow are not resolved.",
@@ -1059,7 +1770,11 @@ def _specific_explanation(
             severity_rationale=(
                 f"Impact: internal error details can disclose implementation context. Exposure: response body sink is visible. Controls: {'fixed/mapped handler found' if mapped else 'fixed/mapped response string not found'}. Evidence strength: direct response construction expression. Assigned tier: {severity.value}."
             ),
-            confidence_rationale="Likely: a raw error property is syntactically nested in a response body expression.",
+            confidence_rationale=(
+                "Likely: a raw error property is syntactically nested in a response body expression."
+                if confidence == Confidence.LIKELY
+                else "Possible: an error-like response expression matched, but the value may be controlled or non-sensitive."
+            ),
             controls_considered=[
                 f"Fixed/mapped error handler: {'found' if mapped else 'not found'}",
                 f"Raw error.message/stack response sink: {'found' if not mapped else 'wrapped'}",
@@ -1564,6 +2279,55 @@ def analyze_source(root: Path, path: Path, text: str, *, is_test: bool) -> list[
                 "cwe_ids": [rule.cwe],
                 "exposure": rule.exposure,
                 "explanation": explanation,
+                "verdict": (
+                    FindingVerdict.LIKELY
+                    if rule.rule_id == "REQUEST-NO-SCHEMA" and len(line_numbers) >= 2
+                    else FindingVerdict.LEAD
+                ),
+                "source_location": (
+                    EvidenceLocation(
+                        file=relative,
+                        line=line_numbers[0],
+                        excerpt=_excerpt(_source_line(text, line_numbers[0])),
+                    )
+                    if rule.rule_id == "REQUEST-NO-SCHEMA" and len(line_numbers) >= 2
+                    else None
+                ),
+                "sink_location": (
+                    EvidenceLocation(
+                        file=relative,
+                        line=line_numbers[-1],
+                        excerpt=_excerpt(_source_line(text, line_numbers[-1])),
+                    )
+                    if rule.rule_id == "REQUEST-NO-SCHEMA" and len(line_numbers) >= 2
+                    else None
+                ),
+                "controls_considered": (
+                    list(explanation.controls_considered) if explanation is not None else []
+                ),
+                "exploitability_conditions": (
+                    ["An external caller can reach this handler and control request JSON consumed at the sink."]
+                    if rule.rule_id == "REQUEST-NO-SCHEMA"
+                    else []
+                ),
+                "project_impact": (
+                    "Unvalidated values may alter the database operation performed by this handler."
+                    if rule.rule_id == "REQUEST-NO-SCHEMA"
+                    else None
+                ),
+                "remediation_before": RULE_COPY[rule.rule_id][1]
+                if rule.rule_id in RULE_COPY
+                else None,
+                "remediation_after": RULE_COPY[rule.rule_id][2]
+                if rule.rule_id in RULE_COPY
+                else None,
+                "verification_step": (
+                    "Add a malformed request test and assert validation rejects it before the database call."
+                    if rule.rule_id == "REQUEST-NO-SCHEMA"
+                    else None
+                ),
+                "why_not_higher": "The scan did not execute the application or prove runtime reachability.",
+                "what_would_raise_it": "A reachable request path and a test demonstrating attacker-controlled input reaches the sink without validation.",
                 "references": [
                     Reference(
                         title=rule.cwe,
@@ -1668,54 +2432,372 @@ def _line_number(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
 
+def _literal_entropy(value: str) -> float:
+    """Compute Shannon entropy for a bounded provider-shaped string literal."""
+    if not value:
+        return 0.0
+    counts: dict[str, int] = {}
+    for character in value:
+        counts[character] = counts.get(character, 0) + 1
+    size = len(value)
+    return -sum((count / size) * math.log2(count / size) for count in counts.values())
+
+
 def dependency_findings(root: Path, *, is_test: bool = False) -> list[Finding]:
-    """Report obviously floating package.json dependencies without network access."""
+    """Report floating dependencies and offline advisory matches from bounded lockfiles."""
     manifest = root / "package.json"
+    findings: list[Finding] = []
     try:
         data = json.loads(manifest.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return []
+        data = {}
     entries: list[tuple[str, str]] = []
     for section in ("dependencies", "devDependencies", "optionalDependencies"):
         values = data.get(section, {}) if isinstance(data, dict) else {}
         if isinstance(values, dict):
             entries.extend((str(name), str(version)) for name, version in values.items())
     floating = [name for name, version in entries if version in {"*", "latest"}]
-    if not floating:
-        return []
-    finding = make_finding(
-        target=root,
-        scanner="builtin",
-        rule_id="UNPINNED-DEPENDENCY",
-        title="Unpinned dependencies",
-        severity=Severity.LOW,
-        confidence=Confidence.LIKELY.value,
-        location="package.json:1",
-        description=(
-            "One or more dependencies use `*` or `latest`; no network or advisory lookup was performed."  # noqa: E501
-        ),
-        tags=["heuristic", "offline"],
-    ).model_copy(
-        update={
-            "source": "builtin",
-            "line_numbers": [1],
-            "code_excerpt": "Dependencies: " + ", ".join(floating[:12]),
-            "remediation": (
-                "Pin reviewed versions and commit a lockfile.\n"
-                'Before: "package": "*"\n'
-                'After: "package": "1.2.3" with a committed lockfile'
+    if floating:
+        finding = make_finding(
+            target=root,
+            scanner="builtin",
+            rule_id="UNPINNED-DEPENDENCY",
+            title="Unpinned dependencies",
+            severity=Severity.LOW,
+            confidence=Confidence.LIKELY.value,
+            location="package.json:1",
+            description=(
+                "One or more dependencies use `*` or `latest`; dependency resolution can change across installs."
             ),
-            "cwe_ids": ["CWE-1104"],
-            "exposure": "build",
-            "references": [
-                Reference(
-                    title="CWE-1104: Use of Unmaintained Third Party Components",
-                    url="https://cwe.mitre.org/data/definitions/1104.html",
-                )
-            ],
-        }
+            tags=["heuristic", "offline"],
+        ).model_copy(
+            update={
+                "source": "builtin",
+                "line_numbers": [1],
+                "code_excerpt": "Dependencies: " + ", ".join(floating[:12]),
+                "remediation": (
+                    "Pin reviewed versions and commit a lockfile.\n"
+                    'Before: "package": "*"\n'
+                    'After: "package": "1.2.3" with a committed lockfile'
+                ),
+                "cwe_ids": ["CWE-1104"],
+                "exposure": "build",
+            }
+        )
+        findings.append(finding)
+    findings.extend(_offline_advisory_findings(root))
+    return findings
+
+
+_ADVISORY_DB = Path(__file__).parents[2] / "data" / "advisories.json"
+_ADVISORY_DB_MAX_AGE_DAYS = 90
+_LOCKFILE_MAX_BYTES = 20_000_000
+_LOCKFILE_MAX_COUNT = 100
+
+
+def _version_parts(
+    value: str,
+) -> tuple[tuple[int, ...], int, tuple[tuple[int, int | str], ...]] | None:
+    """Return a sortable release/prerelease key for common npm, pub, and Cargo versions."""
+    match = re.fullmatch(
+        r"[vV]?(?P<release>\d+(?:\.\d+)*)(?:-(?P<pre>[0-9A-Za-z.-]+))?(?:\+(?P<build>[0-9A-Za-z.-]+))?",
+        value,
     )
-    return [finding]
+    if match is None:
+        return None
+    release = tuple(int(part) for part in match.group("release").split("."))
+    build = match.group("build")
+    if build and build.isdecimal():
+        # Pub lockfiles commonly use a numeric +build suffix as a package revision.
+        release = (*release, int(build))
+    prerelease = match.group("pre")
+    if prerelease is None:
+        return release, 1, ()
+    identifiers: list[tuple[int, int | str]] = []
+    for item in prerelease.split("."):
+        if not item:
+            return None
+        identifiers.append((0, int(item)) if item.isdecimal() else (1, item.casefold()))
+    return release, 0, tuple(identifiers)
+
+
+def _matched_fixed_version(version: str, advisory: dict[str, object]) -> str | None:
+    installed = _version_parts(version)
+    ranges = advisory.get("affected_ranges", [])
+    if installed is None or not isinstance(ranges, list):
+        return None
+    for affected in ranges:
+        if not isinstance(affected, dict):
+            continue
+        introduced = _version_parts(str(affected.get("introduced", "0")))
+        fixed = _version_parts(str(affected.get("fixed", "")))
+        if introduced is not None and fixed is not None and introduced <= installed < fixed:
+            return str(affected.get("fixed"))
+    return None
+
+
+def _read_lock_packages(path: Path) -> tuple[str, list[tuple[str, str, bool]]]:
+    """Read supported package lock formats; tuple items are package, version, direct-prod."""
+    suffix_name = path.name.casefold()
+    try:
+        if path.stat().st_size > _LOCKFILE_MAX_BYTES:
+            return "", []
+        text = path.read_text(encoding="utf-8")
+        if suffix_name == "package-lock.json":
+            lock = json.loads(text)
+            packages: list[tuple[str, str, bool]] = []
+            direct = _manifest_dependency_names(path.parent / "package.json", ("dependencies", "optionalDependencies"))
+            package_map = lock.get("packages", {}) if isinstance(lock, dict) else {}
+            if isinstance(package_map, dict):
+                for install_path, value in package_map.items():
+                    if not isinstance(value, dict) or not install_path:
+                        continue
+                    name = value.get("name") or _node_package_name(str(install_path))
+                    version = value.get("version")
+                    if name and isinstance(version, str):
+                        packages.append((str(name), version, str(name) in direct))
+            if not packages and isinstance(lock, dict):
+                _npm_v1_packages(lock.get("dependencies", {}), direct, packages)
+            return "npm", packages
+        if suffix_name == "pubspec.lock":
+            import yaml
+
+            lock = yaml.safe_load(text) or {}
+            packages = []
+            direct = _manifest_dependency_names(path.parent / "pubspec.yaml", ("dependencies",))
+            values = lock.get("packages", {}) if isinstance(lock, dict) else {}
+            if isinstance(values, dict):
+                for name, value in values.items():
+                    if isinstance(value, dict) and isinstance(value.get("version"), str):
+                        packages.append((str(name), value["version"], str(name) in direct))
+            return "pub", packages
+        if suffix_name == "cargo.lock":
+            lock = tomllib.loads(text)
+            packages = []
+            direct = _manifest_dependency_names(path.parent / "Cargo.toml", ("dependencies",))
+            for value in lock.get("package", []):
+                if isinstance(value, dict) and isinstance(value.get("name"), str) and isinstance(value.get("version"), str):
+                    packages.append((value["name"], value["version"], value["name"] in direct))
+            return "cargo", packages
+    except (OSError, ValueError, TypeError, AttributeError):
+        return "", []
+    return "", []
+
+
+def _manifest_dependency_names(path: Path, sections: tuple[str, ...]) -> set[str]:
+    try:
+        text = path.read_text(encoding="utf-8")
+        if path.suffix.casefold() == ".json":
+            manifest = json.loads(text)
+            return {
+                str(name)
+                for section in sections
+                for name in (manifest.get(section, {}) if isinstance(manifest, dict) else {})
+            }
+        if path.name.casefold() == "pubspec.yaml":
+            import yaml
+
+            manifest = yaml.safe_load(text) or {}
+            return {
+                str(name)
+                for section in sections
+                for name in (manifest.get(section, {}) if isinstance(manifest, dict) else {})
+            }
+        manifest = tomllib.loads(text)
+        dependencies = manifest.get("dependencies", {})
+        return {str(name) for name in dependencies} if isinstance(dependencies, dict) else set()
+    except (OSError, ValueError, TypeError, AttributeError):
+        return set()
+
+
+def _node_package_name(install_path: str) -> str | None:
+    marker = "node_modules/"
+    index = install_path.rfind(marker)
+    if index < 0:
+        return None
+    tail = install_path[index + len(marker) :].split("/")
+    if tail and tail[0].startswith("@") and len(tail) > 1:
+        return "/".join(tail[:2])
+    return tail[0] if tail else None
+
+
+def _npm_v1_packages(
+    dependencies: object, direct: set[str], output: list[tuple[str, str, bool]]
+) -> None:
+    if not isinstance(dependencies, dict):
+        return
+    for name, value in dependencies.items():
+        if isinstance(value, dict):
+            version = value.get("version")
+            if isinstance(version, str):
+                output.append((str(name), version, str(name) in direct))
+            _npm_v1_packages(value.get("dependencies", {}), direct, output)
+
+
+def _offline_advisory_findings(root: Path) -> list[Finding]:
+    try:
+        database = json.loads(_ADVISORY_DB.read_text(encoding="utf-8"))
+        advisories = database["advisories"]
+        database_date = str(database["database_date"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    if not isinstance(advisories, list):
+        return []
+    from datetime import date
+
+    try:
+        age_days = (date.today() - date.fromisoformat(database_date)).days
+    except ValueError:
+        age_days = _ADVISORY_DB_MAX_AGE_DAYS + 1
+    stale = age_days > _ADVISORY_DB_MAX_AGE_DAYS
+    lockfiles: list[Path] = []
+    ignored = {".git", ".venv", "venv", "node_modules", "target", "build", "dist"}
+    for directory, dirnames, filenames in os.walk(root, followlinks=False):
+        dirnames[:] = sorted(
+            name
+            for name in dirnames
+            if name.casefold() not in ignored and not (Path(directory) / name).is_symlink()
+        )
+        for filename in filenames:
+            if filename.casefold() in {"pubspec.lock", "package-lock.json", "cargo.lock"}:
+                candidate = Path(directory) / filename
+                if not candidate.is_symlink():
+                    lockfiles.append(candidate)
+            if len(lockfiles) >= _LOCKFILE_MAX_COUNT:
+                break
+        if len(lockfiles) >= _LOCKFILE_MAX_COUNT:
+            break
+    findings: list[Finding] = []
+    for lockfile in lockfiles:
+        ecosystem, packages = _read_lock_packages(lockfile)
+        if not ecosystem:
+            continue
+        try:
+            relative = lockfile.relative_to(root).as_posix()
+            lock_text = lockfile.read_text(encoding="utf-8")
+        except (OSError, ValueError):
+            continue
+        for name, version, direct in packages:
+            for advisory in advisories:
+                fixed_for_range = (
+                    _matched_fixed_version(version, advisory)
+                    if isinstance(advisory, dict)
+                    else None
+                )
+                if (
+                    not isinstance(advisory, dict)
+                    or advisory.get("ecosystem") != ecosystem
+                    or advisory.get("package") != name
+                    or fixed_for_range is None
+                ):
+                    continue
+                api = str(advisory.get("affected_api", ""))
+                api_reached = bool(api) and _source_mentions_api(root, api)
+                verdict = FindingVerdict.LIKELY if api_reached else FindingVerdict.LEAD
+                advisory_id = str(advisory.get("id", "unknown"))
+                fixed = fixed_for_range
+                line = _line_for_package(lock_text, name)
+                db_notice = (
+                    f" Offline advisory data is stale by {age_days} days (snapshot {database_date})."
+                    if stale
+                    else f" Offline advisory snapshot date: {database_date}."
+                )
+                reachability = (
+                    f"Likely reachable: source code references the affected API `{api}`."
+                    if api_reached
+                    else (
+                        "Potentially reachable: this is a direct production dependency, but the affected API was not confirmed in source."
+                        if direct
+                        else "Reachability not demonstrated: the affected API was not found in source and this is not a direct production dependency."
+                    )
+                )
+                severity = {
+                    "critical": Severity.CRITICAL,
+                    "high": Severity.HIGH,
+                    "medium": Severity.MEDIUM,
+                    "low": Severity.LOW,
+                }.get(str(advisory.get("severity", "medium")), Severity.MEDIUM)
+                finding = make_finding(
+                    target=root,
+                    scanner="builtin",
+                    rule_id=f"OFFLINE-ADVISORY-{advisory_id}",
+                    title=f"Vulnerable dependency: {name} {version}",
+                    severity=severity if api_reached else Severity.INFO,
+                    confidence=Confidence.LIKELY.value if api_reached else Confidence.POSSIBLE.value,
+                    location=f"{relative}:{line}",
+                    description=(
+                        f"{advisory.get('summary', 'Known vulnerability')} ({advisory_id}). "
+                        f"Installed {version}; fixed version {fixed}. {reachability}{db_notice}"
+                    ),
+                    tags=["dependency", "offline-advisory", "stale-database" if stale else "current-database"],
+                ).model_copy(
+                    update={
+                        "source": "builtin",
+                        "line_numbers": [line],
+                        "code_excerpt": f"{name} {version} — {advisory_id}; fixed in {fixed}",
+                        "verdict": verdict,
+                        "controls_considered": [
+                            f"Checked {relative} against the bundled offline advisory database dated {database_date}; source reachability checked for `{api}`."
+                        ],
+                        "exploitability_conditions": [
+                            f"An attacker must reach code that invokes `{api}` under the affected package version."
+                        ],
+                        "project_impact": (
+                            f"This project resolves {name} {version}; if the affected API is used with attacker-controlled input, the advisory impact may apply."
+                        ),
+                        "remediation": f"Upgrade {name} to {fixed} or a later version and regenerate the lockfile.",
+                        "remediation_before": f"{name}=={version}",
+                        "remediation_after": f"{name}>={fixed}",
+                        "verification_step": f"Regenerate the lockfile, verify it resolves {name} to {fixed} or later, then rerun offline dependency analysis.",
+                        "why_not_higher": (
+                            "The vulnerable API reference is present, but runtime reachability and attacker control of its input were not established."
+                            if api_reached
+                            else "The lockfile confirms an affected version, but the affected API path was not demonstrated in source."
+                        ),
+                        "what_would_raise_it": f"A runtime call path to `{api}` with attacker-controlled input would establish stronger exploitability evidence.",
+                        "references": [Reference(title=f"{advisory_id} (OSV)", url=advisory.get("source"))],
+                    }
+                )
+                findings.append(finding)
+    return findings
+
+
+def _source_mentions_api(root: Path, api: str) -> bool:
+    parts = {".dart", ".js", ".jsx", ".ts", ".tsx", ".rs"}
+    pattern = re.compile(rf"(?<![\w$]){re.escape(api)}\s*\(", re.I)
+    visited = 0
+    ignored = {".git", ".venv", "venv", "node_modules", "target", "build", "dist"}
+    nonproduction = {"test", "tests", "fixture", "fixtures", "__tests__", "examples", "example", "tutorial", "demo", "sample", "samples", "vendor", "generated"}
+    for directory, dirnames, filenames in os.walk(root, followlinks=False):
+        dirnames[:] = sorted(
+            name
+            for name in dirnames
+            if name.casefold() not in ignored and not (Path(directory) / name).is_symlink()
+        )
+        for filename in filenames:
+            path = Path(directory) / filename
+            if visited >= 20_000:
+                return False
+            if path.is_symlink() or path.suffix.casefold() not in parts:
+                continue
+            if {part.casefold() for part in path.parts} & nonproduction:
+                continue
+            visited += 1
+            try:
+                if path.stat().st_size <= 1_000_000:
+                    text = path.read_text(encoding="utf-8")
+                    if pattern.search(_mask_comments(text, path.suffix)):
+                        return True
+            except (OSError, UnicodeError):
+                continue
+    return False
+
+
+def _line_for_package(text: str, name: str) -> int:
+    for number, line in enumerate(text.splitlines(), start=1):
+        if name in line:
+            return number
+    return 1
 
 
 def vibe_risk(profile: object) -> VibeCodingRisk:
@@ -1733,9 +2815,18 @@ def vibe_risk(profile: object) -> VibeCodingRisk:
                 "__tests__",
                 "manual",
                 "examples",
+                "example",
+                "tutorial",
+                "demo",
+                "sample",
+                "samples",
                 "vendor",
+                "generated",
+                "dist",
+                "build",
             }
         )
+        and not re.search(r"(?:^|[._-])(?:test|spec)(?:[._-]|$)", path.name.casefold())
         and path.suffix.casefold() not in {".yaml", ".yml", ".toml", ".ini", ".xml"}
     )
     root = getattr(profile, "root", None)
@@ -1758,7 +2849,7 @@ def vibe_risk(profile: object) -> VibeCodingRisk:
             "tutorial_default",
             "tutorial-style insecure default",
             18,
-            r"(?:\badmin\s*/\s*admin\b|allow_origins\s*=\s*\[?['\"]\*|cors\([^\n]*\*|service_role)",
+            r"(?:\badmin\s*/\s*admin\b|allow_origins\s*=\s*\[?['\"]\*|cors\([^\n]*['\"]\*['\"])",
         ),
         (
             "mock_data",
@@ -1797,20 +2888,34 @@ def vibe_risk(profile: object) -> VibeCodingRisk:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        all_text.append(text)
-        texts_by_path.append((path, text))
+        # Score executable source only. Comments, including Deno environment
+        # key names, do not count as evidence of an insecure literal default.
+        analysis_text = _mask_comments(text, path.suffix)
+        all_text.append(analysis_text)
+        texts_by_path.append((path, analysis_text))
         try:
             relative = path.relative_to(root).as_posix() if root else path.name
         except ValueError:
             relative = path.name
         for key, _, _, _ in contribution_specs:
-            matched = None if key == "client_validation" else patterns[key].search(text)
+            if key == "commented_code":
+                # A commented statement must look like code, not prose that
+                # happens to begin with a keyword such as "const".
+                comment_code = re.compile(
+                    r"(?m)^\s*//\s*(?:const|let|function|return|if\s*\()"
+                    r"[^\r\n]*(?:=|\(|\{|;)"
+                )
+                matched = comment_code.search(text)
+            else:
+                matched = None if key == "client_validation" else patterns[key].search(analysis_text)
             if not matched:
                 continue
             line = text.count("\n", 0, matched.start()) + 1
             source_lines = text.splitlines()
             excerpt = _excerpt(source_lines[line - 1]) if line <= len(source_lines) else None
-            if not excerpt or not patterns[key].search(excerpt):
+            if not excerpt or (
+                key != "commented_code" and not patterns[key].search(analysis_text.splitlines()[line - 1])
+            ):
                 continue
             counts[key] += 1
             if len(evidence_by_signal[key]) < 3:
@@ -1967,7 +3072,7 @@ def vibe_risk(profile: object) -> VibeCodingRisk:
             if signals
             else "Insufficient evidence: no validated signal remained after conservative filtering."
         ),  # noqa: E501
-        algorithm_version="legacy-pattern-v1",
+        algorithm_version="signal-score-v2",
         contributions=contributions,
         coverage_limitations=[
             f"Based on {len(texts_by_path)} readable supported source files only.",

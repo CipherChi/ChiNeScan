@@ -7,6 +7,7 @@ from pydantic import Field, HttpUrl
 from chinescan.core.models.common import (
     Confidence,
     EvidenceKind,
+    FindingVerdict,
     FindingCategory,
     SchemaRecord,
     Severity,
@@ -44,6 +45,14 @@ class Reference(SchemaRecord):
     url: HttpUrl | None = None
 
 
+class EvidenceLocation(SchemaRecord):
+    """Project-relative location for a source or sink in a finding."""
+
+    file: str
+    line: int = Field(ge=1)
+    excerpt: str | None = None
+
+
 class Finding(SchemaRecord):
     finding_id: str = Field(default_factory=lambda: str(uuid4()))
     project_id: str | None = None
@@ -69,3 +78,15 @@ class Finding(SchemaRecord):
     tags: list[str] = Field(default_factory=list)
     contributing_rule_ids: list[str] = Field(default_factory=list)
     explanation: FindingExplanation | None = None
+    verdict: FindingVerdict = FindingVerdict.LEAD
+    entry_point: EvidenceLocation | None = None
+    source_location: EvidenceLocation | None = None
+    sink_location: EvidenceLocation | None = None
+    controls_considered: list[str] = Field(default_factory=list)
+    exploitability_conditions: list[str] = Field(default_factory=list)
+    project_impact: str | None = None
+    remediation_before: str | None = None
+    remediation_after: str | None = None
+    verification_step: str | None = None
+    why_not_higher: str | None = None
+    what_would_raise_it: str | None = None

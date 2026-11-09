@@ -4,6 +4,18 @@
     {
       "additionalProperties": false,
       "properties": {
+        "actor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actor"
+        },
         "bytes_out": {
           "anyOf": [
             {
@@ -185,6 +197,30 @@
           "title": "Summary",
           "type": "string"
         },
+        "target": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target"
+        },
+        "target_group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Group"
+        },
         "url": {
           "anyOf": [
             {
@@ -242,6 +278,15 @@
           "title": "Confidence",
           "type": "string"
         },
+        "FindingVerdict": {
+          "enum": [
+            "confirmed",
+            "likely",
+            "lead"
+          ],
+          "title": "FindingVerdict",
+          "type": "string"
+        },
         "Severity": {
           "enum": [
             "info",
@@ -264,6 +309,13 @@
           "$ref": "#/$defs/Confidence",
           "default": "POSSIBLE"
         },
+        "controls_considered": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Controls Considered",
+          "type": "array"
+        },
         "description": {
           "default": "",
           "title": "Description",
@@ -276,10 +328,29 @@
           "title": "Event Ids",
           "type": "array"
         },
+        "exploitability_conditions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Exploitability Conditions",
+          "type": "array"
+        },
         "fingerprint": {
           "minLength": 1,
           "title": "Fingerprint",
           "type": "string"
+        },
+        "first_match_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Match Ref"
         },
         "indicator_ids": {
           "items": {
@@ -288,12 +359,68 @@
           "title": "Indicator Ids",
           "type": "array"
         },
+        "last_match_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Match Ref"
+        },
+        "log_limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Log Limitations",
+          "type": "array"
+        },
+        "match_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Match Count",
+          "type": "integer"
+        },
+        "matching_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Matching Refs",
+          "type": "array"
+        },
         "mitre_attack_techniques": {
           "items": {
             "type": "string"
           },
           "title": "Mitre Attack Techniques",
           "type": "array"
+        },
+        "project_impact": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project Impact"
+        },
+        "remediation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Remediation"
         },
         "rule_id": {
           "title": "Rule Id",
@@ -311,6 +438,46 @@
         "title": {
           "title": "Title",
           "type": "string"
+        },
+        "verdict": {
+          "$ref": "#/$defs/FindingVerdict",
+          "default": "lead"
+        },
+        "verification_step": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verification Step"
+        },
+        "what_would_raise_it": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "What Would Raise It"
+        },
+        "why_not_higher": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Why Not Higher"
         }
       },
       "required": [
@@ -369,6 +536,12 @@
           ],
           "default": null,
           "title": "Last Seen"
+        },
+        "occurrence_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Occurrence Count",
+          "type": "integer"
         },
         "related_events": {
           "items": {
@@ -839,11 +1012,63 @@
               "title": "Excluded",
               "type": "object"
             },
+            "files_scanned_by_language": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Files Scanned By Language"
+            },
             "gaps": {
               "items": {
                 "$ref": "#/$defs/CoverageGap"
               },
               "title": "Gaps",
+              "type": "array"
+            },
+            "language_analyzer_status": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Language Analyzer Status"
+            },
+            "languages_detected": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Languages Detected"
+            },
+            "not_assessed": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Not Assessed",
               "type": "array"
             },
             "schema_version": {
@@ -1032,10 +1257,18 @@
               "type": "string"
             },
             "score": {
-              "maximum": 100,
-              "minimum": 0,
-              "title": "Score",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "maximum": 100,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Score"
             },
             "signals": {
               "items": {
@@ -1046,7 +1279,6 @@
             }
           },
           "required": [
-            "score",
             "confidence"
           ],
           "title": "VibeCodingRisk",
@@ -1117,6 +1349,13 @@
           ],
           "default": null,
           "title": "Finished At"
+        },
+        "location_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Location Ids",
+          "type": "array"
         },
         "project_id": {
           "anyOf": [

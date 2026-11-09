@@ -12,7 +12,7 @@ from chinescan.core.external_reports import (
     ExternalReportError,
     parse_scanity_export,
 )
-from chinescan.core.models.common import Confidence, Severity
+from chinescan.core.models.common import Confidence, FindingVerdict, Severity
 from chinescan.core.models.finding import Finding
 from chinescan.core.models.investigation import Scan
 from chinescan.core.orchestration.code_rules import RULES, analyze_source
@@ -71,7 +71,8 @@ def test_nextjs_fixture_exclusions_and_test_secret_severity(tmp_path: Path) -> N
     assert not any(path.startswith("node_modules/") for path in paths)
     assert "ignored-source.ts" not in paths
     test_key = next(item for item in findings if item.rule_id == "HARDCODED-CREDENTIAL")
-    assert test_key.severity.value == "medium"
+    assert test_key.severity.value == "info"
+    assert test_key.verdict == FindingVerdict.LEAD
     assert "verify the value is fake" in test_key.description
     assert {"XSS-DANGEROUS-HTML", "SSRF-USER-URL"} <= {item.rule_id for item in findings}
 
@@ -82,7 +83,8 @@ def test_test_credentials_are_medium_and_clean_project_has_no_high_findings(tmp_
     source = root / "tests" / "test_auth.py"
     source.write_text("password = 'fake-test-value'\n", encoding="utf-8")
     test_findings = analyze_source(root, source, source.read_text(), is_test=True)
-    assert test_findings[0].severity.value == "medium"
+    assert test_findings[0].severity.value == "info"
+    assert test_findings[0].verdict == FindingVerdict.LEAD
     assert "verify the value is fake" in test_findings[0].description
 
     clean = root / "clean.ts"
@@ -112,6 +114,113 @@ def test_manifest_and_environment_file_detectors_have_positive_and_negative_case
         item.rule_id != "ENV-FILE-PRESENT"
         for item in BuiltinRuleScanner(ScanBounds()).scan_profile(clean_profile)
     )
+
+
+def test_offline_advisories_cover_npm_pub_and_cargo_with_reachability_and_fixed_misses(
+    tmp_path: Path,
+) -> None:
+    from chinescan.core.orchestration.code_rules import dependency_findings
+
+    npm = tmp_path / "npm"
+    (npm / "src").mkdir(parents=True)
+    (npm / "package.json").write_text(
+        '{"dependencies":{"lodash":"^4.17.0"}}', encoding="utf-8"
+    )
+    (npm / "package-lock.json").write_text(
+        '{"lockfileVersion":3,"packages":{"":{"dependencies":{"lodash":"^4.17.0"}},'
+        '"node_modules/lodash":{"version":"4.17.20"}}}',
+        encoding="utf-8",
+    )
+    (npm / "src" / "template.js").write_text("_.template(untrustedInput);\n", encoding="utf-8")
+    npm_finding = next(
+        item for item in dependency_findings(npm) if item.rule_id.endswith("GHSA-35jh-r3h4-6jhm")
+    )
+    assert npm_finding.verdict.value == "likely"
+    assert "lodash 4.17.20" in npm_finding.code_excerpt
+    assert "4.17.21" in npm_finding.description
+    assert "Likely reachable" in npm_finding.description
+    assert npm_finding.verification_step
+
+    (npm / "package-lock.json").write_text(
+        '{"lockfileVersion":3,"packages":{"node_modules/lodash":{"version":"4.17.21"}}}',
+        encoding="utf-8",
+    )
+    assert not [
+        item
+        for item in dependency_findings(npm)
+        if item.rule_id.endswith("GHSA-35jh-r3h4-6jhm")
+    ]
+    (npm / "package-lock.json").write_text(
+        '{"lockfileVersion":3,"packages":{"node_modules/lodash":{"version":"4.17.21-beta.1"}}}',
+        encoding="utf-8",
+    )
+    prerelease_finding = next(
+        item
+        for item in dependency_findings(npm)
+        if item.rule_id.endswith("GHSA-35jh-r3h4-6jhm")
+    )
+    assert prerelease_finding.verdict.value == "likely"
+    (npm / "package-lock.json").write_text(
+        '{"lockfileVersion":3,"packages":{"node_modules/lodash":{"version":"4.17.20"}}}',
+        encoding="utf-8",
+    )
+    (npm / "src" / "template.js").write_text(
+        '// _.template(untrustedInput);\nconst apiName = "_.template";\n', encoding="utf-8"
+    )
+    (npm / "tests").mkdir()
+    (npm / "tests" / "template.test.js").write_text(
+        "_.template(untrustedInput);\n", encoding="utf-8"
+    )
+    npm_lead = next(
+        item for item in dependency_findings(npm) if item.rule_id.endswith("GHSA-35jh-r3h4-6jhm")
+    )
+    assert npm_lead.verdict.value == "lead"
+    assert npm_lead.severity.value == "info"
+
+    dart = tmp_path / "dart"
+    (dart / "lib").mkdir(parents=True)
+    (dart / "pubspec.yaml").write_text("dependencies:\n  jose: ^0.3.0\n", encoding="utf-8")
+    (dart / "pubspec.lock").write_text(
+        "packages:\n  jose:\n    dependency: 'direct main'\n    version: 0.3.5\n",
+        encoding="utf-8",
+    )
+    (dart / "lib" / "auth.dart").write_text(
+        "import 'package:jose/jose.dart';\n"
+        "final jwt = await JsonWebToken.decodeAndVerify(encoded, keyStore);\n",
+        encoding="utf-8",
+    )
+    dart_finding = next(
+        item for item in dependency_findings(dart) if item.rule_id.endswith("GHSA-vm9r-h74p-hg97")
+    )
+    assert dart_finding.verdict.value == "likely"
+    assert "0.3.5+1" in dart_finding.description
+
+    rust = tmp_path / "rust"
+    (rust / "src").mkdir(parents=True)
+    (rust / "Cargo.toml").write_text('[dependencies]\ntokio = "1.44"\n', encoding="utf-8")
+    (rust / "Cargo.lock").write_text(
+        '[[package]]\nname = "tokio"\nversion = "1.44.1"\n', encoding="utf-8"
+    )
+    (rust / "src" / "main.rs").write_text(
+        "use tokio::sync::broadcast;\nlet (_tx, _rx) = broadcast::channel(16);\n",
+        encoding="utf-8",
+    )
+    rust_finding = next(
+        item
+        for item in dependency_findings(rust)
+        if item.rule_id.endswith("RUSTSEC-2025-0023")
+    )
+    assert rust_finding.verdict.value == "likely"
+    assert "fixed version 1.44.2" in rust_finding.description
+
+    (rust / "Cargo.lock").write_text(
+        '[[package]]\nname = "tokio"\nversion = "1.44.2"\n', encoding="utf-8"
+    )
+    assert not [
+        item
+        for item in dependency_findings(rust)
+        if item.rule_id.endswith("RUSTSEC-2025-0023")
+    ]
 
 
 def test_external_report_import_is_redacted_and_labeled(tmp_path: Path) -> None:
@@ -191,7 +300,8 @@ def test_code_report_groups_and_separates_external_findings(tmp_path: Path) -> N
     )
     markdown = render_report(scan, [*findings, *imported], "markdown")
     assert "External scanner results" in markdown
-    assert "Rule-supported candidates (not independently verified)" in markdown
+    assert "## Leads (not counted as vulnerabilities)" in markdown
+    assert "**Confirmed and likely issues:** 0" in markdown
     assert "not-a-real-secret" not in markdown
 
 
@@ -212,6 +322,7 @@ def test_fix_first_breaks_ties_by_exposure_then_path() -> None:
             fingerprint="z-server-fingerprint",
             location="z/server.py:1",
             exposure="server",
+            verdict=FindingVerdict.LIKELY,
         ),
         Finding(
             finding_id="b-client",
@@ -221,6 +332,7 @@ def test_fix_first_breaks_ties_by_exposure_then_path() -> None:
             fingerprint="b-client-fingerprint",
             location="b/client.ts:1",
             exposure="client",
+            verdict=FindingVerdict.LIKELY,
         ),
         Finding(
             finding_id="a-client",
@@ -230,6 +342,7 @@ def test_fix_first_breaks_ties_by_exposure_then_path() -> None:
             fingerprint="a-client-fingerprint",
             location="a/client.ts:1",
             exposure="client",
+            verdict=FindingVerdict.LIKELY,
         ),
     ]
     safe = {item.finding_id: item.model_dump(mode="json") for item in findings}

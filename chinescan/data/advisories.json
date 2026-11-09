@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "source": "OSV.dev and RustSec advisory database",
+  "database_date": "2026-10-28",
+  "scope": "Curated offline subset; this is not a complete advisory database.",
+  "advisories": [
+    {
+      "ecosystem": "npm",
+      "package": "lodash",
+      "id": "GHSA-35jh-r3h4-6jhm",
+      "summary": "Command injection through the lodash template function",
+      "fixed_version": "4.17.21",
+      "affected_ranges": [{"introduced": "0", "fixed": "4.17.21"}],
+      "severity": "high",
+      "source": "https://osv.dev/vulnerability/GHSA-35jh-r3h4-6jhm",
+      "affected_api": "_.template"
+    },
+    {
+      "ecosystem": "pub",
+      "package": "jose",
+      "id": "GHSA-vm9r-h74p-hg97",
+      "summary": "JWT verification may trust an attacker-provided JWK header key",
+      "fixed_version": "0.3.5+1",
+      "affected_ranges": [{"introduced": "0", "fixed": "0.3.5+1"}],
+      "severity": "high",
+      "source": "https://osv.dev/vulnerability/GHSA-vm9r-h74p-hg97",
+      "affected_api": "JsonWebToken.decodeAndVerify"
+    },
+    {
+      "ecosystem": "cargo",
+      "package": "tokio",
+      "id": "RUSTSEC-2025-0023",
+      "summary": "Broadcast channel may be unsound for Send but not Sync values",
+      "fixed_version": "See matching affected range; each finding reports its exact fix.",
+      "affected_ranges": [
+        {"introduced": "0.2.5", "fixed": "1.38.2"},
+        {"introduced": "1.39.0", "fixed": "1.42.1"},
+        {"introduced": "1.43.0", "fixed": "1.43.1"},
+        {"introduced": "1.44.0", "fixed": "1.44.2"}
+      ],
+      "severity": "medium",
+      "source": "https://osv.dev/vulnerability/RUSTSEC-2025-0023",
+      "affected_api": "broadcast::channel"
+    },
+    {
+      "ecosystem": "cargo",
+      "package": "slab",
+      "id": "RUSTSEC-2025-0047",
+      "summary": "Out-of-bounds access in Slab::get_disjoint_mut",
+      "fixed_version": "0.4.11",
+      "affected_ranges": [{"introduced": "0.4.10", "fixed": "0.4.11"}],
+      "severity": "high",
+      "source": "https://osv.dev/vulnerability/RUSTSEC-2025-0047",
+      "affected_api": "get_disjoint_mut"
+    }
+  ]
+}

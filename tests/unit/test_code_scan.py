@@ -1,10 +1,12 @@
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from chinescan.cli.app import app
-from chinescan.core.models.common import Confidence, Severity
+from chinescan.core.models.common import Confidence, FindingVerdict, Severity
+from chinescan.core.orchestration import code_scan as code_scan_module
 from chinescan.core.orchestration.code_scan import (
     BuiltinRuleScanner,
     CodeScanService,
@@ -23,6 +25,42 @@ def test_detects_python_and_node_projects() -> None:
     assert python_project.kinds == ("python",)
     assert node_project.kinds == ("node",)
     assert any(path.name == "app.py" for path in python_project.source_files)
+
+
+def test_builtin_scanner_reuses_project_discovery_profile(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "main.py").write_text("def run(): return 1\n", encoding="utf-8")
+    original = code_scan_module.detect_project
+    calls = 0
+
+    def counted_detect_project(target, bounds=None):
+        nonlocal calls
+        calls += 1
+        return original(target, bounds)
+
+    monkeypatch.setattr(code_scan_module, "detect_project", counted_detect_project)
+    result = CodeScanService([BuiltinRuleScanner()]).scan(tmp_path)
+    assert result.coverage is not None
+    assert result.coverage.examined["files_scanned"] == 1
+    assert calls == 1
+
+
+def test_code_scan_checks_reparse_entries_without_following_them(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    outside = tmp_path / "outside"
+    project.mkdir()
+    outside.mkdir()
+    (project / "main.py").write_text("def run(): return 1\n", encoding="utf-8")
+    (outside / "linked.py").write_text("eval(user_input)\n", encoding="utf-8")
+    try:
+        (project / "linked.py").symlink_to(outside / "linked.py")
+        (project / "linked-dir").symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"Host cannot create symlinks for this regression: {type(exc).__name__}")
+
+    result = CodeScanService([BuiltinRuleScanner()]).scan(project)
+    assert result.coverage is not None
+    assert result.coverage.examined["files_scanned"] == 1
+    assert all("linked" not in (finding.location or "") for finding in result.findings)
 
 
 def test_coverage_reports_detected_and_unanalyzed_language_counts(tmp_path: Path) -> None:
@@ -46,7 +84,97 @@ def test_coverage_reports_detected_and_unanalyzed_language_counts(tmp_path: Path
     assert result.coverage.language_analyzer_status["Java"] == (
         "generic first-pass only; no analyzer for this language"
     )
+    assert result.coverage.language_analyzer_status["XML config"].startswith(
+        "Android XML checks: manifest exported components"
+    )
     assert any("Supabase RLS" in item for item in result.coverage.not_assessed)
+
+
+def test_synthetic_flutter_supabase_382_file_regression(tmp_path: Path) -> None:
+    project = tmp_path / "flutter-supabase"
+    migrations = project / "supabase" / "migrations"
+    functions = project / "supabase" / "functions"
+    lib = project / "lib"
+    android = project / "android" / "app" / "src" / "main"
+    migrations.mkdir(parents=True)
+    functions.mkdir(parents=True)
+    lib.mkdir(parents=True)
+    android.mkdir(parents=True)
+    (project / "pubspec.yaml").write_text("name: synthetic_fixture\n", encoding="utf-8")
+    (migrations / "20250101_create.sql").write_text(
+        "CREATE TABLE public.device_pairings (id uuid primary key);\n"
+        "CREATE TABLE public.child_devices (id uuid primary key);",
+        encoding="utf-8",
+    )
+    (migrations / "20250102_enable_rls.sql").write_text(
+        "ALTER TABLE public.device_pairings ENABLE ROW LEVEL SECURITY;\n"
+        "ALTER TABLE public.child_devices ENABLE ROW LEVEL SECURITY;\n"
+        "CREATE POLICY device_pairings_service ON public.device_pairings "
+        "FOR ALL TO service_role USING (true);",
+        encoding="utf-8",
+    )
+    for index in range(68):
+        (migrations / f"202501{index + 3:02}_noop.sql").write_text(
+            "select 1;\n", encoding="utf-8"
+        )
+    handler = functions / "index.ts"
+    handler.write_text(
+        "Deno.serve(async (req) => {\n"
+        "  const body = await req.json();\n"
+        "  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');\n"
+        "  await supabase.from('device_pairings').insert(body);\n"
+        "  return new Response(JSON.stringify({ error: 'Unable to process request' }));\n"
+        "});\n",
+        encoding="utf-8",
+    )
+    for index in range(9):
+        (functions / f"worker-{index}.ts").write_text("export {};\n", encoding="utf-8")
+    api_key = "AIza" + "A" * 35
+    (lib / "main.dart").write_text(
+        "final prefs = await SharedPreferences.getInstance();\n"
+        "await prefs.setString('access_token', token);\n"
+        "client.badCertificateCallback = (_, __, ___) => true;\n"
+        "debugPrint(accessToken);\n"
+        f"const apiKey = '{api_key}';\n",
+        encoding="utf-8",
+    )
+    for index in range(299):
+        (lib / f"screen-{index}.dart").write_text("void screen() {}\n", encoding="utf-8")
+    (android / "AndroidManifest.xml").write_text(
+        '<manifest><application android:allowBackup="true"/></manifest>\n',
+        encoding="utf-8",
+    )
+    result = CodeScanService([BuiltinRuleScanner()]).scan(project)
+
+    assert result.coverage is not None
+    assert result.coverage.examined["files_scanned"] == 382
+    coverage = result.coverage.language_analyzer_status
+    assert "Deno edge-handler request/auth/service-role checks" in coverage["TypeScript"]
+    assert "Dart/Flutter checks" in coverage["Dart"]
+    assert "Supabase migration checks" in coverage["SQL"]
+    assert "Android XML checks" in coverage["XML config"]
+    assert "generic first-pass only" in coverage["Dart"]
+    findings = {item.rule_id: item for item in result.findings}
+    assert "SUPABASE-MIGRATION-RLS" not in findings
+    assert findings["SUPABASE-POLICY-SERVICE-ROLE-INFO"].severity.value == "info"
+    assert "REQUEST-NO-SCHEMA" in findings
+    request = findings["REQUEST-NO-SCHEMA"]
+    assert request.source_location is not None and request.sink_location is not None
+    assert request.verdict is FindingVerdict.LIKELY
+    assert request.line_numbers == [2, 4]
+    service_role = findings["DENO-SERVICE-ROLE-NO-AUTH"]
+    assert service_role.verdict is FindingVerdict.CONFIRMED
+    assert service_role.source_location is not None and service_role.sink_location is not None
+    assert "VERBOSE-ERROR-EXPOSURE" not in findings
+    firebase_key = findings["FIREBASE-API-KEY-INFO"]
+    assert firebase_key.severity.value == "info"
+    assert "does not authenticate a user" in firebase_key.explanation.confidence_rationale
+    assert {
+        "DART-INSECURE-TOKEN-STORAGE",
+        "DART-CERTIFICATE-CHECK-DISABLED",
+        "DART-SENSITIVE-LOGGING",
+        "ANDROID-ALLOW-BACKUP",
+    } <= set(findings)
 
 
 def test_oversized_source_is_reported_as_scan_failure(tmp_path: Path) -> None:

@@ -6,7 +6,13 @@ from uuid import uuid4
 
 from pydantic import Field, field_validator, model_validator
 
-from chinescan.core.models.common import Confidence, ScanVerdict, SchemaRecord, Severity
+from chinescan.core.models.common import (
+    Confidence,
+    FindingVerdict,
+    ScanVerdict,
+    SchemaRecord,
+    Severity,
+)
 
 
 class CoverageGap(SchemaRecord):
@@ -86,6 +92,9 @@ class Event(SchemaRecord):
     source_ip: str | None = None
     destination_ip: str | None = None
     user: str | None = None
+    actor: str | None = None
+    target: str | None = None
+    target_group: str | None = None
     host: str | None = None
     process: str | None = None
     command_line: str | None = None
@@ -113,6 +122,19 @@ class Alert(SchemaRecord):
     indicator_ids: list[str] = Field(default_factory=list)
     mitre_attack_techniques: list[str] = Field(default_factory=list)
     fingerprint: str = Field(min_length=1)
+    verdict: FindingVerdict = FindingVerdict.LEAD
+    matching_refs: list[str] = Field(default_factory=list)
+    first_match_ref: str | None = None
+    last_match_ref: str | None = None
+    match_count: int = Field(default=0, ge=0)
+    log_limitations: list[str] = Field(default_factory=list)
+    project_impact: str | None = None
+    exploitability_conditions: list[str] = Field(default_factory=list)
+    controls_considered: list[str] = Field(default_factory=list)
+    remediation: str | None = None
+    verification_step: str | None = None
+    why_not_higher: str | None = None
+    what_would_raise_it: str | None = None
 
 
 class Indicator(SchemaRecord):
@@ -124,6 +146,7 @@ class Indicator(SchemaRecord):
     context: str = ""
     first_seen: datetime | None = None
     last_seen: datetime | None = None
+    occurrence_count: int = Field(default=0, ge=0)
     related_findings: list[str] = Field(default_factory=list)
     related_events: list[str] = Field(default_factory=list)
 
