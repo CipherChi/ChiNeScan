@@ -31,7 +31,7 @@ scope need a separate review. They have not been represented as implemented here
 | `\.venv\Scripts\ruff.exe format --check .` | 0 | `85 files already formatted`. |
 | `\.venv\Scripts\mypy.exe chinescan` | 0 | `Success: no issues found in 40 source files`. |
 | `py -3.12 -m pytest --cov=chinescan --cov-report=term --cov-fail-under=80` | 0 | `60 passed`; total coverage `81.64%` (required 80%). |
-| `\.venv\Scripts\pip-audit.exe --skip-editable` | 0 | `No known vulnerabilities found`; editable ChineScan distribution skipped. |
+| `\.venv\Scripts\pip-audit.exe --skip-editable` | 0 | `No known vulnerabilities found`; editable ChiNeScan distribution skipped. |
 | `py -3.12 -m uv lock --check` | 0 | `Resolved 57 packages in 5ms`. |
 | `\.venv\Scripts\python.exe -m json.tool schemas\investigation.schema.json > $null` | 0 | Valid JSON; schema includes `AuthorizationRecord`. |
 | `docker compose -f docker-compose.yml config --quiet` | 0 | Compose configuration valid. |

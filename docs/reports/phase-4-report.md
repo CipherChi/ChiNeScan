@@ -20,7 +20,7 @@ No live collectors, network listener, uploads, or raw-log persistence were added
 | `\.venv\Scripts\ruff.exe format --check .` | 0 | `69 files already formatted`. |
 | `\.venv\Scripts\mypy.exe --strict chinescan` | 0 | `Success: no issues found in 33 source files`. |
 | `py -3.12 -m pytest --cov=chinescan --cov-report=term --cov-fail-under=80` | 0 | `41 passed`; total coverage `84.10%` (required 80%). Python dependencies were exposed from `.venv\Lib\site-packages` for the launcher. |
-| `\.venv\Scripts\pip-audit.exe --skip-editable` | 0 | `No known vulnerabilities found`; editable ChineScan distribution skipped. |
+| `\.venv\Scripts\pip-audit.exe --skip-editable` | 0 | `No known vulnerabilities found`; editable ChiNeScan distribution skipped. |
 | `\.venv312\Scripts\uv.exe lock --check` | 0 | `Resolved 55 packages in 4ms`. |
 | `\.venv\Scripts\python.exe -m json.tool schemas\finding.schema.json > $null` | 0 | Valid JSON. |
 | `\.venv\Scripts\python.exe -m json.tool schemas\investigation.schema.json > $null` | 0 | Valid JSON, regenerated with Phase 4 event and alert fields. |

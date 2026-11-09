@@ -197,7 +197,7 @@ was pointed at the repository virtual environment's installed dependencies becau
 | `\.venv\Scripts\ruff.exe check .` | 0 | `All checks passed!` |
 | `\.venv\Scripts\ruff.exe format --check .` | 0 | `92 files already formatted` |
 | `\.venv\Scripts\mypy.exe --strict chinescan` | 0 | `Success: no issues found in 41 source files` |
-| `\.venv\Scripts\pip-audit.exe --skip-editable` | 0 | `No known vulnerabilities found`; editable ChineScan distribution skipped. |
+| `\.venv\Scripts\pip-audit.exe --skip-editable` | 0 | `No known vulnerabilities found`; editable ChiNeScan distribution skipped. |
 | `\.venv\Scripts\bandit.exe --severity-level medium -r chinescan` | 0 | `No issues identified`; four low-severity subprocess findings are outside this threshold. |
 | `py -3.12 -m uv lock --check` | 0 | `Resolved 57 packages in 2ms` |
 | JSON parsing for `schemas\finding.schema.json` and `schemas\investigation.schema.json` | 0 | Both schema files valid JSON. |
@@ -226,7 +226,7 @@ This remains later-phase parser functionality in the combined worktree; Phase 1 
 | `\.venv\Scripts\ruff.exe check .` | 0 | `All checks passed!` |
 | `\.venv\Scripts\ruff.exe format --check .` | 0 | `92 files already formatted` |
 | `\.venv\Scripts\mypy.exe --strict chinescan` | 0 | `Success: no issues found in 41 source files` |
-| `\.venv\Scripts\pip-audit.exe --skip-editable` | 0 | `No known vulnerabilities found`; editable ChineScan distribution skipped. |
+| `\.venv\Scripts\pip-audit.exe --skip-editable` | 0 | `No known vulnerabilities found`; editable ChiNeScan distribution skipped. |
 | `\.venv\Scripts\bandit.exe --severity-level medium -r chinescan` | 0 | `No issues identified`; four low-severity subprocess findings are outside this threshold. |
 | `py -3.12 -m uv lock --check` | 0 | `Resolved 57 packages in 70ms`. |
 | `py -0` | 0 | Python 3.13 (default), 3.12, 3.11, and 3.10 registered. |
@@ -259,7 +259,7 @@ environment; no dependency installation or image build was performed.
 | `\.venv\Scripts\ruff.exe check .` | 0 | `All checks passed!`. |
 | `\.venv\Scripts\ruff.exe format --check .` | 0 | `92 files already formatted`. |
 | `\.venv\Scripts\mypy.exe --strict chinescan` | 0 | `Success: no issues found in 41 source files`. |
-| `\.venv\Scripts\pip-audit.exe --skip-editable` | 0 | `No known vulnerabilities found`; editable ChineScan distribution skipped. |
+| `\.venv\Scripts\pip-audit.exe --skip-editable` | 0 | `No known vulnerabilities found`; editable ChiNeScan distribution skipped. |
 | `py -3.12 -m uv lock --check` | 0 | `Resolved 57 packages in 8ms`. |
 | `docker compose -f docker-compose.yml config --quiet` | 0 | No output; configuration valid. |
 | `py -3.12 -m json.tool schemas\finding.schema.json > $null` | 0 | Valid JSON. |
@@ -287,7 +287,7 @@ final full suite below passed.
 | `\.venv\Scripts\ruff.exe check .` | 0 | `All checks passed!` |
 | `\.venv\Scripts\ruff.exe format --check .` | 0 | `93 files already formatted`. |
 | `\.venv\Scripts\mypy.exe --strict chinescan` | 0 | `Success: no issues found in 41 source files`. |
-| `\.venv\Scripts\pip-audit.exe --skip-editable` | 0 | `No known vulnerabilities found`; editable ChineScan distribution skipped. |
+| `\.venv\Scripts\pip-audit.exe --skip-editable` | 0 | `No known vulnerabilities found`; editable ChiNeScan distribution skipped. |
 | `\.venv\Scripts\bandit.exe --severity-level medium -r chinescan` | 0 | `No issues identified`; five low-severity findings remain below the requested threshold. |
 | `py -3.12 -m uv lock --check` | 0 | `Resolved 57 packages in 2ms`. |
 | `py -3.12 -m json.tool schemas\finding.schema.json > $null` | 0 | Valid JSON. |
@@ -488,7 +488,7 @@ Added `docs/SCANNING-ANOTHER-PROJECT.md` after inspecting the current CLI, code 
 
 NOT RUN: dependency advisory audit because it contacts external advisory services; Docker build because it may fetch images; all actual external scanner executions; scanning from a separate live target; and runtime web assessment. The CLI invocations and outputs above verify local scan and Markdown report mechanics only. No application code was changed for this guide.
 
-Additional exact working-directory check: from `C:\src\Chinescan\fixtures\sample-python-project`, `& $exe --database $db code . --format json` exited 0 and returned scan ID `0176dc24-673a-4472-b4ed-802104760390`, three findings, and no failures (`$exe` was the absolute ChineScan executable and `$db` the external database path). From that same working directory, `& $exe --database $db report 0176dc24-673a-4472-b4ed-802104760390 --format markdown --output 'C:\scan-results\my-application\scan-0176dc24-673a-4472-b4ed-802104760390.md'` exited 0 and wrote a 687-byte report outside the fixture.
+Additional exact working-directory check: from `C:\src\Chinescan\fixtures\sample-python-project`, `& $exe --database $db code . --format json` exited 0 and returned scan ID `0176dc24-673a-4472-b4ed-802104760390`, three findings, and no failures (`$exe` was the absolute ChiNeScan executable and `$db` the external database path). From that same working directory, `& $exe --database $db report 0176dc24-673a-4472-b4ed-802104760390 --format markdown --output 'C:\scan-results\my-application\scan-0176dc24-673a-4472-b4ed-802104760390.md'` exited 0 and wrote a 687-byte report outside the fixture.
 
 ## Offline verification — 2026-10-26
 
@@ -1401,3 +1401,309 @@ Repository revision checked: `2ad86b05ca82181da78b3eb6bfee5598d63dc8af`. The rep
 | `git diff --check` | 0 | No whitespace errors; Git emitted only CRLF-to-LF normalization notices for edited files. |
 
 Remaining verification gaps: no mobile browser viewport run or real browser reduced-motion preference run; no full screen-reader audit, load/fuzz assessment, Docker build, external advisory result for the editable project itself, or independent penetration test. Vitest covers animation preference migration/pause/ARIA-hidden behavior; Chromium covers basic keyboard navigation and text-safe/redacted finding display. These checks do not establish that ChiNeScan is vulnerability-free.
+
+## ChiNeScan signal-quality continuation — 2026-11-09
+
+Current implementation verification was run from `C:\src\Chinescan` on the active worktree;
+the repository is on `feature/signal-quality` and no commit was created.
+
+| Command | Exit | Exact result |
+| --- | ---: | --- |
+| `.\scripts\verify-signal.ps1` | 0 | Python 3.12.10 selected; Ruff passed; local Rust redaction extension built; 203 focused Python tests passed with 2 Pydantic deprecation warnings; Rust formatting and Clippy passed; 46 Rust tests passed; 10 frontend tests passed; frontend build, configured lint, and typecheck passed; `Overall: PASS`. |
+| `.\.venv\Scripts\python.exe -m pytest tests/unit/test_code_scan.py::test_synthetic_flutter_supabase_382_file_regression -q --durations=1 --disable-warnings` | 0 | `1 passed`; test call took `7.06s` and total process took `9.34s`. The synthetic fixture had exactly 382 scanned files. |
+| `.\.venv\Scripts\python.exe -c "..."` creating 20,000 synthetic Dart files and running `CodeScanService([BuiltinRuleScanner()]).scan(root)` | 0 | File creation: `9.807s`; scan: `165.284s`; total: `175.091s`; examined `20,000` files and `320,000` bytes; `0` findings. The exact executable command and result were captured in the continuation session. |
+
+The user-referenced `latest scan.json` is not present under this repository, so the 382-file result
+is a synthetic Flutter/Supabase regression and not a timing of the original golden project. The
+synthetic checks exercise RLS resolution for `device_pairings` and `child_devices`, request source
+and sink evidence, controlled error text, Firebase API-key informational classification, and Dart
+and Android findings. No real project code or secrets were used. The 20,000-file timing uses the
+built-in local code scanner only; it does not verify a timing for every separate analysis module.
+
+Follow-up implementation validation on the same date added bounded PE import extraction and
+suspicious API combinations, rule-based malware triage labels with evidence/caveat, broad Android
+intent-filter detection, explicit service-role-only RLS policy information, distributed
+credential-stuffing and backwards-time log leads, and extracted IOC persistence from normalized log
+fields. Current verifier result after these changes:
+
+| Command | Exit | Exact result |
+| --- | ---: | --- |
+| `.\scripts\verify-signal.ps1` | 0 | Python 3.12.10; Ruff passed; Rust redaction extension built; 204 focused Python tests passed with 2 Pydantic deprecation warnings; Rust formatting and Clippy passed; 46 Rust tests passed; 10 frontend tests passed; frontend build, configured lint, and typecheck passed; `Overall: PASS`. |
+| `.\.venv\Scripts\python.exe -m pytest tests/unit/test_log_analysis.py -q --tb=short` | 0 | `30 passed`. |
+| `.\.venv\Scripts\python.exe -m pytest tests/unit/test_malware_analysis.py tests/unit/test_managed_malware.py -q --tb=short` | 0 | `51 passed`. |
+
+These checks validate synthetic fixtures. They do not substitute for the absent original `latest
+scan.json`, a full native Windows/macOS/Linux executable corpus, comprehensive offline package
+advisories, or a complete request-to-sink/static taint analysis.
+
+The verifier's Python selection was expanded to include log analysis, managed malware, and code
+actionability regression suites. Following bounded ELF dynamic-symbol and Mach-O undefined-symbol
+parsing, its latest result is:
+
+| Command | Exit | Exact result |
+| --- | ---: | --- |
+| `.\scripts\verify-signal.ps1` | 0 | Latest rerun after structural Android XML parsing and wildcard-host handling: Python 3.12.10; Ruff passed; Rust extension built; 284 focused Python tests passed in 371.46s with 2 Pydantic deprecation warnings; Rust formatting and Clippy passed; 46 Rust tests passed; 13 frontend tests passed; frontend build, configured lint, and typecheck passed; `Overall: PASS`. |
+| `.\.venv\Scripts\python.exe -m pytest tests/unit/test_malware_analysis.py::test_elf_and_macho_undefined_imports_are_parsed tests/unit/test_malware_analysis.py::test_rule_based_verdict_has_indicator_evidence_and_never_claims_safe -q --tb=short` | 0 | `2 passed`. |
+
+The ELF/Mach-O import support parses undefined symbols with bounded tables and sanitized names;
+Mach-O timestamp and section metadata, PE/ELF/Mach-O code-signature verification, and broad native
+binary disassembly remain unimplemented.
+
+The verifier now includes the malware workspace tests. Static triage verdict,
+bounded verdict evidence, entropy metadata, imports, suspicious API combinations,
+and the compile timestamp are exposed through the authenticated analysis API and
+rendered in the workspace. The API response test confirms these values are
+returned from synthetic persisted analysis data. On this rerun, the focused
+Python suite completed in 95.73s, and both frontend files selected by the
+verifier passed (13 tests total). The malware-workspace-only run passed 3 tests;
+the API file passed 60 tests.
+
+The immediate pre-fix verifier run failed Ruff on five newly added overlong
+lines in `chinescan/web/app.py`; those lines were wrapped, and the subsequent
+full verifier run passed. No test was changed or removed to obtain that result.
+
+The report parity fixture now includes a lead with request source and query sink
+locations, controls considered, project impact, observed-code before/after patch,
+verification step, and confidence-limit explanations. Full JSON carries the
+same model data, Markdown renders it, and the authenticated finding API plus
+dashboard detail view expose it through explicit response allowlists. This
+renderer pass's final verifier run selected 283 Python, 46 Rust, and 13 frontend
+tests; all passed. The UI-only finding display regression passed 10 tests, and
+the report/API parity pair passed 2 tests independently.
+
+Coverage summaries now enumerate the targeted Dart/Flutter, Deno/TypeScript,
+Supabase migration, and Android XML checks and state the remaining parser/data
+flow limits. Languages with only generic first-pass rules retain that explicit
+status; the report renders those gaps before “Fix first.” The 382-file synthetic
+regression asserts the per-language descriptions, and a report regression checks
+the gap placement. The latest full verifier passed 284 Python, 46 Rust, and 13
+frontend tests.
+
+Android manifest and network-security-config checks now parse XML structure
+instead of matching tags in raw text. The parser keeps element line references,
+recognizes inherited application permissions, ignores commented-out examples,
+and rejects DTD/entity declarations. Android positive, mitigation, comment, and
+DTD near-miss checks passed. The 382-file synthetic project still passed its
+RLS, Deno, Dart, and Android assertions. Latest verifier totals: 284 Python,
+46 Rust, and 13 frontend tests; `Overall: PASS`.
+Wildcard subdomain hosts in browsable intent filters are now classified as broad;
+an exact host remains the tested mitigation.
+
+Windows Event Log CSV and XML exports now normalize target accounts, source IPs,
+hosts, timestamps, process command lines, and event outcomes while retaining the
+numeric Event ID for Sigma compatibility. XML records carry their physical
+`<Event>` line as the evidence reference. DTD/entity declarations and unrelated
+XML documents are rejected. Focused parser/Sigma regression checks passed:
+`4 passed, 78 warnings in 27.90s` (warnings are existing Pydantic deprecations).
+
+The next full `.\scripts\verify-signal.ps1` run selected Python 3.12.10, passed
+Ruff, built the Rust extension, and passed all 286 focused Python tests in
+536.42s with 2 Pydantic deprecation warnings. Rust formatting and Clippy passed.
+The Rust suite reported 45 passed and 1 failed: the existing
+`adversarial_repeated_delimiters_remain_linear_and_safe` test exceeded its
+2-second runtime assertion in both the full run and a standalone retry. The
+frontend checks therefore did not run in this verifier attempt; the overall
+result was `FAIL` (Rust test exit 101). No test was weakened or removed.
+
+That runtime failure exposed a quadratic UTF-8 backward scan in Rust's
+assignment key parser. Backward character lookup now steps at most four bytes
+to the previous UTF-8 boundary, and ASCII key classification avoids invoking
+Unicode regular expressions for ASCII input. The parity performance regression
+then found the corresponding Python colon path was matching the entire
+remaining suffix on each delimiter. Python now scans numeric line values only
+when a colon is followed by a digit and tracks the prior whitespace boundary
+incrementally. Existing thresholds and test assertions remain unchanged.
+
+The verifier's 2-second Rust stress assertion passed alone in 1.62s, but failed
+under the default parallel Rust test load. The full verifier passed with Rust
+tests serialized through `RUST_TEST_THREADS=1` and test debug symbols disabled
+to avoid the Windows linker PDB failure. Exact successful result:
+
+| Command | Exit | Exact result |
+| --- | ---: | --- |
+| `.\scripts\verify-signal.ps1` | 0 | Python 3.12.10; Ruff passed; Rust extension built; 286 focused Python tests passed in 657.68s with 2 Pydantic deprecation warnings; Rust formatting and Clippy passed; 46 Rust tests passed serially in 14.24s; 13 frontend tests passed; frontend build, configured lint step, and typecheck passed; `Overall: PASS`. |
+
+The prior non-serialized retry passed 286 Python tests in 1508.86s and passed
+formatting and Clippy, but failed the same timing assertion with 45 Rust tests
+passing. This records the effect of test concurrency rather than hiding it.
+
+Authentication spray and distributed credential-stuffing windows now maintain
+incremental account/source counters. They create the matched event slice only
+after the threshold is reached, avoiding repeated copies and set construction
+on large near-miss streams. HTTP 5xx bursts likewise check window length before
+materializing the matching slice. A 4,000-event single-account near-miss
+regression confirms this remains a spray/stuffing near-miss. The detector
+module was added to the verifier's Ruff selection and its existing long text
+literals were wrapped without changing their content. Latest verifier result:
+
+| Command | Exit | Exact result |
+| --- | ---: | --- |
+| `.\scripts\verify-signal.ps1` | 0 | Python 3.12.10; Ruff passed including `chinescan/log_analysis/detections.py`; Rust extension built; 287 focused Python tests passed in 79.83s with 2 Pydantic deprecation warnings; Rust formatting and Clippy passed; 46 Rust tests passed serially in 4.22s; 13 frontend tests passed; frontend build, configured lint step, and typecheck passed; `Overall: PASS`. |
+
+The focused spray, stuffing, and error-burst run passed `6 passed, 27 deselected`
+in 20.01s. The original benchmark `latest scan.json` remains absent from the
+repository; benchmark-dependent end-to-end acceptance claims remain limited to
+synthetic project fixtures.
+
+Mach-O static metadata now walks bounded 32-bit and 64-bit segment load
+commands to report section entropy and detects an in-bounds code-signature
+blob. It explicitly reports that Mach-O has no standard compile timestamp and
+that blob presence does not mean cryptographic validity was checked. Malformed
+load-command and section bounds are diagnosed. The former test asserting this
+parser was unimplemented was replaced with assertions for the current explicit
+timestamp limitation; new tests cover section entropy, signature-presence
+reporting, and malformed commands. Latest verifier result after these changes:
+
+| Command | Exit | Exact result |
+| --- | ---: | --- |
+| `.\scripts\verify-signal.ps1` | 0 | Python 3.12.10; Ruff passed; Rust extension built; 288 focused Python tests passed in 121.34s with 2 Pydantic deprecation warnings; Rust formatting and Clippy passed; 46 Rust tests passed serially in 6.55s; 13 frontend tests passed; frontend build, configured lint step, and typecheck passed; `Overall: PASS`. |
+
+Focused Mach-O metadata and import checks passed `2 passed` in 3.65s. The
+malware analyzer still does not cryptographically verify PE, ELF, or Mach-O
+signatures, unpack packed samples, or disassemble native code. Nested ZIP
+contents are now opened in memory, listed without disk extraction, and
+inspected through a maximum depth of two nested levels. A shared 1,000-member
+cap and 8 MiB decompressed-byte budget bound traversal; encrypted, malformed,
+over-budget, and too-deep children are reported as uninspected. Unsupported
+nested formats remain listed but are not opened.
+
+Archive regression tests cover nested traversal, nested content listing,
+depth-limit reporting, ordinary archives as a near-miss, and encrypted or
+malformed entries. The focused archive suite passed `4 passed, 16 deselected`
+in 6.84s. Latest full verifier after the boundary regressions:
+
+| Command | Exit | Exact result |
+| --- | ---: | --- |
+| `.\scripts\verify-signal.ps1` | 0 | Python 3.12.10; Ruff passed; Rust extension built; 290 focused Python tests passed in 102.56s with 2 Pydantic deprecation warnings; Rust formatting and Clippy passed; 46 Rust tests passed serially in 4.07s; 13 frontend tests passed; frontend build, configured lint step, and typecheck passed; `Overall: PASS`. |
+
+Offline advisory reachability now requires a call-shaped reference to the
+affected API in production source after comments are masked; tests and fixtures
+remain excluded. The npm regression covers a string literal, a comment, and a
+test-only call as near-misses, and a production call as the positive case. Lock
+version ordering now ranks prereleases below the corresponding final release,
+so `4.17.21-beta.1` remains affected by an advisory fixed in `4.17.21`. The
+bundled advisory snapshot remains a curated subset dated `2026-10-28`, and its
+90-day staleness threshold is reported in findings and coverage metadata.
+
+The dependency advisory regression passed (`1 passed`) and the latest full
+verifier after these changes reported:
+
+| Command | Exit | Exact result |
+| --- | ---: | --- |
+| `.\scripts\verify-signal.ps1` | 0 | Python 3.12.10; Ruff passed; Rust extension built; 290 focused Python tests passed in 95.06s with 2 Pydantic deprecation warnings; Rust formatting and Clippy passed; 46 Rust tests passed serially in 4.90s; 13 frontend tests passed; frontend build, configured lint step, and typecheck passed; `Overall: PASS`. |
+
+The ordered migration state now includes explicit table GRANT and REVOKE
+statements. A table without RLS whose remaining explicit migration grants are
+only to `service_role` is emitted as a confirmed informational item instead of
+a client-facing RLS vulnerability. A later client-role grant returns the
+confirmed missing-RLS finding; a subsequent revoke restores informational
+status. DROP TABLE removes prior RLS, grant, and policy state, so recreation
+cannot inherit stale controls. Regression tests cover each ordered transition.
+
+Latest verifier result for this RLS update:
+
+| Command | Exit | Exact result |
+| --- | ---: | --- |
+| `.\scripts\verify-signal.ps1` | 0 | Python 3.12.10; Ruff passed; Rust extension built; 291 focused Python tests passed in 93.22s with 2 Pydantic deprecation warnings; Rust formatting and Clippy passed; 46 Rust tests passed serially in 4.58s; 13 frontend tests passed; frontend build, configured lint step, and typecheck passed; `Overall: PASS`. |
+
+Grouped log alerts now order evidence references by ascending physical line
+number when every match comes from one file. For correlations across multiple
+files, references use event time and stable tie-breakers. This keeps the first
+and last refs aligned with the raw file when input timestamps are out of order
+or the detector sorts events into a time window. A scanner regression with
+reverse-ordered timestamps confirms physical lines remain 1 through 3. Latest
+verifier result:
+
+| Command | Exit | Exact result |
+| --- | ---: | --- |
+| `.\scripts\verify-signal.ps1` | 0 | Python 3.12.10; Ruff passed; Rust extension built; 292 focused Python tests passed in 97.64s with 2 Pydantic deprecation warnings; Rust formatting and Clippy passed; 46 Rust tests passed serially in 4.93s; 13 frontend tests passed; frontend build, configured lint step, and typecheck passed; `Overall: PASS`. |
+
+Windows Event exports now retain subject actor, target account, and target
+privileged group as separate fields. Account creation alerts correlate a
+Windows 4720 event with a 4728/4732/4756 administrative group assignment for
+the same host and account within 24 hours. Both source lines are included in
+physical order; a group assignment alone does not imply that the account is
+new. The parser and detection regressions cover the positive correlation, an
+ordinary group, and a pre-existing account. Focused log analysis passed `36
+passed` in 7.86s (pytest also reported Windows temp cleanup warnings). The
+latest full signal verifier result is:
+
+| Command | Exit | Exact result |
+| --- | ---: | --- |
+| `.\scripts\verify-signal.ps1` | 0 | Python 3.12.10; Ruff passed; Rust extension built; 294 focused Python tests passed in 94.61s with 2 Pydantic deprecation warnings; Rust formatting and Clippy passed; 46 Rust tests passed serially in 3.81s; 13 frontend tests passed; frontend build, configured lint step, and typecheck passed; `Overall: PASS`. |
+
+The 382-file acceptance fixture now asserts the evidence verdicts as well as
+file count and coverage: the request flow is likely with source and sink,
+the service-role handler is confirmed with both endpoints, RLS is resolved by
+later migrations, and the Firebase client API key stays informational with
+explicit non-authentication reasoning. The newest full verifier after these
+assertions passed:
+
+| Command | Exit | Exact result |
+| --- | ---: | --- |
+| `.\scripts\verify-signal.ps1` | 0 | Python 3.12.10; Ruff passed; Rust extension built; 294 focused Python tests passed in 110.00s with 2 Pydantic deprecation warnings; Rust formatting and Clippy passed; 46 Rust tests passed serially in 5.56s; 13 frontend tests passed; frontend build, configured lint step, and typecheck passed; `Overall: PASS`. |
+
+A local performance probe recreated the checked-in Flutter/Supabase fixture
+shape without real project code or secrets, then scanned it and a tree of
+20,000 small Python files. Results (scan timing excludes tree/file creation):
+
+| Synthetic input | Files examined | Scan seconds |
+| --- | ---: | ---: |
+| Flutter/Supabase-shaped project | 382 | 4.366 |
+| Python source tree | 20,000 | 299.656 |
+
+The named golden `latest scan.json` was not available anywhere in this
+repository, so these timings do not represent the real 382-file benchmark.
+The scaling probe confirms the configured 20,000-file cap can be scanned, but
+its roughly five-minute runtime merits optimization before treating large
+project performance as satisfactory.
+
+Large-scan profiling identified repeated project discovery and repeated
+ancestor/junction checks as major costs. The built-in scanner now consumes the
+profile already created by `CodeScanService`; directory reparse points are
+checked at traversal boundaries, source entries are checked directly, and
+Windows reparse attributes are checked from the `lstat` result without a
+second junction query. Regression coverage verifies the built-in scan performs
+project discovery once and that file and directory symlinks are not followed.
+The focused code scan suite passed `15 passed` in 8.97s (pytest emitted
+Windows temporary-directory cleanup warnings).
+
+After the optimization, the same scan-only timing probes examined all files:
+
+| Synthetic input | Files examined | Before (seconds) | After (seconds) |
+| --- | ---: | ---: | ---: |
+| Flutter/Supabase-shaped project | 382 | 4.366 | 1.707 |
+| Python source tree | 20,000 | 299.656 | 73.193 |
+
+The 20,000-file scan is about 4.1x faster, though still takes over a minute on
+this Windows host. Latest full signal verifier after these code and regression
+test changes:
+
+| Command | Exit | Exact result |
+| --- | ---: | --- |
+| `.\scripts\verify-signal.ps1` | 0 | Python 3.12.10; Ruff passed; Rust extension built; 296 focused Python tests passed in 191.46s with 2 Pydantic deprecation warnings; Rust formatting and Clippy passed; 46 Rust tests passed serially in 5.23s; 13 frontend tests passed; frontend build, configured lint step, and typecheck passed; `Overall: PASS`. |
+
+## Signal quality verifier run (2026-11-09)
+
+Command: `scripts\verify-signal.ps1` (PowerShell, repository root).
+
+```text
+Repository: C:\src\Chinescan
+PASS 1. Select Python 3.12 and temporary cache paths
+PASS 2. Ruff on touched Python files
+PASS 2b. Build local Rust redaction extension
+PASS 3. Focused Python tests
+296 passed, 2 warnings in 225.22s (0:03:45)
+PASS 4a. Rust formatting check
+PASS 4b. Rust Clippy
+PASS 4c. Rust tests
+46 passed; 0 failed; 0 ignored
+PASS 5. Frontend unit tests for touched UI
+2 test files passed; 13 tests passed
+PASS 6. Frontend build
+PASS 7. Frontend lint (when configured)
+PASS 8. Frontend typecheck
+Overall: PASS
+```
+
+The two Python warnings were Pydantic `json_encoders` deprecation warnings. Vite also printed a jsdom “Not implemented: navigation to another Document” notice during frontend tests; the test run passed.

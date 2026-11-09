@@ -33,7 +33,7 @@ Phase 7 remains pending because the repository instructions prohibit a network l
 | `\.venv\Scripts\ruff.exe format --check .` | 0 | `92 files already formatted`. |
 | `\.venv\Scripts\mypy.exe --strict chinescan` | 0 | `Success: no issues found in 41 source files`. |
 | `$env:PYTHONPATH='C:\src\Chinescan\.venv\Lib\site-packages'; py -3.12 -m pytest --cov=chinescan --cov-report=term --cov-fail-under=80` | 0 | `69 passed`; total coverage `82.26%` (required 80%). |
-| `\.venv\Scripts\pip-audit.exe --skip-editable` | 0 | `No known vulnerabilities found`; editable ChineScan distribution skipped. |
+| `\.venv\Scripts\pip-audit.exe --skip-editable` | 0 | `No known vulnerabilities found`; editable ChiNeScan distribution skipped. |
 | `\.venv\Scripts\bandit.exe --severity-level medium -r chinescan` | 0 | No medium/high issues; four low-severity subprocess notices remain in the local all-severity scan. |
 | `py -3.12 -m uv lock --check` | 0 | `Resolved 57 packages in 4ms`. |
 | Parse `.gitlab-ci.yml` with PyYAML | 0 | `GitLab CI YAML parsed`; GitLab's remote semantic linter was not run. |

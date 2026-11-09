@@ -1,4 +1,4 @@
-title = "Chinescan Gitleaks configuration"
+title = "ChiNeScan Gitleaks configuration"
 
 [extend]
 useDefault = true

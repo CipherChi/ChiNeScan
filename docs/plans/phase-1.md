@@ -1,8 +1,8 @@
-# Phase 1 plan: ChineScan platform foundation
+# Phase 1 plan: ChiNeScan platform foundation
 
 ## Repository assessment
 
-Phase 1 creates a new, independent repository at `C:\src\Chinescan`. The parent checkout `C:\src` (`surface-security-toolkit`) and its untracked sibling projects are not part of ChineScan and will not be modified. Because ChineScan is nested in the parent working tree, the parent may report it as an untracked embedded repository. Do not stage ChineScan into the parent; adding it to the parent ignore list is optional and will not be done without a need. The new repository starts empty. The host default Python is 3.10.11, Docker CLI is 29.9.2, and pip is 23.0.1. `uv`, Semgrep, pytest, Ruff, mypy, and hadolint were not found on PATH. Python 3.12 or newer is required; Phase 1 implementation starts only after `py -0` and `py -3.12 --version` are recorded successfully in `docs/ENVIRONMENT.md`. Current probe finds Python 3.13, 3.11, and 3.10, but no 3.12; the start gate is unmet.
+Phase 1 creates a new, independent repository at `C:\src\Chinescan`. The parent checkout `C:\src` (`surface-security-toolkit`) and its untracked sibling projects are not part of ChiNeScan and will not be modified. Because ChiNeScan is nested in the parent working tree, the parent may report it as an untracked embedded repository. Do not stage ChiNeScan into the parent; adding it to the parent ignore list is optional and will not be done without a need. The new repository starts empty. The host default Python is 3.10.11, Docker CLI is 29.9.2, and pip is 23.0.1. `uv`, Semgrep, pytest, Ruff, mypy, and hadolint were not found on PATH. Python 3.12 or newer is required; Phase 1 implementation starts only after `py -0` and `py -3.12 --version` are recorded successfully in `docs/ENVIRONMENT.md`. Current probe finds Python 3.13, 3.11, and 3.10, but no 3.12; the start gate is unmet.
 
 ## Proposed Phase 1 file tree
 
@@ -102,7 +102,7 @@ Use Python 3.12+ as the project runtime (`requires-python = ">=3.12"`) and add `
 
 ## Risks and assumptions
 
-- **Nested repository:** ChineScan is an independent Git repository nested inside the parent `C:\src` worktree. Do not stage its contents into the parent repository.
+- **Nested repository:** ChiNeScan is an independent Git repository nested inside the parent `C:\src` worktree. Do not stage its contents into the parent repository.
 - **Python mismatch:** Host default Python 3.10 cannot validate or install the declared Python 3.12+ project as-is. The required launcher check blocks Phase 1 implementation until it succeeds.
 - **Resolver/network availability:** `uv` is absent and network access is package-index-only. Installing the tool and resolving exact dependency versions may fail; record exact output if so and never invent a lockfile.
 - **Docker availability:** CLI exists but daemon availability and a base-image digest have not been verified. Use an immutable digest in the Dockerfile and run the requested build when possible; otherwise record the exact reason.
@@ -112,7 +112,7 @@ Use Python 3.12+ as the project runtime (`requires-python = ">=3.12"`) and add `
 
 ## Applied owner decisions
 
-- Project root is the new independent repository at `C:\src\Chinescan`; parent checkout is not part of this project and must not receive staged ChineScan content.
+- Project root is the new independent repository at `C:\src\Chinescan`; parent checkout is not part of this project and must not receive staged ChiNeScan content.
 - Python 3.12+ is mandatory. Do not begin Phase 1 implementation until `py -0` and `py -3.12 --version` have succeeded and their output is captured in `docs/ENVIRONMENT.md`.
 - Use dependency constraints and resolve exact versions with `uv lock`; add `pip-audit` and `tomli-w` for the reasons in the dependency table.
 - Apache-2.0 license.

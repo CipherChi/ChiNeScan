@@ -39,7 +39,7 @@ The owner approved the plan with updated decisions: create a separate Git reposi
 - The launched working directory `C:\src\Chinescan` is empty; Git root is `C:\src`. The plan uses Git root and flags this for review.
 - The Python launcher has 3.13, 3.11, and 3.10, but no Python 3.12. The required `py -3.12 --version` check failed, so Phase 1 is blocked by the owner's explicit start condition.
 - Docker CLI availability does not establish that its daemon is reachable.
-- No application code, configuration, dependency, or scanner was added or run. Untracked sibling projects remain outside the ChineScan inventory.
+- No application code, configuration, dependency, or scanner was added or run. Untracked sibling projects remain outside the ChiNeScan inventory.
 
 ## Definition of Done
 
@@ -51,4 +51,4 @@ The owner approved the plan with updated decisions: create a separate Git reposi
 
 ## Recommended next step
 
-Install Python 3.12, then rerun `py -0` and `py -3.12 --version` and record the successful output in `docs/ENVIRONMENT.md`. Only then initialize the standalone Git repository inside `C:\src\Chinescan` and begin Phase 1; do not stage ChineScan into the parent checkout.
+Install Python 3.12, then rerun `py -0` and `py -3.12 --version` and record the successful output in `docs/ENVIRONMENT.md`. Only then initialize the standalone Git repository inside `C:\src\Chinescan` and begin Phase 1; do not stage ChiNeScan into the parent checkout.

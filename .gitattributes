@@ -1,2 +1,12 @@
 * text=auto eol=lf
 *.png binary
+
+# Generated, fixture, and documentation data should not skew GitHub Linguist.
+*.lock linguist-generated=true
+frontend/package-lock.json linguist-generated=true
+frontend/dist/** linguist-generated=true
+engine/target/** linguist-generated=true
+**/test-fixtures/** linguist-documentation=true
+**/fixtures/** linguist-documentation=true
+**/benchmark/** linguist-documentation=true
+**/benchmarks/** linguist-documentation=true

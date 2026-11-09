@@ -1,4 +1,4 @@
-# ChineScan repository conventions
+# ChiNeScan repository conventions
 
 - The project root is `C:\src\Chinescan`, a standalone Git repository nested in another checkout. Keep all changes and Git operations scoped to this repository.
 - Require Python 3.12 or newer. Use `py -3.12` for acceptance checks; do not rely on the default interpreter.
