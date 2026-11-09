@@ -7,8 +7,8 @@ from pydantic import Field, HttpUrl
 from chinescan.core.models.common import (
     Confidence,
     EvidenceKind,
-    FindingVerdict,
     FindingCategory,
+    FindingVerdict,
     SchemaRecord,
     Severity,
 )

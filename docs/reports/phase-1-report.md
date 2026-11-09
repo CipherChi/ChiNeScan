@@ -1693,7 +1693,7 @@ PASS 1. Select Python 3.12 and temporary cache paths
 PASS 2. Ruff on touched Python files
 PASS 2b. Build local Rust redaction extension
 PASS 3. Focused Python tests
-296 passed, 2 warnings in 197.76s (0:03:17)
+296 passed, 2 warnings in 133.57s (0:02:13)
 PASS 4a. Rust formatting check
 PASS 4b. Rust Clippy
 PASS 4c. Rust tests

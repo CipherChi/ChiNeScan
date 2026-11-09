@@ -439,7 +439,11 @@ def _parse_windows_event_xml(text: str, source_ref: str) -> ParseBatch:
                             "target_group": (
                                 data.get("targetgroupname")
                                 or data.get("groupname")
-                                or (data.get("targetusername") if event_id in {"4728", "4732", "4756"} else None)
+                                or (
+                                    data.get("targetusername")
+                                    if event_id in {"4728", "4732", "4756"}
+                                    else None
+                                )
                             ),
                             "source_ip": data.get("ipaddress") or data.get("sourceipaddress"),
                             "destination_ip": data.get("destinationipaddress"),
