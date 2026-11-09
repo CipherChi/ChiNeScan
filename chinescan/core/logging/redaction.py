@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib
+import logging
 import os
 import re
 from collections.abc import Mapping
@@ -16,6 +18,7 @@ _SENSITIVE_KEY = re.compile(
 _ASSIGNMENT_VALUE = re.compile(
     r'"(?:\\.|[^"\\\r\n])*"|\'(?:\\.|[^\'\\\r\n])*\'|<[^>]*>|[^\s,;}\]]+'
 )
+_ASSIGNMENT_DELIMITER = re.compile(r"[:=]")
 _ARGON = re.compile(r"\$argon2(?:id|i|d)\$[^\s\"';}]+", re.IGNORECASE)
 _BEARER = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*")
 _UUID = re.compile(r"(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
@@ -34,12 +37,72 @@ MAX_REDACT_TOTAL_CHARS = 8_000_000
 MAX_REDACT_DEPTH = 32
 MAX_REDACT_NODES = 100_000
 
+_ENGINE_REQUESTED = os.environ.get("CHINESCAN_ENGINE", "auto").strip().lower() or "auto"
+if _ENGINE_REQUESTED not in {"auto", "python", "rust"}:
+    raise ValueError("CHINESCAN_ENGINE must be one of: auto, python, rust")
+_rust_engine: Any
+if _ENGINE_REQUESTED == "python":
+    _rust_engine = None
+else:
+    try:
+        _rust_engine = importlib.import_module("chinescan_engine")
+    except ImportError:
+        _rust_engine = None
+if _ENGINE_REQUESTED == "rust" and _rust_engine is None:
+    raise RuntimeError("CHINESCAN_ENGINE=rust requires the chinescan_engine extension") from None
+_ENGINE_IN_USE = (
+    "rust"
+    if _ENGINE_REQUESTED == "rust" or (_ENGINE_REQUESTED == "auto" and _rust_engine is not None)
+    else "python"
+)
+_RUST_FAILURE_WARNED = False
+_LOGGING_RUST_FAILURE = False
+_LOGGER = logging.getLogger(__name__)
+
 
 class _RedactionLimitExceeded(Exception):
     pass
 
 
+class _RustRedactionFailure(Exception):
+    def __init__(self, native_error: Exception) -> None:
+        super().__init__("Rust redaction failed")
+        self.native_error = native_error
+
+
+def engine_in_use() -> str:
+    """Return the redaction implementation selected when this module loaded."""
+    return _ENGINE_IN_USE
+
+
 def _redact_string(value: str) -> str:
+    global _RUST_FAILURE_WARNED, _LOGGING_RUST_FAILURE
+    if _ENGINE_IN_USE != "rust" or _LOGGING_RUST_FAILURE:
+        return _redact_string_python(value)
+    try:
+        result: str = _rust_engine.redact_text(value)
+        return result
+    except Exception as error:
+        if _ENGINE_REQUESTED == "rust":
+            raise _RustRedactionFailure(error) from error
+        if not _RUST_FAILURE_WARNED:
+            _RUST_FAILURE_WARNED = True
+            _LOGGING_RUST_FAILURE = True
+            try:
+                _LOGGER.warning("Rust redaction failed; using the Python redactor")
+            finally:
+                _LOGGING_RUST_FAILURE = False
+        return _redact_string_python(value)
+
+
+def _redact_text_python(value: str) -> str:
+    """Run the Python string path directly, for parity checks and fallback."""
+    if len(value) > MAX_REDACT_STRING_CHARS:
+        return REDACTION_LIMIT_MARKER
+    return _redact_string_python(value)
+
+
+def _redact_string_python(value: str) -> str:
     try:
         value = _redact_assignments(value)
         value = _ARGON.sub(REDACTED, value)
@@ -92,16 +155,10 @@ def _redact_assignments(value: str) -> str:
     search_from = 0
     value_length = len(value)
     while search_from < value_length:
-        colon = value.find(":", search_from)
-        equals = value.find("=", search_from)
-        if colon < 0:
-            delimiter = equals
-        elif equals < 0:
-            delimiter = colon
-        else:
-            delimiter = min(colon, equals)
-        if delimiter < 0:
+        match = _ASSIGNMENT_DELIMITER.search(value, search_from)
+        if match is None:
             break
+        delimiter = match.start()
 
         key_end = delimiter
         while key_end > search_from and value[key_end - 1].isspace():
@@ -147,6 +204,8 @@ def redact(value: Any) -> Any:
         return _redact(value, budget, 0)
     except _RedactionLimitExceeded:
         return REDACTION_LIMIT_MARKER
+    except _RustRedactionFailure as failure:
+        raise failure.native_error from None
     except Exception:
         return REDACTED
 
