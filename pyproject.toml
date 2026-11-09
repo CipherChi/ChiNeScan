@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "chinescan"
 version = "0.1.0"
-description = "A modular, authorization-first security investigation platform."
+description = "ChiNeScan is a local-first security assessment workstation."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
@@ -40,6 +40,7 @@ packages = ["chinescan"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "chinescan/data/top-packages.txt" = "chinescan/data/top-packages.txt"
+"chinescan/data/advisories.json" = "chinescan/data/advisories.json"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

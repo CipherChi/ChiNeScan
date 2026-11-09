@@ -5,6 +5,7 @@ $script:failureMessage = $null
 $originalLocation = Get-Location
 $originalTemp = $env:TEMP
 $originalUvCache = $env:UV_CACHE_DIR
+$originalPyo3Python = $env:PYO3_PYTHON
 $venvPython = Join-Path $repoRoot ".venv\Scripts\python.exe"
 Set-Location $repoRoot
 
@@ -45,6 +46,7 @@ try {
         }
         $env:TEMP = "C:\t"
         $env:UV_CACHE_DIR = "C:\t\uv-cache"
+    $env:PYO3_PYTHON = $venvPython
         if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
             throw "Required virtual environment interpreter is missing: $venvPython"
         }
@@ -61,14 +63,20 @@ try {
             "chinescan/core/capabilities.py",
             "chinescan/core/logging/redaction.py",
             "chinescan/malware_analysis/analyzer.py",
+            "chinescan/malware_analysis/managed.py",
             "chinescan/core/models/investigation.py",
             "chinescan/core/orchestration/code_rules.py",
             "chinescan/core/orchestration/code_scan.py",
             "chinescan/core/reporting.py",
+            "chinescan/log_analysis/detections.py",
+            "chinescan/log_analysis/ioc_matching.py",
+            "chinescan/log_analysis/service.py",
             "chinescan/web/app.py",
             "tests/unit/test_code_rules_behavior.py",
             "tests/unit/test_code_scan.py",
             "tests/unit/test_malware_analysis.py",
+            "tests/unit/test_managed_malware.py",
+            "tests/unit/test_log_analysis.py",
             "tests/unit/test_reporting.py",
             "tests/unit/test_redaction.py",
             "tests/unit/test_redaction_parity.py",
@@ -88,8 +96,11 @@ try {
             "tests/unit/test_redaction.py",
             "tests/unit/test_redaction_parity.py",
             "tests/unit/test_code_rules_behavior.py",
+            "tests/unit/test_code_actionability.py",
             "tests/unit/test_code_scan.py",
             "tests/unit/test_malware_analysis.py",
+            "tests/unit/test_managed_malware.py",
+            "tests/unit/test_log_analysis.py",
             "tests/unit/test_reporting.py",
             "tests/unit/test_web_api.py"
         )
@@ -116,7 +127,7 @@ try {
 
     Invoke-Step "5. Frontend unit tests for touched UI" {
         Push-Location (Join-Path $repoRoot "frontend")
-        try { Invoke-Native "npm" @("test", "--", "--run", "src/ui/App.test.tsx") }
+        try { Invoke-Native "npm" @("test", "--", "--run", "src/ui/App.test.tsx", "src/ui/MalwareWorkspace.test.tsx") }
         finally { Pop-Location }
     }
     Invoke-Step "6. Frontend build" {
@@ -145,6 +156,8 @@ finally {
     else { $env:TEMP = $originalTemp }
     if ($null -eq $originalUvCache) { Remove-Item Env:UV_CACHE_DIR -ErrorAction SilentlyContinue }
     else { $env:UV_CACHE_DIR = $originalUvCache }
+    if ($null -eq $originalPyo3Python) { Remove-Item Env:PYO3_PYTHON -ErrorAction SilentlyContinue }
+    else { $env:PYO3_PYTHON = $originalPyo3Python }
     Set-Location $originalLocation
     Write-Host "`n========== SIGNAL QUALITY VERIFICATION SUMMARY =========="
     Write-Host "Repository: $repoRoot"
