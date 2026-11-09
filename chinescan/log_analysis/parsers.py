@@ -6,6 +6,7 @@ import csv
 import io
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
@@ -209,7 +210,7 @@ def _parse_csv(text: str, source_ref: str) -> ParseBatch:
     return batch
 
 
-def _is_windows_event_csv(fieldnames: list[str | None]) -> bool:
+def _is_windows_event_csv(fieldnames: Sequence[str | None]) -> bool:
     normalized = {re.sub(r"[^a-z0-9]", "", (name or "").casefold()) for name in fieldnames}
     timestamp_fields = {"timecreated", "systemtime", "timestamp", "dateandtime", "datetime", "time"}
     return "eventid" in normalized and bool(normalized & timestamp_fields)

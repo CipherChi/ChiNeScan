@@ -30,6 +30,7 @@ dev = [
   "ruff>=0.11,<1",
   "mypy>=1.15,<2",
   "pip-audit>=2.8,<3",
+  "types-PyYAML>=6.0.12,<7",
 ]
 
 [project.scripts]

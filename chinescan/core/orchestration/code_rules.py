@@ -1198,7 +1198,9 @@ def _android_xml_hits(filename: str, text: str) -> list[tuple[str, int]]:
                 and isinstance(hosts, list)
                 and (not hosts or any(host in {"", "*"} or host.startswith("*.") for host in hosts))
             ):
-                result.append(("ANDROID-BROAD-INTENT-FILTER", int(intent_filter["line"])))
+                line = intent_filter["line"]
+                if isinstance(line, int):
+                    result.append(("ANDROID-BROAD-INTENT-FILTER", line))
         elif (
             element in {"activity", "activity-alias", "service", "receiver", "provider"}
             and components
@@ -2139,7 +2141,7 @@ def analyze_source(root: Path, path: Path, text: str, *, is_test: bool) -> list[
     for rule in RULES:
         if rule.rule_id == "EMPTY-CATCH":
             matches = _empty_catch_matches(text, path.suffix)
-            hits = []
+            hits: list[tuple[int, str]] = []
             for match in matches:
                 first = _line_number(text, match.start())
                 last = _line_number(text, max(match.start(), match.end() - 1))

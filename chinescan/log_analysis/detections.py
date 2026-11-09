@@ -13,7 +13,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 from chinescan.core.models.common import Confidence, FindingVerdict, Severity
 from chinescan.core.models.investigation import Alert, Event
@@ -252,9 +252,9 @@ def run_builtin_detections(events: list[Event]) -> list[Alert]:
         if kind in {"4720", "user_created", "account_created"} and account:
             account_creations[(host, account)].append(event)
         if kind in {"4728", "4732", "4756"}:
-            group = (event.target_group or "").casefold()
+            group_name = (event.target_group or "").casefold()
             if account and any(
-                marker in group
+                marker in group_name
                 for marker in ("admin", "privileged", "enterprise admins", "schema admins")
             ):
                 privileged_group_additions[(host, account)].append(event)
@@ -498,7 +498,7 @@ def run_builtin_detections(events: list[Event]) -> list[Alert]:
                 )
                 break
 
-    account_evidence = list(administrative_changes)
+    account_evidence: list[Event | tuple[Event, Event]] = list(administrative_changes)
     for key, creations in account_creations.items():
         for addition in privileged_group_additions.get(key, []):
             eligible = [
@@ -516,11 +516,13 @@ def run_builtin_detections(events: list[Event]) -> list[Alert]:
         matched_events = (
             list(creation_or_pair) if isinstance(creation_or_pair, tuple) else [creation_or_pair]
         )
-        actors = sorted({event.actor for event in matched_events if event.actor})
+        actors = sorted({event.actor for event in matched_events if event.actor is not None})
         accounts = sorted(
-            {event.target or event.user for event in matched_events if event.target or event.user}
+            {value for event in matched_events if (value := event.target or event.user) is not None}
         )
-        groups = sorted({event.target_group for event in matched_events if event.target_group})
+        groups = sorted(
+            {event.target_group for event in matched_events if event.target_group is not None}
+        )
         detail = "; ".join(
             value
             for value in (
@@ -570,11 +572,11 @@ def run_builtin_detections(events: list[Event]) -> list[Alert]:
         if separator and raw_line.isdecimal():
             records_by_file[source_ref].append((int(raw_line), event))
     for source_ref, records in records_by_file.items():
-        ordered = sorted(records, key=lambda item: item[0])
+        ordered_records = sorted(records, key=lambda item: item[0])
         anomalous_events: list[Event] = []
         anomalous_pairs = 0
         for (previous_line, previous), (current_line, current) in zip(
-            ordered, ordered[1:], strict=False
+            ordered_records, ordered_records[1:], strict=False
         ):
             if (
                 current_line > previous_line
