@@ -33,6 +33,7 @@ export type Finding = {
   severity: Severity;
   category: string;
   confidence: string;
+  verdict?: 'confirmed' | 'likely' | 'lead';
   scanner: string;
   rule_id: string;
   contributing_rule_ids?: string[];
@@ -47,12 +48,25 @@ export type Finding = {
   tags?: string[];
   evidence?: EvidenceKind | null;
   explanation?: FindingExplanation | null;
+  entry_point?: { file: string; line: number; excerpt?: string | null } | null;
+  source_location?: { file: string; line: number; excerpt?: string | null } | null;
+  sink_location?: { file: string; line: number; excerpt?: string | null } | null;
+  controls_considered?: string[];
+  exploitability_conditions?: string[];
+  project_impact?: string | null;
+  remediation_before?: string | null;
+  remediation_after?: string | null;
+  verification_step?: string | null;
+  why_not_higher?: string | null;
+  what_would_raise_it?: string | null;
 };
 export type Page<T> = { items: T[]; total: number; total_stored?: number; limit: number; offset: number };
 export type Overview = {
   scan_count: number;
   finding_count: number;
   findings_by_severity: Record<Severity, number>;
+    findings_by_verdict: Record<'confirmed' | 'likely' | 'lead', number>;
+    top_fix_first: Array<{ title: string; severity: Severity; location: string }>;
   recent_scans: Scan[];
 };
 export type CaseRecord = { record_type: string; record_id: string; source: string; title: string; severity: Severity | null; sample_id?: string | null; completeness?: string | null };
@@ -89,5 +103,5 @@ export type LogAlert = { alert_id: string; title: string; description: string; s
 export type LogTimeline = { entry_id: string; occurred_at: string; description: string; event_id: string | null; scan_id: string | null };
 export type MalwareSample = { registry_id: string | null; display_name: string; state: 'registered' | 'managed' | 'unavailable'; source_available: boolean; source_size_bytes: number | null; sample_id: string | null; sha256: string | null; managed_size_bytes: number | null; availability: string | null };
 export type MalwareJob = { job_id: string; sample_id: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'interrupted'; created_at: string; started_at: string | null; finished_at: string | null; analysis_id: string | null; warning: string | null; analysis_status: 'complete' | 'partial' | null };
-export type MalwareAnalysis = { analysis_id: string; sample_id: string; profile: string; status: 'complete' | 'partial'; created_at: string; size_bytes: number; hashes: Record<string, string>; file_type: string; architecture: string | null; printable_string_count: number; indicator_count: number; indicators: Array<{ kind: string; value: string }>; warnings: string[]; engines: Record<string, Record<string, string | boolean>>; evidence_note: string };
+export type MalwareAnalysis = { analysis_id: string; sample_id: string; profile: string; status: 'complete' | 'partial'; created_at: string; size_bytes: number; hashes: Record<string, string>; file_type: string; architecture: string | null; printable_string_count: number; indicator_count: number; indicators: Array<{ kind: string; value: string }>; warnings: string[]; engines: Record<string, Record<string, string | boolean>>; entropy_bits_per_byte: number | null; section_entropy: Array<{ section: string; entropy_bits_per_byte: number }>; timestamp_utc: string | null; imports: string[]; suspicious_api_combinations: string[]; verdict: 'clean-no-indicators' | 'suspicious' | 'likely-malicious'; verdict_evidence: string[]; verdict_caveat: string; evidence_note: string };
 export type MalwareCapability = { execution_available: boolean; diagnostic: string; historical_views_available: boolean };

@@ -9,7 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from chinescan.cli.app import app
-from chinescan.core.models.common import Confidence, Severity
+from chinescan.core.models.common import Confidence, FindingVerdict, Severity
 from chinescan.core.models.finding import Finding, FindingExplanation
 from chinescan.core.models.investigation import (
     CodeAssessmentSummary,
@@ -40,6 +40,7 @@ def sample_scan() -> tuple[Scan, list[Finding]]:
         fingerprint="abc123",
         rule_id="TEST-RULE",
         location="src/app.py:7",
+        verdict=FindingVerdict.LIKELY,
     )
     return scan, [finding]
 
@@ -97,10 +98,45 @@ def test_code_preview_counts_grouped_occurrences() -> None:
         update={"finding_id": "second", "rule_id": "SAME", "location": "src/app.py:9"}
     )
     payload = json.loads(render_report(scan, [first, second], "json"))
-    groups = payload["likely_real_issues"] + payload["manual_review"]
+    groups = payload["likely_real_issues"] + payload["leads"] + payload["manual_review"]
     same_rule_groups = [item for item in groups if item["rule_id"] == "SAME"]
     assert len(same_rule_groups) == 1
     assert same_rule_groups[0]["occurrence_count"] == 2
+
+
+def test_code_report_separates_leads_and_excludes_them_from_issue_counts() -> None:
+    scan, findings = sample_scan()
+    scan = scan.model_copy(update={"code_assessment": CodeAssessmentSummary()})
+    lead = findings[0].model_copy(update={"verdict": FindingVerdict.LEAD})
+    payload = json.loads(render_report(scan, [lead], "json"))
+    assert payload["summary"]["issue_count"] == 0
+    assert payload["summary"]["lead_count"] == 1
+    assert payload["summary"]["counts_by_verdict"] == {
+        "confirmed": 0,
+        "likely": 0,
+        "lead": 1,
+    }
+    assert payload["likely_real_issues"] == []
+    assert len(payload["leads"]) == 1
+    assert payload["fix_first"] == []
+
+
+def test_generic_language_coverage_gap_is_near_the_report_top() -> None:
+    scan, findings = sample_scan()
+    scan = scan.model_copy(
+        update={
+            "code_assessment": CodeAssessmentSummary(),
+            "coverage": CoverageReport(
+                language_analyzer_status={
+                    "Dart": "Dart checks; generic first-pass only for other risks"
+                }
+            ),
+        }
+    )
+    report = render_report(scan, findings, "detail")
+    assert "## Coverage gaps at a glance" in report
+    assert "Dart: Dart checks; generic first-pass only for other risks" in report
+    assert report.index("## Coverage gaps at a glance") < report.index("## Fix first")
 
 
 def test_jsonl_iterator_retrieves_more_than_legacy_cap_exactly_once(tmp_path) -> None:
@@ -274,7 +310,7 @@ def test_detail_report_includes_finding_explanation_score_ledger_and_coverage() 
     risk = VibeCodingRisk(
         score=28,
         confidence=Confidence.POSSIBLE,
-        algorithm_version="legacy-pattern-v1",
+        algorithm_version="signal-score-v2",
         contributions=[
             ScoreContribution(
                 signal_id="tutorial_default",
@@ -299,7 +335,7 @@ def test_detail_report_includes_finding_explanation_score_ledger_and_coverage() 
     assert "ChiNeScan code assessment report" in detail
     assert "Why it matched" in detail
     assert "High is potential impact only" in detail
-    assert "legacy-pattern-v1" in detail
+    assert "signal-score-v2" in detail
     assert "28" in detail
     assert "Coverage gaps" in detail
 

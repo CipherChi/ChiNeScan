@@ -447,7 +447,7 @@ class SQLiteRepository(Repository):
         self, record_type: str, *, group_by: str | None = None
     ) -> int | dict[str, int]:
         """Count records or group by an explicitly supported summary field."""
-        allowed_groups = {"finding": {"severity"}, "scan": set()}
+        allowed_groups = {"finding": {"severity", "verdict"}, "scan": set()}
         if group_by is None:
             with self.engine.connect() as connection:
                 return int(

@@ -25,6 +25,8 @@ describe('dashboard authentication and overview', () => {
         scan_count: 3,
         finding_count: 7,
         findings_by_severity: { critical: 1, high: 2, medium: 2, low: 1, info: 1 },
+        findings_by_verdict: { confirmed: 2, likely: 1, lead: 4 },
+        top_fix_first: [{ title: 'Confirmed auth gap', severity: 'high', location: 'src/api.ts:20' }],
         recent_scans: [],
       });
       if (path.startsWith('/api/findings?')) return json({ items: [], total: 0, limit: 20, offset: 0 });
@@ -45,6 +47,8 @@ describe('dashboard authentication and overview', () => {
     expect(screen.queryByText(/GNET|GNetScan/i)).not.toBeInTheDocument();
     expect(await screen.findByText('3', { selector: 'strong' })).toBeInTheDocument();
     expect(await screen.findByText('7', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Findings by verdict' })).toBeInTheDocument();
+    expect(screen.getByText('Confirmed auth gap')).toBeInTheDocument();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/overview', expect.anything()));
   });
 
@@ -54,7 +58,7 @@ describe('dashboard authentication and overview', () => {
       const path = String(input);
       if (path === '/api/auth/session') return json({ authenticated: true, email_masked: 'a***@example.test', signup_available: false });
       if (path === '/api/auth/csrf') return json({ csrf_token: 'csrf-value' });
-      if (path === '/api/overview') return json({ scan_count: 0, finding_count: 0, findings_by_severity: { critical: 0, high: 0, medium: 0, low: 0, info: 0 }, recent_scans: [] });
+      if (path === '/api/overview') return json({ scan_count: 0, finding_count: 0, findings_by_severity: { critical: 0, high: 0, medium: 0, low: 0, info: 0 }, findings_by_verdict: { confirmed: 0, likely: 0, lead: 0 }, top_fix_first: [], recent_scans: [] });
       if (path.startsWith('/api/findings?')) return json({ items: [], total: 0, limit: 20, offset: 0 });
       throw new Error(`Unexpected API call: ${path}`);
     });
@@ -171,7 +175,7 @@ describe('dashboard authentication and overview', () => {
     await screen.findByRole('heading', { name: 'Scan details' });
     expect(screen.getByText(`${scan.scan_id}`)).toBeInTheDocument();
     expect(screen.getByText('Code pattern risk: 36/100', { exact: false })).toBeInTheDocument();
-    expect(screen.getByText(/legacy-pattern-v1/)).toBeInTheDocument();
+    expect(screen.getByText(/signal-score-v2/)).toBeInTheDocument();
     expect(screen.getByText(/2 observed → 2 counted × 18; contribution 36/)).toBeInTheDocument();
     expect(screen.getByText(/generated: 3 excluded/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: findings[0].finding_id.slice(0, 12) + ' →' }));
@@ -179,6 +183,12 @@ describe('dashboard authentication and overview', () => {
     expect(screen.getByText(/potential impact if the preconditions hold/)).toBeInTheDocument();
     expect(screen.getByText(/data provenance is unresolved/)).toBeInTheDocument();
     expect(screen.getByText('signal-quality-v2')).toBeInTheDocument();
+    expect(screen.getByText('src/query.py:4')).toBeInTheDocument();
+    expect(screen.getAllByText('src/query.py:8').length).toBeGreaterThan(0);
+    expect(screen.getByText('Attacker-controlled query input reaches this call.')).toBeInTheDocument();
+    expect(screen.getByText('A reachable injection could expose or alter records handled by this query.')).toBeInTheDocument();
+    expect(screen.getByText(/Submit a quote-bearing value and verify it is treated as data\./)).toBeInTheDocument();
+    expect(screen.getByText("db.query('SELECT * FROM items WHERE id = ?', [value])")).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent('redaction-canary');
     fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Main navigation' })).getByRole('button', { name: /findings/i }));
@@ -194,7 +204,7 @@ describe('dashboard authentication and overview', () => {
       if (path === '/api/auth/csrf') return json({ csrf_token: 'csrf-value' });
       if (path === '/api/overview') return json({ scan_count: 0, finding_count: 1, findings_by_severity: { critical: 0, high: 1, medium: 0, low: 0, info: 0 }, recent_scans: [] });
       if (path.startsWith('/api/findings?')) return json({ items: [{ finding_id: 'finding-xss', title, severity: 'high', category: 'code', confidence: 'high', scanner: 'fixture', rule_id: 'XSS' }], total: 1, limit: 20, offset: 0 });
-      if (path === '/api/findings/finding-xss') return json({ finding_id: 'finding-xss', title, severity: 'high', category: 'code', confidence: 'high', scanner: 'fixture', rule_id: 'XSS' });
+      if (path === '/api/findings/finding-xss') return json({ finding_id: 'finding-xss', title, severity: 'high', category: 'code', confidence: 'high', verdict: 'confirmed', scanner: 'fixture', rule_id: 'XSS', source_location: { file: 'handler.ts', line: 4, excerpt: 'const body = await req.json()' }, sink_location: { file: 'handler.ts', line: 8, excerpt: 'await admin.from("items").insert(body)' }, controls_considered: ['No getUser check found in handler'], exploitability_conditions: ['Unauthenticated requests reach this handler'], project_impact: 'Anonymous users can insert project records.', remediation_before: 'await admin.from("items").insert(body)', remediation_after: 'const user = await requireUser(req); await userClient.from("items").insert(validated)', verification_step: 'Send an unauthenticated POST and expect 401.' });
       throw new Error(`Unexpected API call: ${path}`);
     });
     render(<App/>);
@@ -206,6 +216,11 @@ describe('dashboard authentication and overview', () => {
     fireEvent.click(finding);
     expect(await screen.findByRole('heading', { name: 'Finding details' })).toBeInTheDocument();
     expect(screen.getAllByText(title).length).toBeGreaterThan(1);
+    expect(screen.getByText('confirmed verdict · high confidence is a heuristic category, not a probability or proof of exploitability.')).toBeInTheDocument();
+    expect(screen.getByText('handler.ts:4')).toBeInTheDocument();
+    expect(screen.getAllByText('handler.ts:8').length).toBeGreaterThan(0);
+    expect(screen.getByText('Anonymous users can insert project records.')).toBeInTheDocument();
+    expect(screen.getByText(/Send an unauthenticated POST and expect 401\./)).toBeInTheDocument();
   });
 
   it('renders an honest empty state when persisted scans are absent', async () => {
