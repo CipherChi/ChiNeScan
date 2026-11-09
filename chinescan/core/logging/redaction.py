@@ -49,9 +49,7 @@ else:
     except ImportError:
         _rust_engine = None
 if _ENGINE_REQUESTED == "rust" and _rust_engine is None:
-    raise RuntimeError(
-        "CHINESCAN_ENGINE=rust requires the chinescan_engine extension"
-    ) from None
+    raise RuntimeError("CHINESCAN_ENGINE=rust requires the chinescan_engine extension") from None
 _ENGINE_IN_USE = (
     "rust"
     if _ENGINE_REQUESTED == "rust" or (_ENGINE_REQUESTED == "auto" and _rust_engine is not None)
@@ -206,7 +204,7 @@ def redact(value: Any) -> Any:
     except _RedactionLimitExceeded:
         return REDACTION_LIMIT_MARKER
     except _RustRedactionFailure as failure:
-        raise failure.native_error
+        raise failure.native_error from None
     except Exception:
         return REDACTED
 
