@@ -5,6 +5,7 @@ use std::sync::{LazyLock, Mutex};
 use crate::limits::fail_closed_for_oversize;
 
 pub const REDACTED: &str = "[REDACTED]";
+const MAX_SENSITIVE_KEY_CHARS: usize = 256;
 
 static ARGON: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?i)\$argon2(?:id|i|d)\$[^\s\x{1c}-\x{1f}"';}]+"#).expect("constant Argon regex")
@@ -49,11 +50,27 @@ fn is_sensitive_key(key: &str) -> bool {
     .any(|needle| lowered.contains(needle))
 }
 
-fn previous_char_start(value: &str, index: usize) -> usize {
-    value[..index]
+fn is_sensitive_key_bounded(key: &str) -> bool {
+    if key.eq_ignore_ascii_case("tokenResponse") {
+        return false;
+    }
+    let start = key
         .char_indices()
-        .next_back()
-        .map_or(0, |(start, _)| start)
+        .rev()
+        .nth(MAX_SENSITIVE_KEY_CHARS - 1)
+        .map_or(0, |(byte_index, _)| byte_index);
+    is_sensitive_key(&key[start..])
+}
+
+fn previous_char_start(value: &str, index: usize) -> usize {
+    if index == 0 {
+        return 0;
+    }
+    let mut start = index - 1;
+    while !value.is_char_boundary(start) {
+        start -= 1;
+    }
+    start
 }
 
 fn character_matches(pattern: &Regex, ch: char) -> bool {
@@ -62,11 +79,19 @@ fn character_matches(pattern: &Regex, ch: char) -> bool {
 }
 
 fn key_char(ch: char) -> bool {
-    character_matches(&PYTHON_ALNUM, ch) || matches!(ch, '_' | '.' | '-')
+    if ch.is_ascii() {
+        ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | '-')
+    } else {
+        character_matches(&PYTHON_ALNUM, ch)
+    }
 }
 
 fn valid_key_start(ch: char) -> bool {
-    character_matches(&PYTHON_ALPHA, ch) || ch == '_'
+    if ch.is_ascii() {
+        ch.is_ascii_alphabetic() || ch == '_'
+    } else {
+        character_matches(&PYTHON_ALPHA, ch)
+    }
 }
 
 fn is_python_space(ch: char) -> bool {
@@ -159,8 +184,54 @@ fn redact_assignments(value: &str) -> String {
         }
         let key = &value[key_start..key_end];
         let valid = key.chars().next().is_some_and(valid_key_start);
+        if value.as_bytes()[delimiter] == b':' {
+            let mut path_value_start = delimiter + 1;
+            while path_value_start < value.len() {
+                let ch = value[path_value_start..]
+                    .chars()
+                    .next()
+                    .expect("valid UTF-8 boundary");
+                if is_python_space(ch) {
+                    path_value_start += ch.len_utf8();
+                } else {
+                    break;
+                }
+            }
+            let could_be_digit_value = value[path_value_start..]
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_digit() || matches!(ch, '\'' | '"'));
+            if could_be_digit_value {
+                if let Some((end, _)) = assignment_value_end(value, path_value_start) {
+                    if value[path_value_start..end]
+                        .chars()
+                        .all(|ch| ch.is_ascii_digit())
+                    {
+                        let preceding = value[..delimiter]
+                            .split(|ch: char| {
+                                ch.is_whitespace() || matches!(ch, '\u{001c}'..='\u{001f}')
+                            })
+                            .next_back()
+                            .unwrap_or("");
+                        let lowered = preceding.to_ascii_lowercase();
+                        let path_like = preceding.contains('/')
+                            || preceding.contains('\\')
+                            || [
+                                ".py", ".js", ".ts", ".tsx", ".jsx", ".rs", ".go", ".java", ".cs",
+                                ".rb", ".php", ".sh", ".ps1",
+                            ]
+                            .iter()
+                            .any(|extension| lowered.ends_with(extension));
+                        if path_like {
+                            search_from = delimiter + 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
 
-        if valid && is_sensitive_key(key) {
+        if valid && is_sensitive_key_bounded(key) {
             let mut value_start = delimiter + 1;
             while value_start < value.len() {
                 let ch = value[value_start..]
@@ -485,16 +556,12 @@ fn redact_token_runs(value: &str) -> String {
         if !left_boundary || !right_boundary {
             continue;
         }
-        let classes = [
-            candidate.chars().any(|ch| ch.is_ascii_lowercase()),
-            candidate.chars().any(|ch| ch.is_ascii_uppercase()),
-            candidate.chars().any(|ch| ch.is_ascii_digit()),
-            candidate.chars().any(|ch| matches!(ch, '_' | '-')),
-        ]
-        .into_iter()
-        .filter(|present| *present)
-        .count();
-        if is_uuid(candidate) || is_hex(candidate) || classes < 2 {
+        let has_letters = candidate.chars().any(|ch| ch.is_ascii_alphabetic());
+        let high_entropy_shape = has_letters
+            && (candidate.chars().any(|ch| ch.is_ascii_digit())
+                || (candidate.chars().any(|ch| ch.is_ascii_lowercase())
+                    && candidate.chars().any(|ch| ch.is_ascii_uppercase())));
+        if is_uuid(candidate) || is_hex(candidate) || !high_entropy_shape {
             continue;
         }
         output.push_str(&value[cursor..start]);
@@ -552,11 +619,25 @@ mod tests {
     }
 
     #[test]
-    fn token_with_underscore_and_letters_redacted() {
+    fn lowercase_identifier_with_underscore_is_preserved() {
         assert_eq!(
             redact_text(&format!("{}{}", "a".repeat(31), "_")),
-            "[REDACTED]"
+            format!("{}{}", "a".repeat(31), "_")
         );
+    }
+
+    #[test]
+    fn code_symbol_and_project_location_are_preserved() {
+        assert_eq!(
+            redact_text("def get_api_key_status(self): scripts/secret_rotation_audit.py:101"),
+            "def get_api_key_status(self): scripts/secret_rotation_audit.py:101"
+        );
+    }
+
+    #[test]
+    fn source_path_and_line_number_are_preserved() {
+        let input = "scripts/secret_rotation_audit.py:101";
+        assert_eq!(redact_text(input), input);
     }
 
     #[test]
@@ -647,6 +728,13 @@ mod tests {
     fn long_sensitive_key_assignment_redacted() {
         let key = format!("{}_secret=synthetic-canary", "x".repeat(1_000));
         assert!(redact_text(&key).ends_with("[REDACTED]"));
+    }
+
+    #[test]
+    fn long_key_preserves_key_and_redacts_only_value() {
+        let input = format!("{}_secret=abc", "x".repeat(300));
+        let expected = format!("{}_secret=[REDACTED]", "x".repeat(300));
+        assert_eq!(redact_text(&input), expected);
     }
 
     #[test]

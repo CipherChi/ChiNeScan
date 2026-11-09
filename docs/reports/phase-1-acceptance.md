@@ -26,7 +26,7 @@ The requested `docs/BRIEF.md` was not present, and no file with that name was fo
 | `\.venv\Scripts\pip-audit.exe --skip-editable` | 0 | `No known vulnerabilities found`; editable `chinescan` distribution skipped |
 | `rg -n -A 5 '^name = "pytest"' uv.lock` | 0 | Locked pytest version is `9.1.1`; pip-audit reported no known vulnerability in the checked environment |
 | `docker compose -f docker-compose.yml config --quiet` | 0 | No output; configuration valid |
-| `docker build -f docker/Dockerfile -t chinescan:0.1.0 .` | 1 | Wheel built, but runtime install failed: `ERROR: chinescan.whl is not a valid wheel filename.` |
+| `docker build -f docker/Dockerfile -t chinescan:0.1.0 .` | 1 | Wheel built, but runtime install failed: `ERROR: ChiNeScan.whl is not a valid wheel filename.` |
 
 The config commands used the temporary directory `C:\Users\CIPHER~1\AppData\Local\Temp\chinescan-phase1-acceptance`. The malformed TOML validation did produce a clear parse error, but returned exit 2 rather than the expected 3.
 

@@ -12,7 +12,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import nullcontext
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -40,10 +40,46 @@ SOURCE_SUFFIXES = {
     ".cjs",
     ".ts",
     ".tsx",
+    ".dart",
+    ".kt",
     ".java",
-    ".go",
-    ".rb",
+    ".swift",
+    ".rs",
+    ".c",
+    ".cpp",
+    ".sql",
+    ".yaml",
+    ".yml",
+    ".xml",
 }
+_COVERAGE_LANGUAGE = {
+    ".js": "JavaScript",
+    ".jsx": "JavaScript",
+    ".mjs": "JavaScript",
+    ".cjs": "JavaScript",
+    ".tsx": "TypeScript",
+    ".dart": "Dart",
+    ".kt": "Kotlin",
+    ".java": "Java",
+    ".swift": "Swift",
+    ".rs": "Rust",
+    ".c": "C",
+    ".cpp": "C++",
+    ".sql": "SQL",
+    ".ts": "TypeScript",
+    ".py": "Python",
+    ".yaml": "YAML config",
+    ".yml": "YAML config",
+    ".xml": "XML config",
+}
+_NOT_ASSESSED = [
+    "Language-specific analysis beyond the rule coverage listed per language",
+    "Supabase RLS analysis beyond the implemented migration and policy rules",
+    "Complete dependency vulnerability coverage beyond the bundled curated offline subset",
+    "Cross-file data flow",
+    "Git history",
+    "Runtime response headers",
+]
 IGNORED_DIRS = {
     ".git",
     ".venv",
@@ -192,7 +228,7 @@ def detect_project(target: Path, bounds: ScanBounds | None = None) -> ProjectPro
             dirnames.clear()
         for name in dirnames[:]:
             child = current / name
-            if _contains_reparse_point(child):
+            if _is_reparse_entry(child):
                 skipped["reparse_point"] = skipped.get("reparse_point", 0) + 1
                 dirnames.remove(name)
         if bounds and deadline is not None and time.monotonic() >= deadline:
@@ -245,7 +281,7 @@ def detect_project(target: Path, bounds: ScanBounds | None = None) -> ProjectPro
                 continue
             if path.suffix.lower() not in SOURCE_SUFFIXES:
                 continue
-            if _contains_reparse_point(path):
+            if _is_reparse_entry(path):
                 if bounds:
                     skipped["reparse_point"] = skipped.get("reparse_point", 0) + 1
                 continue
@@ -320,16 +356,24 @@ def _contains_reparse_point(path: Path) -> bool:
         current = Path(absolute.anchor)
         for component in absolute.parts[1:]:
             current /= component
-            try:
-                metadata = current.lstat()
-            except FileNotFoundError:
-                return False
-            if stat.S_ISLNK(metadata.st_mode) or getattr(current, "is_junction", lambda: False)():
+            if _is_reparse_entry(current):
                 return True
-            if os.name == "nt" and getattr(metadata, "st_file_attributes", 0) & getattr(
-                stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
-            ):
-                return True
+        return False
+    except (OSError, RuntimeError, ValueError):
+        return True
+
+
+def _is_reparse_entry(path: Path) -> bool:
+    """Check one directory entry for a link or Windows reparse attribute."""
+    try:
+        metadata = path.lstat()
+        if stat.S_ISLNK(metadata.st_mode):
+            return True
+        return os.name == "nt" and bool(
+            getattr(metadata, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        )
+    except FileNotFoundError:
         return False
     except (OSError, RuntimeError, ValueError):
         return True
@@ -391,6 +435,8 @@ class BuiltinRuleScanner:
         from chinescan.core.orchestration.code_rules import (
             analyze_source,
             dependency_findings,
+            edge_function_findings,
+            migration_rls_findings,
             vibe_risk,
         )
 
@@ -481,6 +527,8 @@ class BuiltinRuleScanner:
                     if not item.location or not item.location.startswith(relative + ":")
                 ]
         profile.source_files = tuple(scanned_sources)
+        findings.extend(migration_rls_findings(profile.root))
+        findings.extend(edge_function_findings(profile.root))
         findings.extend(dependency_findings(profile.root))
         self.vibe_coding_risk = vibe_risk(profile)
         return findings
@@ -576,15 +624,26 @@ def _coverage_for_project(
     long_lines = 0
     symlinks = 0
     unreadable = 0
+    languages_detected: dict[str, int] = {}
+    files_scanned_by_language: dict[str, int] = {}
+    scanned_paths = {path.relative_to(profile.root).as_posix() for path in profile.source_files}
     if not bounds:
         for directory, dirnames, filenames in os.walk(profile.root, followlinks=False):
             dirnames[:] = sorted(name for name in dirnames if name not in IGNORED_DIRS)
             current = Path(directory)
             for name in sorted(filenames):
                 path = current / name
+                language = _COVERAGE_LANGUAGE.get(path.suffix.casefold())
+                if language:
+                    languages_detected[language] = languages_detected.get(language, 0) + 1
+                    relative_path = path.relative_to(profile.root).as_posix()
+                    if relative_path in scanned_paths:
+                        files_scanned_by_language[language] = (
+                            files_scanned_by_language.get(language, 0) + 1
+                        )
                 if path.suffix.lower() not in SOURCE_SUFFIXES:
                     continue
-                if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
+                if _is_reparse_entry(path):
                     symlinks += 1
                     continue
                 try:
@@ -595,6 +654,12 @@ def _coverage_for_project(
                             long_lines += 1
                 except OSError:
                     unreadable += 1
+    else:
+        for path in profile.source_files:
+            language = _COVERAGE_LANGUAGE.get(path.suffix.casefold())
+            if language:
+                languages_detected[language] = languages_detected.get(language, 0) + 1
+                files_scanned_by_language[language] = files_scanned_by_language.get(language, 0) + 1
     if long_lines:
         gaps.append(
             CoverageGap(
@@ -651,6 +716,74 @@ def _coverage_for_project(
         },
         excluded=dict(profile.excluded_counts or {}),
         gaps=gaps,
+        languages_detected=languages_detected,
+        files_scanned_by_language=files_scanned_by_language,
+        language_analyzer_status={
+            language: _language_rule_coverage(language) for language in sorted(languages_detected)
+        },
+        not_assessed=[*_NOT_ASSESSED, _offline_advisory_coverage_note()],
+    )
+
+
+def _language_rule_coverage(language: str) -> str:
+    """Describe the actual targeted checks and remaining parser/data-flow gaps."""
+    statuses = {
+        "Python": (
+            "Python heuristic rules: subprocess shell use, dynamic evaluation, SQL/API patterns, "
+            "secret shapes; no AST or cross-file data flow"
+        ),
+        "JavaScript": (
+            "JavaScript heuristic rules: dynamic evaluation, process execution, SQL, HTML sinks, "
+            "API/auth patterns, secret shapes; generic first-pass only for other risks"
+        ),
+        "TypeScript": (
+            "TypeScript heuristic rules plus Deno edge-handler request/auth/service-role checks; "
+            "generic first-pass only for unrecognized flows; no inter-file taint analysis"
+        ),
+        "Dart": (
+            "Dart/Flutter checks: provider secret shapes, token storage, certificate callbacks, "
+            "sensitive logging; generic first-pass only for other risks; no Dart AST analysis"
+        ),
+        "SQL": (
+            "Supabase migration checks: public CREATE TABLE, RLS enable/disable, "
+            "policy create/drop "
+            "and permissive policy patterns; generic first-pass only for other SQL risks"
+        ),
+        "XML config": (
+            "Android XML checks: manifest exported components, permissions, intent filters, "
+            "cleartext, debuggable, backup, and network-security configuration"
+        ),
+        "Rust": (
+            "Rust generic source-pattern checks; Cargo.lock advisory matches run project-wide; "
+            "generic first-pass only for Rust source, with no AST or data-flow analysis"
+        ),
+        "YAML config": (
+            "Generic first-pass only for YAML source; pubspec.yaml dependency names support "
+            "project-wide pubspec.lock advisory matching"
+        ),
+    }
+    return statuses.get(
+        language,
+        "generic first-pass only; no analyzer for this language",
+    )
+
+
+def _offline_advisory_coverage_note() -> str:
+    """Expose the bundled advisory snapshot date and age in every code report."""
+    database_path = Path(__file__).parents[2] / "data" / "advisories.json"
+    try:
+        database = json.loads(database_path.read_text(encoding="utf-8"))
+        snapshot = date.fromisoformat(str(database["database_date"]))
+        age_days = (date.today() - snapshot).days
+    except (OSError, ValueError, KeyError, TypeError):
+        return "Offline dependency advisory database unavailable or has an invalid date."
+    if age_days > 90:
+        state = f"STALE by {age_days} days"
+    else:
+        state = f"{age_days} days old"
+    return (
+        f"Offline dependency advisory database dated {snapshot.isoformat()} ({state}); "
+        "curated subset only, not comprehensive."
     )
 
 
@@ -726,7 +859,7 @@ class CodeScanService:
         ) as pool:
             tasks = {}
             for scanner in self.scanners:
-                if self.bounds and hasattr(scanner, "scan_profile"):
+                if hasattr(scanner, "scan_profile"):
                     task = pool.submit(scanner.scan_profile, profile)
                 else:
                     task = pool.submit(scanner.scan, profile.root)

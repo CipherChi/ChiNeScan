@@ -17,7 +17,7 @@ from chinescan.core.cases import CaseWorkflow
 from chinescan.core.logging.redaction import redact
 from chinescan.core.models.common import Severity
 from chinescan.core.models.finding import Finding
-from chinescan.core.models.investigation import Alert, Scan
+from chinescan.core.models.investigation import Alert, CoverageReport, Scan
 from chinescan.core.storage.repository import Repository
 from chinescan.core.verdict import VERDICT_CAVEAT
 from chinescan.malware_analysis.managed import safe_display_name
@@ -255,6 +255,7 @@ def render_report(scan: Scan, findings: list[Finding], output_format: str) -> st
                     "",
                 ]
             )
+            lines.extend(_coverage_language_lines(scan.coverage))
             lines.extend(["Coverage gaps:", ""])
             lines.extend(
                 [f"- {gap.code}: {gap.reason} (count: {gap.count})" for gap in scan.coverage.gaps]
@@ -306,7 +307,31 @@ def render_report(scan: Scan, findings: list[Finding], output_format: str) -> st
             or "<li>None recorded.</li>"
         )
         examined = ", ".join(f"{k}: {v}" for k, v in scan.coverage.examined.items())
-        coverage_html = f"<h2>Coverage</h2><p>{html.escape(examined)}</p><ul>{gaps}</ul>"
+        language_rows = (
+            "".join(
+                "<li>"
+                + html.escape(language)
+                + f": {count} detected; "
+                + f"{(scan.coverage.files_scanned_by_language or {}).get(language, 0)} scanned; "
+                + html.escape(
+                    (scan.coverage.language_analyzer_status or {}).get(
+                        language, "analyzer status unavailable"
+                    )
+                )
+                + "</li>"
+                for language, count in sorted((scan.coverage.languages_detected or {}).items())
+            )
+            or "<li>No language inventory recorded.</li>"
+        )
+        not_assessed = "".join(
+            f"<li>{html.escape(item)}</li>" for item in scan.coverage.not_assessed
+        )
+        coverage_html = (
+            f"<h2>Coverage</h2><p>{html.escape(examined)}</p>"
+            f"<h3>Languages detected</h3><ul>{language_rows}</ul>"
+            + (f"<h3>Not assessed</h3><ul>{not_assessed}</ul>" if not_assessed else "")
+            + f"<h3>Coverage gaps</h3><ul>{gaps}</ul>"
+        )
     verdict_html = (
         "<h2>Verdict</h2><p><strong>"
         + html.escape(scan.verdict.value)
@@ -389,7 +414,7 @@ def _fix_first(
     ranked: list[tuple[int, float, float, str, str, dict[str, Any]]] = []
     for finding in findings:
         item = safe_by_id.get(finding.finding_id, {})
-        if item.get("source") == "scanity":
+        if item.get("source") == "scanity" or finding.verdict.value == "lead":
             continue
         exposure = str(item.get("exposure") or finding.exposure).casefold()
         public = bool(re.search(r"(?:/api/|route\.|page\.)", str(item.get("location") or ""), re.I))
@@ -434,16 +459,18 @@ def _code_report_json(
     likely = [
         item
         for item in internal
-        if item.get("confidence") in {"LIKELY", "CONFIRMED"}
+        if item.get("verdict") in {"likely", "confirmed"}
         and "manual-review" not in item.get("tags", [])
     ]
-    review = [item for item in internal if item not in likely]
+    leads = [item for item in internal if item.get("verdict", "lead") == "lead"]
+    review = [item for item in internal if item not in likely and item not in leads]
     severity_counts = {severity.value: 0 for severity in Severity}
     for finding in findings:
         severity_counts[finding.severity.value] += 1
     summary = scan.code_assessment
     grouped_totals = {
-        "likely_real_issues": len(likely),
+        "confirmed_and_likely_issues": len(likely),
+        "leads": len(leads),
         "manual_review": len(review),
         "external": len(external),
     }
@@ -459,6 +486,12 @@ def _code_report_json(
         "summary": {
             "verdict": scan.verdict.value if scan.verdict else "not recorded",
             "total_findings": len(findings),
+            "issue_count": len(likely),
+            "lead_count": len(leads),
+            "counts_by_verdict": {
+                verdict: sum(item.verdict.value == verdict for item in findings)
+                for verdict in ("confirmed", "likely", "lead")
+            },
             "total_stored_findings": len(scan.finding_ids),
             "available_finding_records": len(findings),
             "processing_failure_count": len(scan.failures),
@@ -467,10 +500,11 @@ def _code_report_json(
             "files_excluded": summary.files_excluded if summary else 0,
             "vibe_coding_risk_score": summary.vibe_coding_risk.score
             if summary and summary.vibe_coding_risk
-            else 0,
+            else None,
             "grouped_findings": sum(grouped_totals.values()),
             "grouped_issue_total": sum(grouped_totals.values()),
             "returned_grouped_findings": min(len(likely), 20)
+            + min(len(leads), 20)
             + min(len(review), 20)
             + min(len(external), 20),
         },
@@ -478,22 +512,26 @@ def _code_report_json(
         "coverage": scan.coverage.model_dump(mode="json") if scan.coverage else None,
         "fix_first": _fix_first(findings, by_id),
         "classification_labels": {
-            "likely_real_issues": "Rule-supported candidates (not independently verified; legacy key)",  # noqa: E501
+            "likely_real_issues": "Confirmed or likely findings; excludes leads.",
             "manual_review": "Candidates requiring analyst review",
         },
         "likely_real_issues": likely[:20],
+        "leads": leads[:20],
         "manual_review": review[:20],
         "external_scanner_results": {
             "source": "scanity",
             "count": len(external),
             "findings": external[:20],
         },
-        "report_truncated": len(likely) > 20 or len(review) > 20 or len(external) > 20,
+        "report_truncated": (
+            len(likely) > 20 or len(leads) > 20 or len(review) > 20 or len(external) > 20
+        ),
         "report_omissions": {
             "reason": "group cap and/or byte cap",
             "omitted_by_group_cap": group_cap_omissions,
             "omitted_by_byte_cap": 0,
-            "omitted_grouped_findings": max(0, grouped_totals["likely_real_issues"] - 20)
+            "omitted_grouped_findings": max(0, grouped_totals["confirmed_and_likely_issues"] - 20)
+            + max(0, grouped_totals["leads"] - 20)
             + max(0, grouped_totals["manual_review"] - 20)
             + max(0, grouped_totals["external"] - 20),
             "retrieval": f"Use /api/scans/{scan.scan_id}/findings.jsonl or `chinescan report {scan.scan_id} --format jsonl` for bounded complete retrieval; full-json remains capped.",  # noqa: E501
@@ -505,6 +543,7 @@ def _code_report_json(
     ):
         candidates = [
             payload["likely_real_issues"],
+            payload["leads"],
             payload["manual_review"],
             payload["external_scanner_results"]["findings"],
         ]
@@ -517,6 +556,7 @@ def _code_report_json(
         byte_cap_omissions += 1
     returned_grouped = (
         len(payload["likely_real_issues"])
+        + len(payload["leads"])
         + len(payload["manual_review"])
         + len(payload["external_scanner_results"]["findings"])
     )
@@ -527,6 +567,7 @@ def _code_report_json(
         int(group.get("occurrence_count", 0))
         for group in (
             payload["likely_real_issues"]
+            + payload["leads"]
             + payload["manual_review"]
             + payload["external_scanner_results"]["findings"]
         )
@@ -612,10 +653,11 @@ def _code_report_markdown(
     likely = [
         item
         for item in internal
-        if item.get("confidence") in {"LIKELY", "CONFIRMED"}
+        if item.get("verdict") in {"likely", "confirmed"}
         and "manual-review" not in item.get("tags", [])
     ]
-    review = [item for item in internal if item not in likely]
+    leads = [item for item in internal if item.get("verdict", "lead") == "lead"]
+    review = [item for item in internal if item not in likely and item not in leads]
     by_id = {str(item.get("finding_id")): item for item in safe_findings}
     counts_text = ", ".join(f"{name}: {count}" for name, count in severity_counts.items())
     risk = summary.vibe_coding_risk if summary else None
@@ -623,7 +665,10 @@ def _code_report_markdown(
         f"# ChiNeScan code assessment report: {scan.scan_id}",
         "",
         f"**Verdict:** {scan.verdict.value if scan.verdict else 'not recorded'}  ",
-        f"**Findings:** {len(findings)} ({counts_text})  ",
+        "**Confirmed and likely issues:** "
+        f"{sum(item.verdict.value in {'confirmed', 'likely'} for item in findings)}  ",
+        f"**Leads:** {sum(item.verdict.value == 'lead' for item in findings)}  ",
+        f"**Findings by severity (all verdicts):** {counts_text}  ",
         "**Detail scope:** up to 10 candidates per category; use `chinescan report <scan-id> --format full-json` for the complete bounded record set.  ",  # noqa: E501
         f"**Files:** {summary.files_scanned if summary else 0} scanned; {summary.files_excluded if summary else 0} excluded  ",  # noqa: E501
         f"**Code pattern risk:** {risk.score if risk else 0}/100 ({risk.confidence.value if risk else 'INFORMATIONAL'}; algorithm `{risk.algorithm_version if risk else 'legacy/unavailable'}`)",  # noqa: E501
@@ -633,6 +678,21 @@ def _code_report_markdown(
         "## Fix first",
         "",
     ]
+    language_status = (
+        scan.coverage.language_analyzer_status if scan.coverage is not None else {}
+    ) or {}
+    generic_coverage = [
+        f"- {language}: {status}"
+        for language, status in sorted(language_status.items())
+        if "generic first-pass only" in status.casefold()
+    ]
+    if generic_coverage:
+        lines[lines.index("## Fix first") : lines.index("## Fix first")] = [
+            "## Coverage gaps at a glance",
+            "",
+            *generic_coverage,
+            "",
+        ]
     ranked = _fix_first(findings, by_id)
     lines.extend(
         [
@@ -651,6 +711,7 @@ def _code_report_markdown(
         ]
     )
     if scan.coverage:
+        lines.extend(_coverage_language_lines(scan.coverage))
         lines.extend(["Excluded files and paths:", ""])
         lines.extend(
             [
@@ -675,7 +736,11 @@ def _code_report_markdown(
                 "",
                 "## Code pattern risk",
                 "",
-                f"Score: **{risk.score}/100**; confidence: **{risk.confidence.value}**.",
+                (
+                    f"Score: **{risk.score}/100**; confidence: **{risk.confidence.value}**."
+                    if risk.score is not None
+                    else "**Insufficient evidence** for a validated signal score."
+                ),
                 "",
                 f"Algorithm: `{risk.algorithm_version or 'legacy/unavailable'}`. {risk.direction}",
                 "",
@@ -698,9 +763,20 @@ def _code_report_markdown(
             f"| {_markdown(item.description)} | {item.raw_count} | {item.effective_count} | {item.weight} | {_markdown(item.adjustment)} | {item.contribution} |"  # noqa: E501
             for item in risk.contributions
         )
-        lines.extend(["", f"**Final score:** {risk.score}/100", ""])
+        lines.extend(
+            [
+                "",
+                (
+                    f"**Final score:** {risk.score}/100"
+                    if risk.score is not None
+                    else "**Final score:** insufficient evidence"
+                ),
+                "",
+            ]
+        )
     for heading, items in (
-        ("Rule-supported candidates (not independently verified)", likely[:10]),
+        ("Confirmed and likely issues", likely[:10]),
+        ("Leads (not counted as vulnerabilities)", leads[:10]),
         ("Needs manual review (low confidence)", review[:10]),
     ):
         lines.extend(["", f"## {heading}", ""])
@@ -760,6 +836,56 @@ def _markdown_finding(item: dict[str, Any], *, untrusted: bool = False) -> str:
         "",
         escape(str(item.get("description") or "No description supplied."))[:1000],
     ]
+    verdict = item.get("verdict")
+    lines.extend(["", f"**Verdict:** {escape(str(verdict or 'lead'))}"])
+    for label, key in (
+        ("Entry point", "entry_point"),
+        ("Source", "source_location"),
+        ("Sink", "sink_location"),
+    ):
+        location_value = item.get(key)
+        if isinstance(location_value, dict):
+            file_name = escape(str(location_value.get("file") or "unknown"))
+            line_number = location_value.get("line")
+            excerpt_value = location_value.get("excerpt")
+            detail = f"`{_markdown_code(file_name)}:{line_number}`"
+            if isinstance(excerpt_value, str) and excerpt_value:
+                shown_excerpt = escape(excerpt_value[:160]) if untrusted else excerpt_value[:160]
+                detail += f" — `{_markdown_code(shown_excerpt)}`"
+            lines.extend([f"**{label}:** {detail}"])
+    for label, key in (
+        ("Controls considered", "controls_considered"),
+        ("Exploitability conditions", "exploitability_conditions"),
+    ):
+        values = item.get(key)
+        if isinstance(values, list) and values:
+            lines.extend([f"**{label}:**", *[f"- {escape(str(value))}" for value in values]])
+    for label, key in (
+        ("Project impact", "project_impact"),
+        ("Why not higher", "why_not_higher"),
+        ("What would raise it", "what_would_raise_it"),
+        ("Verification step", "verification_step"),
+    ):
+        value = item.get(key)
+        if isinstance(value, str) and value:
+            lines.append(f"**{label}:** {escape(value)}")
+    before = item.get("remediation_before")
+    after = item.get("remediation_after")
+    if isinstance(before, str) and isinstance(after, str):
+        lines.extend(
+            [
+                "**Patch for observed code:**",
+                "",
+                "Before:",
+                "```text",
+                escape(before) if untrusted else before,
+                "```",
+                "After:",
+                "```text",
+                escape(after) if untrusted else after,
+                "```",
+            ]
+        )
     explanation = item.get("explanation")
     if isinstance(explanation, dict):
         for label, key in (
@@ -1424,6 +1550,24 @@ def _markdown(value: str, *, untrusted: bool = False) -> str:
     if untrusted:
         pattern = r"([\\`*_{}\[\]()#+!|>~-])"
     return re.sub(pattern, r"\\\1", escaped)
+
+
+def _coverage_language_lines(coverage: CoverageReport) -> list[str]:
+    lines = ["Languages detected:"]
+    detected = coverage.languages_detected or {}
+    scanned = coverage.files_scanned_by_language or {}
+    status = coverage.language_analyzer_status or {}
+    lines.extend(
+        f"- {language}: {count} detected; {scanned.get(language, 0)} scanned; "
+        f"{status.get(language, 'analyzer status unavailable')}"
+        for language, count in sorted(detected.items())
+    )
+    if not detected:
+        lines.append("- No language inventory recorded.")
+    if coverage.not_assessed:
+        lines.extend(["", "Not assessed:"])
+        lines.extend(f"- {_markdown(item)}" for item in coverage.not_assessed)
+    return lines
 
 
 def _csv_safe(value: object) -> object:

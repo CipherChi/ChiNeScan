@@ -25,7 +25,7 @@ storage. Memory analysis and dynamic detonation remain explicit exit-2 stubs.
 | `\.venv\Scripts\ruff.exe format --check .` | 0 | `78 files already formatted`. |
 | `\.venv\Scripts\mypy.exe --strict chinescan` | 0 | `Success: no issues found in 36 source files`. |
 | `py -3.12 -m pytest --cov=chinescan --cov-report=term --cov-fail-under=80` | 0 | `50 passed`; total coverage `82.23%` (required 80%). Python dependencies were exposed from `.venv\Lib\site-packages` for the launcher. |
-| `\.venv\Scripts\pip-audit.exe --skip-editable` | 0 | `No known vulnerabilities found`; editable ChineScan distribution skipped. |
+| `\.venv\Scripts\pip-audit.exe --skip-editable` | 0 | `No known vulnerabilities found`; editable ChiNeScan distribution skipped. |
 | `\.venv312\Scripts\uv.exe lock --check` | 0 | `Resolved 57 packages in 3ms`. |
 | `\.venv\Scripts\bandit.exe --severity-level medium -r chinescan` | 0 | No medium/high issues identified. |
 | `\.venv\Scripts\bandit.exe -r chinescan` | 1 | Five low issues reported: one existing `assert_used`, two existing code-scanner subprocess notices, and two notices for the new local malware scanner subprocess integration. No findings were suppressed; details and controls are recorded in `docs/reports/security-review.md`. |

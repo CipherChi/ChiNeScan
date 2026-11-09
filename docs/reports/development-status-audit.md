@@ -1,4 +1,4 @@
-# ChineScan development status audit
+# ChiNeScan development status audit
 
 Audit date: 2026-10-26
 Repository: `C:\src\Chinescan`
@@ -10,7 +10,7 @@ record later changes that supersede the local-workflow and dashboard findings in
 
 ## A. Executive summary
 
-ChineScan is a **partially integrated local CLI application**, not yet the intended
+ChiNeScan is a **partially integrated local CLI application**, not yet the intended
 self-hosted platform or a release candidate. It has exercised local vertical slices for
 heuristic code assessment, SQLite persistence, reports and simple cases, exported-log
 analysis, static file triage, trends, and an explicitly authorized low-impact domain

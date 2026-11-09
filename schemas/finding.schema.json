@@ -20,6 +20,44 @@
       "title": "EvidenceKind",
       "type": "string"
     },
+    "EvidenceLocation": {
+      "additionalProperties": false,
+      "description": "Project-relative location for a source or sink in a finding.",
+      "properties": {
+        "excerpt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Excerpt"
+        },
+        "file": {
+          "title": "File",
+          "type": "string"
+        },
+        "line": {
+          "minimum": 1,
+          "title": "Line",
+          "type": "integer"
+        },
+        "schema_version": {
+          "default": "1.0",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "line"
+      ],
+      "title": "EvidenceLocation",
+      "type": "object"
+    },
     "FindingCategory": {
       "enum": [
         "SAST",
@@ -214,6 +252,15 @@
       "title": "FindingExplanation",
       "type": "object"
     },
+    "FindingVerdict": {
+      "enum": [
+        "confirmed",
+        "likely",
+        "lead"
+      ],
+      "title": "FindingVerdict",
+      "type": "string"
+    },
     "Reference": {
       "additionalProperties": false,
       "properties": {
@@ -289,6 +336,13 @@
       "title": "Contributing Rule Ids",
       "type": "array"
     },
+    "controls_considered": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Controls Considered",
+      "type": "array"
+    },
     "cwe_ids": {
       "items": {
         "type": "string"
@@ -300,6 +354,17 @@
       "default": "",
       "title": "Description",
       "type": "string"
+    },
+    "entry_point": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EvidenceLocation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "evidence": {
       "anyOf": [
@@ -322,6 +387,13 @@
         }
       ],
       "default": null
+    },
+    "exploitability_conditions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Exploitability Conditions",
+      "type": "array"
     },
     "exposure": {
       "default": "unknown",
@@ -368,6 +440,18 @@
       "default": null,
       "title": "Project Id"
     },
+    "project_impact": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Project Impact"
+    },
     "project_removed": {
       "default": false,
       "title": "Project Removed",
@@ -392,6 +476,30 @@
       "default": null,
       "title": "Remediation"
     },
+    "remediation_after": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Remediation After"
+    },
+    "remediation_before": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Remediation Before"
+    },
     "rule_id": {
       "default": "unknown",
       "title": "Rule Id",
@@ -411,10 +519,32 @@
       "$ref": "#/$defs/Severity",
       "default": "info"
     },
+    "sink_location": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EvidenceLocation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "source": {
       "default": "builtin",
       "title": "Source",
       "type": "string"
+    },
+    "source_location": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EvidenceLocation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "tags": {
       "items": {
@@ -426,6 +556,46 @@
     "title": {
       "title": "Title",
       "type": "string"
+    },
+    "verdict": {
+      "$ref": "#/$defs/FindingVerdict",
+      "default": "lead"
+    },
+    "verification_step": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Verification Step"
+    },
+    "what_would_raise_it": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "What Would Raise It"
+    },
+    "why_not_higher": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Why Not Higher"
     }
   },
   "required": [

@@ -15,7 +15,7 @@ not opened, printed, or logged.
 | F8 authorization / IDOR | APPLY | Route inventory verifies session protection and CSRF rejection; typed record ID and traversal behavior are tested. | `test_route_security_inventory.py` covers all GET/WRITE API routes, chain and v1 aliases, wrong record type, and report/filesystem traversal. | A future multi-user model still requires owner fields and per-object checks. |
 | F9 gateway / routing / versioning | APPLY | `/api/v1/*` aliases `/api/*`; version header and versioning/deployment policy are documented. Gateway and JWT replacement are not applicable. | `test_v1_api_alias_uses_existing_auth_and_reports_version` verifies the 401 parity and rejects `/api/v2`. | Authenticated payload parity is not separately asserted. |
 
-F9 gateway and JWT replacement are NOT-APPLICABLE: ChineScan is a single local operator
+F9 gateway and JWT replacement are NOT-APPLICABLE: ChiNeScan is a single local operator
 application with server-side revocable cookie sessions and no downstream services to protect.
 The deployment example is documentation only; it does not change the loopback default.
 

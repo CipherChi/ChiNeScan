@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "chinescan"
 version = "0.1.0"
-description = "A modular, authorization-first security investigation platform."
+description = "ChiNeScan is a local-first security assessment workstation."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
@@ -30,6 +30,7 @@ dev = [
   "ruff>=0.11,<1",
   "mypy>=1.15,<2",
   "pip-audit>=2.8,<3",
+  "types-PyYAML>=6.0.12,<7",
 ]
 
 [project.scripts]
@@ -40,6 +41,7 @@ packages = ["chinescan"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "chinescan/data/top-packages.txt" = "chinescan/data/top-packages.txt"
+"chinescan/data/advisories.json" = "chinescan/data/advisories.json"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -51,6 +53,9 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+"chinescan/core/orchestration/code_rules.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"

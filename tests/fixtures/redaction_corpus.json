@@ -40,5 +40,11 @@
   "safe-key=ordinary-value",
   "authorization: Bearer synthetic.token-value",
   "quoted \"C:\\Users\\Cipher\\key.txt\" and /etc/chinescan/config",
-  "密码=value café 東京"
+  "密码=value café 東京",
+  "def get_api_key_status(self):",
+  "scripts/secret_rotation_audit.py:101",
+  "def rotate_secret_assignment_status(token_name):",
+  "api_key = SyntheticCanaryValue-1234567890",
+  "supabase/migrations/20250101_x.sql:7",
+  "const tokenResponse = await fetch(googleTokenUrl, {"
 ]

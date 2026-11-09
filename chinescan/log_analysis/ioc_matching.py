@@ -8,11 +8,13 @@ import json
 import re
 import uuid
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+from chinescan.core.logging.redaction import redact
 from chinescan.core.models.common import Confidence, Severity
 from chinescan.core.models.investigation import Alert, Event, Indicator
 from chinescan.log_analysis.detections import make_alert
@@ -20,8 +22,14 @@ from chinescan.log_analysis.detections import make_alert
 MAX_IOC_FILE_BYTES = 10_000_000
 MAX_INDICATORS = 10_000
 MAX_IOC_COMPARISONS = 5_000_000
+MAX_EXTRACTED_IOCS = 10_000
 _HASH = re.compile(r"^(?:[a-f0-9]{32}|[a-f0-9]{40}|[a-f0-9]{64})$", re.I)
 _DOMAIN = re.compile(r"(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$", re.I)
+_URL_IN_TEXT = re.compile(r"https?://[^\s\x00<>\"']{1,2048}", re.I)
+_DOMAIN_IN_TEXT = re.compile(
+    r"(?<![A-Za-z0-9.-])(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}(?![A-Za-z0-9.-])",
+    re.I,
+)
 
 
 @dataclass
@@ -127,6 +135,7 @@ def correlate_iocs(events: list[Event], indicators: list[Indicator]) -> IOCResul
                     "related_events": sorted(event.event_id for event in matching_events),
                     "first_seen": min(times) if times else None,
                     "last_seen": max(times) if times else None,
+                    "occurrence_count": len(matching_events),
                 }
             )
         )
@@ -142,6 +151,63 @@ def correlate_iocs(events: list[Event], indicators: list[Indicator]) -> IOCResul
             )
             alerts.append(alert)
     return IOCResult(updated_events, updated_indicators, alerts, [])
+
+
+def extract_event_iocs(events: Iterable[Event]) -> list[Indicator]:
+    """Extract bounded observable IOCs from normalized event fields, with counts and references."""
+    occurrences: dict[tuple[str, str], list[Event]] = defaultdict(list)
+    for event in events:
+        candidates: set[tuple[str, str]] = set()
+        for value in (event.source_ip, event.destination_ip):
+            if value:
+                normalized = _normalize_ioc(value, "ip")
+                if normalized:
+                    candidates.add(normalized)
+        if event.url:
+            for match in _URL_IN_TEXT.finditer(event.url):
+                normalized = _normalize_ioc(match.group().rstrip(".,);]}"), "url")
+                if normalized:
+                    candidates.add(normalized)
+            for match in _DOMAIN_IN_TEXT.finditer(event.url):
+                normalized = _normalize_ioc(match.group(), "domain")
+                if normalized:
+                    candidates.add(normalized)
+        for value in (event.sha256, *event.file_hashes):
+            if value:
+                normalized = _normalize_ioc(value, "hash")
+                if normalized:
+                    candidates.add(normalized)
+        if event.user_agent:
+            value = str(redact(event.user_agent))[:300].strip()
+            if value:
+                candidates.add(("user_agent", value))
+        for candidate in candidates:
+            occurrences[candidate].append(event)
+            if len(occurrences) >= MAX_EXTRACTED_IOCS:
+                break
+        if len(occurrences) >= MAX_EXTRACTED_IOCS:
+            break
+
+    indicators: list[Indicator] = []
+    for (kind, value), matching in sorted(occurrences.items()):
+        ordered = sorted(matching, key=lambda item: (item.occurred_at, item.event_id))
+        indicators.append(
+            Indicator(
+                indicator_id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"log-ioc:{kind}:{value}")),
+                kind=kind,
+                value=value,
+                source="log_extraction",
+                context=(
+                    "Extracted from normalized log fields; no threat-intelligence lookup "
+                    "was performed."
+                ),
+                first_seen=ordered[0].occurred_at,
+                last_seen=ordered[-1].occurred_at,
+                occurrence_count=len(ordered),
+                related_events=sorted({event.event_id for event in ordered}),
+            )
+        )
+    return indicators
 
 
 def _normalize_ioc(value: str, kind: str = "") -> tuple[str, str] | None:

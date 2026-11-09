@@ -42,6 +42,19 @@ def test_redacts_sensitive_assignment_with_long_key_name() -> None:
     assert output.endswith("[REDACTED]")
 
 
+def test_preserves_code_symbols_and_project_locations_but_redacts_assignments() -> None:
+    source = (
+        "def get_api_key_status(self):\n"
+        "scripts/secret_rotation_audit.py:101\n"
+        "api_key = SyntheticCanaryValue-1234567890"
+    )
+    output = redact(source)
+    assert "def get_api_key_status(self):" in output
+    assert "scripts/secret_rotation_audit.py:101" in output
+    assert "SyntheticCanaryValue-1234567890" not in output
+    assert "api_key = [REDACTED]" in output
+
+
 @pytest.mark.parametrize(
     "secret",
     [

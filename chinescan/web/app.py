@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import secrets
 import shutil
 import threading
@@ -27,6 +28,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 
 from chinescan.chain_trace.export import export_graph
 from chinescan.chain_trace.registry import load_registry, normalize_address
+from chinescan.core.capabilities import module_capabilities
 from chinescan.core.cases import (
     CaseNotFoundError,
     CaseRecordNotFoundError,
@@ -55,10 +57,11 @@ from chinescan.core.models.common import (
     Confidence,
     EvidenceKind,
     FindingCategory,
+    FindingVerdict,
     ScanVerdict,
     Severity,
 )
-from chinescan.core.models.finding import Finding, FindingExplanation
+from chinescan.core.models.finding import EvidenceLocation, Finding, FindingExplanation
 from chinescan.core.models.investigation import (
     Alert,
     Case,
@@ -200,9 +203,21 @@ class FindingSummaryResponse(BaseModel):
     severity: Severity
     category: FindingCategory
     confidence: Confidence
+    verdict: FindingVerdict
     scanner: str
     rule_id: str
     contributing_rule_ids: list[str] = Field(default_factory=list)
+    entry_point: EvidenceLocation | None = None
+    source_location: EvidenceLocation | None = None
+    sink_location: EvidenceLocation | None = None
+    controls_considered: list[str] = Field(default_factory=list)
+    exploitability_conditions: list[str] = Field(default_factory=list)
+    project_impact: str | None = None
+    remediation_before: str | None = None
+    remediation_after: str | None = None
+    verification_step: str | None = None
+    why_not_higher: str | None = None
+    what_would_raise_it: str | None = None
 
 
 class FindingDetailResponse(FindingSummaryResponse):
@@ -223,6 +238,8 @@ class OverviewResponse(BaseModel):
     scan_count: int
     finding_count: int
     findings_by_severity: dict[Severity, int]
+    findings_by_verdict: dict[str, int]
+    top_fix_first: list[dict[str, str]]
     recent_scans: list[ScanSummaryResponse]
 
 
@@ -402,6 +419,14 @@ class MalwareAnalysisResponse(BaseModel):
     indicators: list[dict[str, str]]
     warnings: list[str]
     engines: dict[str, dict[str, Any]]
+    entropy_bits_per_byte: float | None = None
+    section_entropy: list[dict[str, Any]] = Field(default_factory=list)
+    timestamp_utc: str | None = None
+    imports: list[str] = Field(default_factory=list)
+    suspicious_api_combinations: list[str] = Field(default_factory=list)
+    verdict: Literal["clean-no-indicators", "suspicious", "likely-malicious"] = "suspicious"
+    verdict_evidence: list[str] = Field(default_factory=list)
+    verdict_caveat: str = "Static analysis cannot establish that a sample is safe."
     evidence_note: str
 
 
@@ -1269,12 +1294,30 @@ def create_app(
             )
             finding_count = repository.count_records("finding")
             grouped = repository.count_records("finding", group_by="severity")
+            grouped_verdict = repository.count_records("finding", group_by="verdict")
+            top_findings, _ = repository.page_records(
+                "finding", limit=100, offset=0, sort_by="severity", descending=True
+            )
         counts = {severity.value: int(grouped.get(severity.value, 0)) for severity in Severity}
+        verdict_counts = {
+            name: int(grouped_verdict.get(name, 0)) for name in ("confirmed", "likely", "lead")
+        }
+        top_fix_first = [
+            {
+                "title": str(item.get("title", "Finding"))[:160],
+                "severity": str(item.get("severity", "info")),
+                "location": str(item.get("location") or "unspecified")[:240],
+            }
+            for item in top_findings
+            if item.get("verdict", "lead") in {"confirmed", "likely"}
+        ][:5]
         recent = [Scan.model_validate(item) for item in scan_page]
         return {
             "scan_count": scan_count,
             "finding_count": finding_count,
             "findings_by_severity": counts,
+            "findings_by_verdict": verdict_counts,
+            "top_fix_first": top_fix_first,
             "recent_scans": [_scan_summary(scan) for scan in recent],
         }
 
@@ -1710,6 +1753,10 @@ def create_app(
             ),
             "historical_views_available": True,
         }
+
+    @application.get("/api/modules")
+    def list_modules(_session: Session = Depends(current_session)) -> list[dict[str, object]]:  # noqa: B008
+        return module_capabilities()
 
     @application.get("/api/malware/samples", response_model=list[MalwareSampleResponse])
     def malware_samples(_session: Session = Depends(current_session)) -> list[dict[str, Any]]:  # noqa: B008
@@ -2763,12 +2810,62 @@ def _malware_analysis_view(raw: dict[str, Any]) -> dict[str, Any]:
         "indicators": safe_indicators,
         "warnings": [str(item)[:500] for item in warnings[:50]],
         "engines": safe_engines,
+        "entropy_bits_per_byte": _finite_number(
+            result.get("entropy_bits_per_byte"), minimum=0, maximum=8
+        ),
+        "section_entropy": _safe_section_entropy(result.get("section_entropy")),
+        "timestamp_utc": (
+            str(result["timestamp_utc"])[:40]
+            if isinstance(result.get("timestamp_utc"), str)
+            else None
+        ),
+        "imports": _safe_malware_strings(result.get("imports"), 200, 180),
+        "suspicious_api_combinations": _safe_malware_strings(
+            result.get("suspicious_api_combinations"), 20, 80
+        ),
+        "verdict": (
+            result.get("verdict")
+            if result.get("verdict") in {"clean-no-indicators", "suspicious", "likely-malicious"}
+            else "suspicious"
+        ),
+        "verdict_evidence": _safe_malware_strings(result.get("verdict_evidence"), 40, 100),
+        "verdict_caveat": str(
+            result.get("verdict_caveat")
+            or "Static analysis cannot establish that a sample is safe."
+        )[:500],
         "evidence_note": (
             "Indicators are untrusted candidate evidence, not confirmed maliciousness. "
             "URLs and HTML-like values are inert text. Sample bytes, printable strings, "
             "archive names, paths, and raw worker output are withheld."
         ),
     }
+
+
+def _finite_number(value: Any, *, minimum: float, maximum: float) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) and minimum <= number <= maximum else None
+
+
+def _safe_section_entropy(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    output: list[dict[str, Any]] = []
+    for item in value[:100]:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("section")
+        entropy = _finite_number(item.get("entropy_bits_per_byte"), minimum=0, maximum=8)
+        if isinstance(name, str) and entropy is not None:
+            output.append({"name": redact(name[:80]), "entropy_bits_per_byte": entropy})
+    return output
+
+
+def _safe_malware_strings(value: Any, maximum: int, length: int) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [redact(item[:length]) for item in value[:maximum] if isinstance(item, str)]
 
 
 def _scan_summary(scan: Scan) -> dict[str, Any]:
@@ -2793,9 +2890,29 @@ def _finding_summary(finding: Finding, *, detail: bool = False) -> dict[str, Any
         "severity": finding.severity.value,
         "category": finding.category.value,
         "confidence": finding.confidence.value,
+        "verdict": finding.verdict.value,
         "scanner": finding.scanner,
         "rule_id": redact(finding.rule_id),
         "contributing_rule_ids": finding.contributing_rule_ids or [finding.rule_id],
+        "entry_point": _safe_evidence_location(finding.entry_point),
+        "source_location": _safe_evidence_location(finding.source_location),
+        "sink_location": _safe_evidence_location(finding.sink_location),
+        "controls_considered": [redact(item) for item in finding.controls_considered],
+        "exploitability_conditions": [redact(item) for item in finding.exploitability_conditions],
+        "project_impact": redact(finding.project_impact) if finding.project_impact else None,
+        "remediation_before": (
+            redact(finding.remediation_before) if finding.remediation_before else None
+        ),
+        "remediation_after": (
+            redact(finding.remediation_after) if finding.remediation_after else None
+        ),
+        "verification_step": (
+            redact(finding.verification_step) if finding.verification_step else None
+        ),
+        "why_not_higher": redact(finding.why_not_higher) if finding.why_not_higher else None,
+        "what_would_raise_it": (
+            redact(finding.what_would_raise_it) if finding.what_would_raise_it else None
+        ),
     }
     if detail:
         value["description"] = redact(finding.description)
@@ -2813,6 +2930,14 @@ def _finding_summary(finding: Finding, *, detail: bool = False) -> dict[str, Any
     return value
 
 
+def _safe_evidence_location(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    file_name = safe_display_name(value.file)
+    excerpt = redact(value.excerpt) if value.excerpt else None
+    return {"file": file_name, "line": value.line, "excerpt": excerpt}
+
+
 def _alert_summary(alert: Alert) -> dict[str, Any]:
     value = {
         "alert_id": alert.alert_id,
@@ -2824,6 +2949,19 @@ def _alert_summary(alert: Alert) -> dict[str, Any]:
         "event_ids": alert.event_ids,
         "indicator_ids": alert.indicator_ids,
         "mitre_attack_techniques": alert.mitre_attack_techniques,
+        "verdict": alert.verdict.value,
+        "matching_refs": alert.matching_refs,
+        "first_match_ref": alert.first_match_ref,
+        "last_match_ref": alert.last_match_ref,
+        "match_count": alert.match_count,
+        "log_limitations": alert.log_limitations,
+        "project_impact": alert.project_impact,
+        "exploitability_conditions": alert.exploitability_conditions,
+        "controls_considered": alert.controls_considered,
+        "remediation": alert.remediation,
+        "verification_step": alert.verification_step,
+        "why_not_higher": alert.why_not_higher,
+        "what_would_raise_it": alert.what_would_raise_it,
     }
     return value
 

@@ -29,3 +29,7 @@ frontend/.playwright-browsers/
 .env
 .env.*
 !.env.example
+# User-local outputs that must never enter commits
+engine/target/
+frontend/dist/
+latest scan.json

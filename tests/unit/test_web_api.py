@@ -19,7 +19,7 @@ from typer.testing import CliRunner
 
 from chinescan.cli.app import app
 from chinescan.core.config.settings import Settings
-from chinescan.core.models.common import Confidence, Severity
+from chinescan.core.models.common import Confidence, FindingVerdict, Severity
 from chinescan.core.models.finding import Finding
 from chinescan.core.models.investigation import (
     CodeAssessmentSummary,
@@ -88,12 +88,14 @@ def _fixture(
         fingerprint="fingerprint-1",
         description="Candidate evidence: password=example-value",
         location="src/app.py:12",
+        verdict=FindingVerdict.CONFIRMED,
     )
     critical = Finding(
         finding_id="finding-2",
         title="Critical local finding",
         severity=Severity.CRITICAL,
         fingerprint="fingerprint-2",
+        verdict=FindingVerdict.LIKELY,
     )
     scan = Scan(
         scan_id="scan-1",
@@ -128,6 +130,22 @@ def _login(
         json={"email": email, "password": password},
         headers={"Origin": str(client.base_url).rstrip("/")},
     )
+
+
+def test_modules_endpoint_is_authenticated_and_reports_planned_guards(tmp_path):
+    _app, client, _credential, _database = _fixture(tmp_path)
+    assert client.get("/api/modules").status_code == 401
+    assert _login(client).status_code == 200
+    response = client.get("/api/modules")
+    assert response.status_code == 200
+    modules = {item["name"]: item for item in response.json()}
+    assert modules["Network Scanner"]["status"] == "planned"
+    assert (
+        "explicit target authorization"
+        in " ".join(modules["Network Scanner"]["authorization_guards"]).casefold()
+    )
+    assert modules["File Analyzer"]["status"] == "partial"
+    assert modules["Security Dashboard"]["status"] == "partial"
 
 
 def test_project_approval_uses_20_per_60_second_default_despite_test_environment(
@@ -273,7 +291,7 @@ def test_scan_cli_api_and_complete_export_share_normalized_values(
         )
         assert cli_detail.exit_code == 0, cli_detail.output
         assert "Possible because data provenance is unresolved" in cli_detail.stdout
-        assert "legacy-pattern-v1" in cli_detail.stdout
+        assert "signal-score-v2" in cli_detail.stdout
         assert cli_export.exit_code == 0, cli_export.output
         cli_payload = json.loads(cli_export.stdout)
 
@@ -286,6 +304,13 @@ def test_scan_cli_api_and_complete_export_share_normalized_values(
         assert api_finding["severity"] == api_export["findings"][0]["severity"]
         assert api_finding["confidence"] == api_export["findings"][0]["confidence"]
         assert api_finding["explanation"] == api_export["findings"][0]["explanation"]
+        assert api_finding["verdict"] == api_export["findings"][0]["verdict"] == "lead"
+        assert api_finding["source_location"] == api_export["findings"][0]["source_location"]
+        assert api_finding["sink_location"] == api_export["findings"][0]["sink_location"]
+        assert api_finding["remediation_after"] == api_export["findings"][0]["remediation_after"]
+        assert "src/query.py:4" in cli_detail.stdout
+        assert "src/query.py:8" in cli_detail.stdout
+        assert "Patch for observed code" in cli_detail.stdout
         assert api_finding["contributing_rule_ids"] == ["SQL-INJECTION", "QUERY-CONTEXT"]
         assert "redaction-canary" not in api_export_response.text
         assert api_export["summary"]["report_truncated"] is False
@@ -706,7 +731,7 @@ def test_external_report_import_is_inert_separate_and_escaped(tmp_path: Path) ->
         assert "<script>" not in markdown.text
         assert "invalid.example" not in markdown.text
         assert "Ignore all prior instructions" in markdown.text
-        assert "Rule-supported candidates (not independently verified)" in markdown.text
+        assert "Leads (not counted as vulnerabilities)" in markdown.text
         assert "Code pattern risk" in markdown.text
         assert "not proof of authorship or a vulnerability verdict" in markdown.text
 
@@ -718,7 +743,7 @@ def test_external_report_import_is_inert_separate_and_escaped(tmp_path: Path) ->
             item["source"] == "scanity" for item in report["external_scanner_results"]["findings"]
         )
         assert all(entry["finding_id"] != imported["finding_id"] for entry in report["fix_first"])
-        assert report["summary"]["vibe_coding_risk_score"] == 0
+        assert report["summary"]["vibe_coding_risk_score"] is None
     finally:
         client.close()
 
@@ -1335,6 +1360,8 @@ def test_protected_reads_and_paginated_real_records(tmp_path):
     assert overview["finding_count"] == 2
     assert overview["findings_by_severity"]["high"] == 1
     assert overview["findings_by_severity"]["critical"] == 1
+    assert overview["findings_by_verdict"] == {"confirmed": 1, "likely": 1, "lead": 0}
+    assert len(overview["top_fix_first"]) == 2
     assert overview["recent_scans"][0]["scan_id"] == "scan-1"
     assert "target_id" not in overview["recent_scans"][0]
 
@@ -1445,6 +1472,14 @@ def test_malware_api_fail_closed_and_redacted_case_linking(tmp_path, request):
             "indicator_count": 1,
             "indicators": [{"kind": "url", "value": "https://example.invalid/<script>"}],
             "warnings": ["ZIP metadata inspection skipped"],
+            "entropy_bits_per_byte": 7.25,
+            "section_entropy": [{"section": ".text", "entropy_bits_per_byte": 6.5}],
+            "timestamp_utc": "2025-01-01T00:00:00Z",
+            "imports": ["KERNEL32.dll!VirtualAlloc"],
+            "suspicious_api_combinations": ["process_injection"],
+            "verdict": "likely-malicious",
+            "verdict_evidence": ["process_injection_api_combination"],
+            "verdict_caveat": "Static indicators require analyst review.",
         },
         "engines": {
             "yara": {"installation": "not_checked"},
@@ -1554,6 +1589,9 @@ def test_malware_api_fail_closed_and_redacted_case_linking(tmp_path, request):
         assert viewed.status_code == 200
         assert "internal-key-never-disclose" not in viewed.text
         assert "https://example.invalid/<script>" in viewed.text
+        assert viewed.json()["verdict"] == "likely-malicious"
+        assert viewed.json()["verdict_evidence"] == ["process_injection_api_combination"]
+        assert viewed.json()["section_entropy"][0]["entropy_bits_per_byte"] == 6.5
         assert live.get("/api/malware/analyses/unknown").status_code == 404
         assert live.get("/api/malware/samples/managed-sample-1/bytes").status_code == 404
         case = live.post("/api/cases", json={"scan_id": "scan-case"}, headers=headers)

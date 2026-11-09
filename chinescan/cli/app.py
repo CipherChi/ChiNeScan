@@ -7,7 +7,7 @@ import typer
 from chinescan.cli import commands
 from chinescan.cli.chain_commands import app as chain_app
 
-app = typer.Typer(help="Authorization-first security investigation platform.")
+app = typer.Typer(help="ChiNeScan local-first security assessment workstation.")
 
 
 @app.callback()

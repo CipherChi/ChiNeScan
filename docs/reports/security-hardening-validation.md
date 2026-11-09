@@ -31,7 +31,7 @@ This report covers the isolated, uncommitted worktree on branch `codex/security-
 | `uv run --locked --extra dev ruff format --check .` | 0 | 50 files already formatted |
 | `uv run --locked --extra dev mypy --strict chinescan` | 0 | No issues in 23 source files |
 | `uv run --locked --extra dev pytest --cov=chinescan.core --cov-report=term-missing --cov-fail-under=80` | 0 | 19 passed; 91.24% core coverage |
-| `uv run --locked --extra dev pip-audit --skip-editable` | 0 | No known vulnerabilities; editable ChineScan distribution excluded by the command |
+| `uv run --locked --extra dev pip-audit --skip-editable` | 0 | No known vulnerabilities; editable ChiNeScan distribution excluded by the command |
 | `uv run --locked --extra dev bandit --severity-level medium -r chinescan` | 0 | No medium/high findings; 350 lines scanned |
 | `uv run --locked --extra dev bandit -r chinescan` | 0 | No Bandit findings; 350 lines scanned |
 | actionlint 1.7.12 on `.github/workflows/ci.yml` | 0 | Workflow valid; initial shellcheck warning fixed and rechecked |
@@ -46,7 +46,7 @@ This report covers the isolated, uncommitted worktree on branch `codex/security-
 
 Gitleaks output was redacted. Version 8.30.1 was obtained from the official Gitleaks GHCR image and pinned by the registry digest shown above.
 
-- Current source scan: exit 0, no leaks in `chinescan`, `tests`, `docs`, `.github`, `docker`, `migrations`, `schemas`, `configs`, or the root manifest/config/document files. Generated `.venv` and `.git` directories were excluded from this source scan.
+- Current source scan: exit 0, no leaks in `ChiNeScan`, `tests`, `docs`, `.github`, `docker`, `migrations`, `schemas`, `configs`, or the root manifest/config/document files. Generated `.venv` and `.git` directories were excluded from this source scan.
 - Git history scan: `gitleaks git --log-opts=--all`, exit 0, two commits scanned, no leaks. The security candidate is uncommitted, so it is covered by the source scan rather than the history scan.
 - Pre-commit recheck: the approved candidate's `.github`, `chinescan/core`, `docker`, deployment/validation documents, `migrations`, `pyproject.toml`, both changed unit-test files, and `uv.lock` were each rescanned with the same pinned Gitleaks 8.30.1 image; all passed with no leaks. A fresh Git-history scan from the primary worktree also passed: two commits, no leaks.
 - A Docker-mounted linked worktree cannot resolve its Windows `.git` pointer from inside Linux. That attempt scanned zero commits and is not counted as a pass; the history scan was rerun from the primary worktree with valid repository metadata.

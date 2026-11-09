@@ -99,6 +99,31 @@ def test_python_and_rust_outputs_match_the_full_corpus(tmp_path: Path) -> None:
         assert native.redact_text(value) == expected, repr(value[:160])
 
 
+def test_python_and_rust_preserve_source_names_and_locations() -> None:
+    native = _native_or_skip()
+    values = [
+        "def get_api_key_status(self):",
+        "scripts/secret_rotation_audit.py:101",
+        "api_key = SyntheticCanaryValue-1234567890",
+    ]
+    for value in values:
+        assert native.redact_text(value) == redaction._redact_text_python(value)
+    assert native.redact_text(values[0]) == values[0]
+    assert native.redact_text(values[1]) == values[1]
+    assert "[REDACTED]" in native.redact_text(values[2])
+
+
+def test_migration_location_and_token_response_are_preserved() -> None:
+    native = _native_or_skip()
+    values = [
+        "supabase/migrations/20250101_x.sql:7",
+        "const tokenResponse = await fetch(googleTokenUrl, {",
+    ]
+    for value in values:
+        assert redaction._redact_text_python(value) == value
+        assert native.redact_text(value) == value
+
+
 def test_engine_info_reports_build_versions() -> None:
     native = _native_or_skip()
     info = native.engine_info()
