@@ -8,6 +8,7 @@ import time
 import tracemalloc
 
 import chinescan_engine
+
 from chinescan.core.logging.redaction import _redact_text_python
 
 TARGET_CHARS = 50 * 1024 * 1024
@@ -78,10 +79,7 @@ def measure(label: str, function, corpus: list[str]) -> tuple[float, float]:
 
 def main() -> None:
     corpus = make_corpus()
-    print(
-        f"Corpus: {sum(map(len, corpus)):,} characters; fixed seed 0x{SEED:X}; "
-        "three timed runs"
-    )
+    print(f"Corpus: {sum(map(len, corpus)):,} characters; fixed seed 0x{SEED:X}; three timed runs")
     print("Peak memory is tracemalloc-visible Python allocation; the prebuilt input is excluded.")
     print("Engine   Median ms   Peak traced MiB")
     print("-------  ----------  ---------------")

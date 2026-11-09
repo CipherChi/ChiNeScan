@@ -96,7 +96,8 @@ def _redact_string(value: str) -> str:
     if _ENGINE_IN_USE != "rust" or _LOGGING_RUST_FAILURE:
         return _redact_string_python(value)
     try:
-        return _rust_engine.redact_text(value)
+        result: str = _rust_engine.redact_text(value)
+        return result
     except Exception as error:
         if _ENGINE_REQUESTED == "rust":
             raise _RustRedactionFailure(error) from error

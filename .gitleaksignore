@@ -3,3 +3,6 @@
 945f9102ef8330f43ff148c4814420009d9830b4:chinescan/core/accounts.py:generic-api-key:28
 # Historic github-pat detector fixture retained in main history; the test now composes the same value at runtime.
 edd521a6d682c551ba61ad9531f23a383879f87b:tests/integration/test_real_scanners.py:github-pat:244
+b0fb0a57294676d6a2f5ce9ba6da04722eff21ae:scripts/bench_redaction.py:generic-api-key:21
+b0fb0a57294676d6a2f5ce9ba6da04722eff21ae:tests/unit/test_redaction_parity.py:generic-api-key:68
+f599bbdb138dcffba77619d85644091a40cb6b19:chinescan/core/accounts.py:generic-api-key:28
