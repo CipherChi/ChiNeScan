@@ -267,9 +267,18 @@ def _read_stream(stream: BinaryReader, limit: int) -> bytes:
 
 def _parse_member(data: bytes, name: str, source_ref: str, result: IngestResult) -> None:
     result.bytes_processed += len(data)
-    batch = parse_log_data(data, PurePosixPath(name).name, source_ref)
+    batch = parse_log_data(data, PurePosixPath(name).name, _safe_source_ref(source_ref))
     remaining = max(0, MAX_EVENTS - len(result.events))
     result.events.extend(batch.events[:remaining])
     if len(batch.events) > remaining:
         result.errors.append("Input reached the event count limit.")
     result.errors.extend(batch.errors)
+
+
+def _safe_source_ref(source_ref: str) -> str:
+    """Keep evidence references useful without returning operator-local absolute paths."""
+    archive_path, separator, member = source_ref.partition("::")
+    archive_name = PurePosixPath(archive_path.replace("\\", "/")).name
+    if separator:
+        return f"{archive_name}::{member}"
+    return archive_name

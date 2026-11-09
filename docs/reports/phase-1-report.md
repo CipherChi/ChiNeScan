@@ -1732,3 +1732,28 @@ Overall: PASS
 ```
 
 Strict mypy also passed: `Success: no issues found in 85 source files`. The two Python warnings were Pydantic `json_encoders` deprecations. Vite printed a jsdom navigation notice during frontend tests; all tests passed.
+
+## Verifier after API evidence-reference path fix (2026-11-09)
+
+Command: `scripts\verify-signal.ps1` (PowerShell, repository root).
+
+```text
+Repository: C:\src\Chinescan
+PASS 1. Select Python 3.12 and temporary cache paths
+PASS 2. Ruff on touched Python files
+PASS 2b. Build local Rust redaction extension
+PASS 3. Focused Python tests
+296 passed, 2 warnings in 103.09s (0:01:43)
+PASS 4a. Rust formatting check
+PASS 4b. Rust Clippy
+PASS 4c. Rust tests
+46 passed; 0 failed; 0 ignored
+PASS 5. Frontend unit tests for touched UI
+2 test files passed; 13 tests passed
+PASS 6. Frontend build
+PASS 7. Frontend lint (when configured)
+PASS 8. Frontend typecheck
+Overall: PASS
+```
+
+The two Python warnings were Pydantic `json_encoders` deprecations. Vite printed a jsdom navigation notice during frontend tests; all tests passed.
