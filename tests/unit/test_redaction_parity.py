@@ -113,6 +113,17 @@ def test_python_and_rust_preserve_source_names_and_locations() -> None:
     assert "[REDACTED]" in native.redact_text(values[2])
 
 
+def test_migration_location_and_token_response_are_preserved() -> None:
+    native = _native_or_skip()
+    values = [
+        "supabase/migrations/20250101_x.sql:7",
+        "const tokenResponse = await fetch(googleTokenUrl, {",
+    ]
+    for value in values:
+        assert redaction._redact_text_python(value) == value
+        assert native.redact_text(value) == value
+
+
 def test_engine_info_reports_build_versions() -> None:
     native = _native_or_skip()
     info = native.engine_info()

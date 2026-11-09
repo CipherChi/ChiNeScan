@@ -172,11 +172,18 @@ def _redact_assignments(value: str) -> str:
     cursor = 0
     search_from = 0
     value_length = len(value)
+    whitespace_checked_to = 0
+    token_start = 0
     while search_from < value_length:
         match = _ASSIGNMENT_DELIMITER.search(value, search_from)
         if match is None:
             break
         delimiter = match.start()
+
+        for position in range(whitespace_checked_to, delimiter):
+            if value[position].isspace():
+                token_start = position + 1
+        whitespace_checked_to = delimiter
 
         key_end = delimiter
         while key_end > search_from and value[key_end - 1].isspace():
@@ -195,9 +202,16 @@ def _redact_assignments(value: str) -> str:
             path_value_start = delimiter + 1
             while path_value_start < value_length and value[path_value_start].isspace():
                 path_value_start += 1
-            path_value = _ASSIGNMENT_VALUE.match(value, path_value_start)
-            if path_value and path_value.group(0).isdigit():
-                preceding = value[:delimiter].rsplit(None, 1)[-1].casefold()
+            number_end = path_value_start
+            while number_end < value_length and value[number_end].isdigit():
+                number_end += 1
+            numeric_value = number_end > path_value_start and (
+                number_end == value_length
+                or value[number_end].isspace()
+                or value[number_end] in ",;}]"
+            )
+            if numeric_value:
+                preceding = value[token_start:delimiter].casefold()
                 if (
                     "/" in preceding
                     or "\\" in preceding
@@ -231,6 +245,10 @@ def _redact_assignments(value: str) -> str:
 
 def _sensitive_key_match(key: str) -> bool:
     """Match long keys in bounded overlapping windows without missing a suffix."""
+    # OAuth response variables commonly contain both ``token`` and ``Response``;
+    # they are identifiers, not secret-bearing keys (and often precede ``await``).
+    if re.fullmatch(r"(?i)tokenResponse", key):
+        return False
     overlap = 32
     step = MAX_SENSITIVE_KEY_CHARS - overlap
     return any(

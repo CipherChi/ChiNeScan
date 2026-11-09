@@ -51,6 +51,9 @@ fn is_sensitive_key(key: &str) -> bool {
 }
 
 fn is_sensitive_key_bounded(key: &str) -> bool {
+    if key.eq_ignore_ascii_case("tokenResponse") {
+        return false;
+    }
     let start = key
         .char_indices()
         .rev()
@@ -60,10 +63,14 @@ fn is_sensitive_key_bounded(key: &str) -> bool {
 }
 
 fn previous_char_start(value: &str, index: usize) -> usize {
-    value[..index]
-        .char_indices()
-        .next_back()
-        .map_or(0, |(start, _)| start)
+    if index == 0 {
+        return 0;
+    }
+    let mut start = index - 1;
+    while !value.is_char_boundary(start) {
+        start -= 1;
+    }
+    start
 }
 
 fn character_matches(pattern: &Regex, ch: char) -> bool {
@@ -72,11 +79,19 @@ fn character_matches(pattern: &Regex, ch: char) -> bool {
 }
 
 fn key_char(ch: char) -> bool {
-    character_matches(&PYTHON_ALNUM, ch) || matches!(ch, '_' | '.' | '-')
+    if ch.is_ascii() {
+        ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | '-')
+    } else {
+        character_matches(&PYTHON_ALNUM, ch)
+    }
 }
 
 fn valid_key_start(ch: char) -> bool {
-    character_matches(&PYTHON_ALPHA, ch) || ch == '_'
+    if ch.is_ascii() {
+        ch.is_ascii_alphabetic() || ch == '_'
+    } else {
+        character_matches(&PYTHON_ALPHA, ch)
+    }
 }
 
 fn is_python_space(ch: char) -> bool {
