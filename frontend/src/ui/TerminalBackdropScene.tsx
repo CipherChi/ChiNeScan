@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { isSceneFrameDue, shouldReduceSceneQuality } from './scene-performance';
 
 type Props = { mode: 'full' | 'reduced' };
 
@@ -59,16 +60,32 @@ export function TerminalBackdropScene({ mode }: Props) {
     lock.position.set(-4.6,-1.4,-2.9); lock.scale.setScalar(.65); scene.add(lock);
 
     let frame = 0, last = performance.now(), lastFrame = 0, frames = 0;
+    let lowFpsSince: number | null = null, qualityReduced = false;
     let visible = !document.hidden, pointerX = 0, pointerY = 0, disposed = false;
     const onPointer = (event: PointerEvent) => { pointerX = (event.clientX/window.innerWidth-.5)*.08; pointerY = (event.clientY/window.innerHeight-.5)*.05; };
     const onVisibility = () => { visible = !document.hidden; if (visible && mode === 'full') frame = requestAnimationFrame(render); else cancelAnimationFrame(frame); };
     const resize = () => { camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); };
     function render(now: number) {
       if (disposed || !visible || mode !== 'full') return;
-      frame=requestAnimationFrame(render); frames++;
-      if (now-lastFrame < 1000/60) return;
+      frame=requestAnimationFrame(render);
+      if (!isSceneFrameDue(now,lastFrame)) return;
       lastFrame=now;
-      if (now-last >= 1000) { root!.dataset.fps=String(Math.round(frames*1000/(now-last))); frames=0;last=now; }
+      frames++;
+      if (now-last >= 1000) {
+        const fps = frames*1000/(now-last);
+        root!.dataset.fps=String(Math.round(fps));
+        if (fps < 40) {
+          lowFpsSince ??= now;
+          if (!qualityReduced && shouldReduceSceneQuality(fps, lowFpsSince, now)) {
+            qualityReduced = true;
+            rain.count = Math.min(42, count);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, .65));
+            resize();
+            root!.dataset.quality = 'reduced';
+          }
+        } else lowFpsSince = null;
+        frames=0;last=now;
+      }
       const dt=Math.min(now-last,40);
       camera.position.x+=(pointerX-camera.position.x)*.025; camera.position.y+=(-pointerY-camera.position.y)*.025;
       windows.forEach((g)=>{g.position.z += dt*.0007; if(g.position.z>8)g.position.z=-27;});
