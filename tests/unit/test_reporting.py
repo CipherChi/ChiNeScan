@@ -63,6 +63,30 @@ def test_render_all_formats_redacts_and_escapes() -> None:
     assert "[REDACTED]" in sarif["runs"][0]["results"][0]["message"]["text"]
 
 
+def test_reporter_uses_native_worker_when_available_and_falls_back(monkeypatch) -> None:
+    import chinescan.core.reporting as reporting
+
+    scan, findings = sample_scan()
+    observed: dict[str, object] = {}
+
+    def native(request: dict[str, object]) -> str:
+        observed.update(request)
+        return "native report"
+
+    monkeypatch.setattr(reporting, "render_native_report", native)
+    assert reporting.render_report(scan, findings, "markdown") == "native report"
+    assert observed["format"] == "markdown"
+    metadata = observed["metadata"]
+    assert isinstance(metadata, dict)
+    assert (
+        "Complete language coverage and comprehensive vulnerability analysis"
+        in metadata["not_assessed"]
+    )
+
+    monkeypatch.setattr(reporting, "render_native_report", lambda _request: None)
+    assert "# ChiNeScan report" in reporting.render_report(scan, findings, "markdown")
+
+
 def test_full_json_export_is_complete_and_records_provenance() -> None:
     scan, findings = sample_scan()
     payload = json.loads(render_report(scan, findings, "full-json"))
