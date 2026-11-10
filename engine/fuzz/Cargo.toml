@@ -1,0 +1,28 @@
+[package]
+name = "chinescan-engine-fuzz"
+version = "0.0.0"
+publish = false
+license = "Apache-2.0"
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "=0.4.10"
+chinescan-engine = { path = ".." }
+
+[[bin]]
+name = "zip_metadata"
+path = "fuzz_targets/zip_metadata.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tar_metadata"
+path = "fuzz_targets/tar_metadata.rs"
+test = false
+doc = false
+bench = false
+
