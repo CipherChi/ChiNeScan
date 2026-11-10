@@ -25,9 +25,15 @@ test('Modules page terminal glass renders, remains keyboard operable, and report
   await page.locator('.motion-toggle').selectOption('full');
   await expect.poll(async () => page.locator('.terminal-scene').getAttribute('data-fps'), { timeout: 7000 }).not.toBeNull();
   const fps = await page.locator('.terminal-scene').getAttribute('data-fps');
+  const renderer = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
+    const info = context?.getExtension('WEBGL_debug_renderer_info');
+    return info && context ? String(context.getParameter(info.UNMASKED_RENDERER_WEBGL)) : 'unavailable';
+  });
   if (Number(fps) < 40) {
     await expect(page.locator('.terminal-scene')).toHaveAttribute('data-quality', 'reduced', { timeout: 5000 });
   }
   const quality = await page.locator('.terminal-scene').getAttribute('data-quality') ?? 'full';
-  console.log(`Terminal scene measured FPS: ${fps ?? 'unavailable'}; quality mode: ${quality}`);
+  console.log(`Terminal scene measured FPS: ${fps ?? 'unavailable'}; quality mode: ${quality}; WebGL renderer: ${renderer}`);
 });
