@@ -28,6 +28,21 @@ The engine only processes text supplied by the caller. It does not read files,
 execute input, access the network, or redact caller-owned location and line
 number fields specially.
 
+## ZIP metadata prototype
+
+The extension also exposes `inspect_zip_metadata(data: bytes) -> dict` for
+bounded central-directory inspection. It is an early parser prototype, not yet
+called by `chinescan/malware_analysis/analyzer.py`. It accepts at most 64 MiB,
+caps entries at 1,000 and names at 4 KiB, validates directory bounds, rejects
+declared expanded totals above 64 MiB, and catches panics at the PyO3 boundary.
+It returns names and generic warnings for traversal/absolute paths, duplicate
+names, encrypted entries, symlink entries, and high compression ratios. It
+does not decompress, extract, or execute entries. ZIP64 and multi-disk archives
+are unsupported. It does not resolve symlink targets, inspect tar/7z/gzip/bz2/xz,
+or run in a separate process. The existing Python analyzer remains authoritative
+until native integration and end-to-end tests are completed; no module gap is
+closed by the prototype alone.
+
 ## Python selection and fallback
 
 `CHINESCAN_ENGINE` accepts `auto`, `python`, or `rust` (the default is `auto`).
