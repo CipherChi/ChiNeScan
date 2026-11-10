@@ -169,6 +169,18 @@ fn verify_report_worker(request: &str) -> PyResult<bool> {
     verify_report_detached(input.content.as_bytes(), &sig, &key)
 }
 
+#[pyfunction]
+fn score_modules_json(request: &str) -> PyResult<String> {
+    chinescan_scoring::score_json(request)
+        .map_err(|_| pyo3::exceptions::PyValueError::new_err("invalid scoring request"))
+}
+
+#[pyfunction]
+fn evaluate_alert_rules_json(request: &str) -> PyResult<String> {
+    chinescan_alerts::evaluate_json(request)
+        .map_err(|_| pyo3::exceptions::PyValueError::new_err("invalid alert rules request"))
+}
+
 fn decode_hex(value: &str) -> Option<Vec<u8>> {
     if !value.len().is_multiple_of(2) || value.len() > 128 || !value.is_ascii() {
         return None;
@@ -231,6 +243,8 @@ fn chinescan_engine(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(report_public_key, module)?)?;
     module.add_function(wrap_pyfunction!(sign_report_worker, module)?)?;
     module.add_function(wrap_pyfunction!(verify_report_worker, module)?)?;
+    module.add_function(wrap_pyfunction!(score_modules_json, module)?)?;
+    module.add_function(wrap_pyfunction!(evaluate_alert_rules_json, module)?)?;
     Ok(())
 }
 

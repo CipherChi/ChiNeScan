@@ -66,6 +66,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
+name = "chinescan-alerts"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "chinescan-common"
 version = "0.1.0"
 dependencies = [
@@ -76,7 +85,9 @@ dependencies = [
 name = "chinescan-engine"
 version = "0.1.0"
 dependencies = [
+ "chinescan-alerts",
  "chinescan-reporter",
+ "chinescan-scoring",
  "ed25519-dalek",
  "flate2",
  "proptest",
@@ -97,6 +108,15 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "chinescan-scoring"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
