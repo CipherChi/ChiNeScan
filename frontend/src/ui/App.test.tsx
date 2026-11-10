@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import type { Finding, Scan } from '../types';
@@ -64,15 +65,16 @@ describe('dashboard authentication and overview', () => {
     });
     render(<App/>);
     await screen.findByRole('heading', { name: 'Overview' });
-    const ambient = document.querySelector('.terminal-ambient');
+    let ambient = document.querySelector('.terminal-ambient');
     expect(ambient).toHaveAttribute('aria-hidden', 'true');
-    fireEvent.click(screen.getByRole('button', { name: 'Pause ambient motion' }));
-    expect(screen.getByRole('button', { name: 'Resume ambient motion' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Background animation' }), { target: { value: 'off' } });
+    expect(screen.getByRole('combobox', { name: 'Background animation' })).toHaveValue('off');
     expect(window.localStorage.getItem('chinescan-terminal-motion')).toBe('off');
-    fireEvent.click(screen.getByRole('button', { name: 'Resume ambient motion' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Background animation' }), { target: { value: 'full' } });
+    ambient = document.querySelector('.terminal-ambient');
     expect(ambient).toHaveClass('is-active');
     Object.defineProperty(document, 'hidden', { configurable: true, value: true });
-    document.dispatchEvent(new Event('visibilitychange'));
+    fireEvent(document, new Event('visibilitychange'));
     await waitFor(() => expect(ambient).not.toHaveClass('is-active'));
   });
 
@@ -89,9 +91,30 @@ describe('dashboard authentication and overview', () => {
     });
     render(<App/>);
     await screen.findByRole('heading', { name: 'Overview' });
-    expect(window.localStorage.getItem('chinescan-terminal-motion')).toBe('on');
+    expect(window.localStorage.getItem('chinescan-terminal-motion')).toBe('full');
     expect(document.querySelector('.terminal-ambient')).not.toHaveClass('is-active');
     expect(document.querySelector('.terminal-ambient')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('keeps navigation keyboard-operable and persists the Reduced setting', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = String(input);
+      if (path === '/api/auth/session') return json({ authenticated: true, email_masked: 'a***@example.test', signup_available: false });
+      if (path === '/api/auth/csrf') return json({ csrf_token: 'csrf-value' });
+      if (path === '/api/overview') return json({ scan_count: 0, finding_count: 0, findings_by_severity: { critical: 0, high: 0, medium: 0, low: 0, info: 0 }, recent_scans: [] });
+      if (path === '/api/modules') return json([]);
+      if (path.startsWith('/api/findings?')) return json({ items: [], total: 0, limit: 20, offset: 0 });
+      throw new Error(`Unexpected API call: ${path}`);
+    });
+    render(<App/>);
+    await screen.findByRole('heading', { name: 'Overview' });
+    const user = userEvent.setup();
+    const modules = screen.getByRole('button', { name: 'Modules' });
+    modules.focus(); await user.keyboard('{Enter}');
+    expect(await screen.findByRole('heading', { name: 'Modules' })).toBeInTheDocument();
+    const setting = screen.getByRole('combobox', { name: 'Background animation' });
+    fireEvent.change(setting, { target: { value: 'reduced' } });
+    expect(window.localStorage.getItem('chinescan-terminal-motion')).toBe('reduced');
   });
 
   it('shows module status and authorization requirements from the backend registry', async () => {
