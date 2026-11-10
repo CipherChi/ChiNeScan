@@ -5,6 +5,7 @@ mod magic;
 mod redact;
 mod zipmeta;
 
+use ed25519_dalek::{Signer, Verifier};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
@@ -88,6 +89,104 @@ fn render_report_json(request: &str) -> PyResult<String> {
     })
 }
 
+#[pyfunction]
+fn sign_report_detached(content: &[u8], private_seed: &[u8]) -> PyResult<String> {
+    if content.len() > 3 * 1024 * 1024 || private_seed.len() != 32 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "invalid signature request",
+        ));
+    }
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let seed: &[u8; 32] = private_seed
+            .try_into()
+            .map_err(|_| pyo3::exceptions::PyValueError::new_err("invalid signing key"))?;
+        let key = ed25519_dalek::SigningKey::from_bytes(seed);
+        let sig = key.sign(content);
+        Ok(hex_encode(sig.to_bytes()))
+    }))
+    .unwrap_or_else(|_| {
+        Err(pyo3::exceptions::PyRuntimeError::new_err(
+            "signature operation failed safely",
+        ))
+    })
+}
+
+#[pyfunction]
+fn verify_report_detached(content: &[u8], signature: &[u8], public_key: &[u8]) -> PyResult<bool> {
+    if content.len() > 3 * 1024 * 1024 || signature.len() != 64 || public_key.len() != 32 {
+        return Ok(false);
+    }
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let key_bytes: &[u8; 32] = public_key
+            .try_into()
+            .map_err(|_| pyo3::exceptions::PyValueError::new_err("invalid key"))?;
+        let key = ed25519_dalek::VerifyingKey::from_bytes(key_bytes)
+            .map_err(|_| pyo3::exceptions::PyValueError::new_err("invalid public key"))?;
+        let sig = ed25519_dalek::Signature::from_slice(signature)
+            .map_err(|_| pyo3::exceptions::PyValueError::new_err("invalid signature"))?;
+        Ok(key.verify(content, &sig).is_ok())
+    }))
+    .unwrap_or(Ok(false))
+}
+
+#[pyfunction]
+fn report_public_key(private_seed: &[u8]) -> PyResult<Vec<u8>> {
+    let seed: &[u8; 32] = private_seed
+        .try_into()
+        .map_err(|_| pyo3::exceptions::PyValueError::new_err("invalid signing key"))?;
+    Ok(ed25519_dalek::SigningKey::from_bytes(seed)
+        .verifying_key()
+        .to_bytes()
+        .to_vec())
+}
+
+#[pyfunction]
+fn sign_report_worker(request: &str) -> PyResult<String> {
+    #[derive(serde::Deserialize)]
+    struct Input {
+        content: String,
+        private_seed_hex: String,
+    }
+    let input: Input = serde_json::from_str(request)
+        .map_err(|_| pyo3::exceptions::PyValueError::new_err("invalid signature request"))?;
+    let seed = decode_hex(&input.private_seed_hex)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("invalid signing key"))?;
+    sign_report_detached(input.content.as_bytes(), &seed)
+}
+
+#[pyfunction]
+fn verify_report_worker(request: &str) -> PyResult<bool> {
+    #[derive(serde::Deserialize)]
+    struct Input {
+        content: String,
+        signature_hex: String,
+        public_key_hex: String,
+    }
+    let input: Input = serde_json::from_str(request)
+        .map_err(|_| pyo3::exceptions::PyValueError::new_err("invalid verification request"))?;
+    let sig = decode_hex(&input.signature_hex).unwrap_or_default();
+    let key = decode_hex(&input.public_key_hex).unwrap_or_default();
+    verify_report_detached(input.content.as_bytes(), &sig, &key)
+}
+
+fn decode_hex(value: &str) -> Option<Vec<u8>> {
+    if !value.len().is_multiple_of(2) || value.len() > 128 || !value.is_ascii() {
+        return None;
+    }
+    value
+        .as_bytes()
+        .chunks(2)
+        .map(|pair| {
+            let text = std::str::from_utf8(pair).ok()?;
+            u8::from_str_radix(text, 16).ok()
+        })
+        .collect()
+}
+
+fn hex_encode(bytes: [u8; 64]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 fn inspection_to_py(py: Python<'_>, result: zipmeta::Inspection) -> PyResult<Py<PyDict>> {
     let output = PyDict::new(py);
     let parse_failed = result.member_count.is_none();
@@ -127,5 +226,36 @@ fn chinescan_engine(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(inspect_tar_metadata, module)?)?;
     module.add_function(wrap_pyfunction!(identify_file_type, module)?)?;
     module.add_function(wrap_pyfunction!(render_report_json, module)?)?;
+    module.add_function(wrap_pyfunction!(sign_report_detached, module)?)?;
+    module.add_function(wrap_pyfunction!(verify_report_detached, module)?)?;
+    module.add_function(wrap_pyfunction!(report_public_key, module)?)?;
+    module.add_function(wrap_pyfunction!(sign_report_worker, module)?)?;
+    module.add_function(wrap_pyfunction!(verify_report_worker, module)?)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod report_signature_tests {
+    use ed25519_dalek::{Signer, Verifier};
+
+    #[test]
+    fn detached_signature_rejects_tampering_and_wrong_keys() {
+        let seed_a = [7_u8; 32];
+        let seed_b = [8_u8; 32];
+        let content = b"local report content";
+        let signing_key = ed25519_dalek::SigningKey::from_bytes(&seed_a);
+        let signature = signing_key.sign(content);
+        assert!(signing_key
+            .verifying_key()
+            .verify(content, &signature)
+            .is_ok());
+        assert!(signing_key
+            .verifying_key()
+            .verify(b"tampered report", &signature)
+            .is_err());
+        assert!(ed25519_dalek::SigningKey::from_bytes(&seed_b)
+            .verifying_key()
+            .verify(content, &signature)
+            .is_err());
+    }
 }

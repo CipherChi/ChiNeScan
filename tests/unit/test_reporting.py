@@ -87,6 +87,80 @@ def test_reporter_uses_native_worker_when_available_and_falls_back(monkeypatch) 
     assert "# ChiNeScan report" in reporting.render_report(scan, findings, "markdown")
 
 
+def test_detached_report_signing_and_key_permission_checks(tmp_path, monkeypatch) -> None:
+    import importlib.util
+    import os
+    import subprocess
+
+    from chinescan.core.native_reporting import (
+        ReportSigningError,
+        report_public_key,
+        sign_report_detached,
+        verify_report_detached,
+    )
+
+    key_file = tmp_path / "report-signing.seed"
+    key_file.write_bytes(bytes(range(32)))
+    if os.name != "nt":
+        key_file.chmod(0o600)
+    else:
+        identity = (
+            subprocess.run(
+                ["whoami.exe", "/user", "/fo", "csv", "/nh"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            .stdout.strip()
+            .strip('"')
+            .split('","')[-1]
+        )
+        subprocess.run(
+            [
+                "icacls.exe",
+                str(key_file),
+                "/inheritance:r",
+                "/grant:r",
+                f"*{identity}:(F)",
+                "*S-1-5-18:(F)",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    if importlib.util.find_spec("chinescan_engine") is None:
+        pytest.skip("native reporter extension is unavailable")
+    report = '{"scan":"local"}'
+    signature = sign_report_detached(report, key_file)
+    public_key = report_public_key(key_file)
+    assert verify_report_detached(report, signature, public_key)
+    assert not verify_report_detached(report + "!", signature, public_key)
+    wrong_key = report_public_key_for_seed(bytes(reversed(range(32))))
+    assert not verify_report_detached(report, signature, wrong_key)
+
+    if os.name != "nt":
+        key_file.chmod(0o644)
+        with pytest.raises(ReportSigningError, match="too permissive"):
+            sign_report_detached(report, key_file)
+    else:
+        subprocess.run(
+            ["icacls.exe", str(key_file), "/grant", "*S-1-1-0:(R)"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        with pytest.raises(ReportSigningError, match="too permissive"):
+            sign_report_detached(report, key_file)
+    with pytest.raises(ReportSigningError, match="missing"):
+        sign_report_detached(report, tmp_path / "missing.seed")
+
+
+def report_public_key_for_seed(seed: bytes) -> str:
+    import chinescan_engine
+
+    return chinescan_engine.report_public_key(seed).hex()
+
+
 def test_full_json_export_is_complete_and_records_provenance() -> None:
     scan, findings = sample_scan()
     payload = json.loads(render_report(scan, findings, "full-json"))
