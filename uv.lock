@@ -406,6 +406,7 @@ dev = [
 dev = [
     { name = "bandit" },
     { name = "httpx2" },
+    { name = "types-pyyaml" },
 ]
 
 [package.metadata]
@@ -434,6 +435,7 @@ provides-extras = ["dev"]
 dev = [
     { name = "bandit", specifier = ">=1.9,<2" },
     { name = "httpx2", specifier = ">=2.16.0" },
+    { name = "types-pyyaml", specifier = ">=6.0.12,<7" },
 ]
 
 [[package]]
