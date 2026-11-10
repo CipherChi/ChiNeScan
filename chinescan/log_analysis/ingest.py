@@ -172,7 +172,7 @@ def _truncation_error(name: str, read_size: int, *, decompressed: bool = False) 
     source = "decompressed log" if decompressed else "log"
     return (
         f"{safe_name}: {source} truncated at the per-file limit after reading {read_size} bytes; "
-        "remaining data was not analyzed."
+        "remaining log data was not analyzed."
     )
 
 
