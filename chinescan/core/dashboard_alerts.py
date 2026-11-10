@@ -109,17 +109,14 @@ class DashboardAlerts:
     ) -> list[dict[str, Any]]:
         if not 1 <= limit <= 200:
             raise ValueError("Alert limit is out of bounds.")
-        where = "" if include_resolved else "WHERE state <> 'resolved'"
         with self.repository.engine.connect() as connection:
-            rows = (
-                connection.exec_driver_sql(
-                    f"SELECT * FROM dashboard_alerts {where} "
-                    "ORDER BY created_at DESC, alert_id LIMIT ?",
-                    (limit,),
-                )
-                .mappings()
-                .all()
+            query = (
+                "SELECT * FROM dashboard_alerts ORDER BY created_at DESC, alert_id LIMIT ?"
+                if include_resolved
+                else "SELECT * FROM dashboard_alerts WHERE state <> 'resolved' "
+                "ORDER BY created_at DESC, alert_id LIMIT ?"
             )
+            rows = connection.exec_driver_sql(query, (limit,)).mappings().all()
         return [dict(row) for row in rows]
 
     def get(self, alert_id: str) -> dict[str, Any] | None:
