@@ -37,11 +37,14 @@ def module_capabilities() -> list[dict[str, object]]:
             "status": "partial",
             "does_today": (
                 "Malware triage computes MD5, SHA-1, SHA-256, magic-byte type, size, byte entropy, "
-                "bounded strings, and indicators; samples are never executed."
+                "bounded strings, indicators, and isolated ZIP/TAR/TAR.GZ metadata findings; "
+                "samples are never executed. ZIP retains a bounded Python fallback when the "
+                "optional Rust engine is unavailable."
             ),
             "not_assessed": [
-                "Archive listing without extraction",
-                "File type/extension mismatch reporting",
+                "Archive formats beyond ZIP/TAR/TAR.GZ and encrypted entry contents",
+                "Magic signatures beyond the tested PE, ELF, PDF, ZIP, gzip, PNG, JPEG, and TAR "
+                "set",
             ],
             "authorization_guards": ["Operator-local registered sample only"],
         },
@@ -87,10 +90,10 @@ def module_capabilities() -> list[dict[str, object]]:
             "name": "Malware Triage",
             "status": "available",
             "does_today": (
-                "Static metadata inspection and hashing of local samples; never executes or "
-                "uploads samples."
+                "Static metadata inspection, hashing, and bounded archive-entry findings for local "
+                "samples; never executes or uploads samples."
             ),
-            "not_assessed": ["Dynamic behavior and bounded archive listing"],
+            "not_assessed": ["Dynamic behavior and encrypted archive entry contents"],
             "authorization_guards": ["Operator-local managed sample"],
         },
         {
