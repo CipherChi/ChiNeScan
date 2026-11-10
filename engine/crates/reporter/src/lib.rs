@@ -541,6 +541,19 @@ mod tests {
             .unwrap()
             .contains("sarif-schema-2.1.0"));
     }
+
+    #[test]
+    fn sarif_hostile_text_stays_a_json_message_value() {
+        let mut r = request("sarif");
+        r.findings[0].title = "<script>alert(1)</script>\"&".into();
+        r.findings[0].evidence[0].message = "</message><img src=x onerror=1>".into();
+        let value: serde_json::Value = serde_json::from_str(&render(&r).unwrap().content).unwrap();
+        let message = value["runs"][0]["results"][0]["message"]["text"]
+            .as_str()
+            .unwrap();
+        assert!(message.contains("<script>alert(1)</script>\"&"));
+        assert!(message.contains("</message><img src=x onerror=1>"));
+    }
     fn request(format: &str) -> ReportRequest {
         ReportRequest {
             format: format.into(),
