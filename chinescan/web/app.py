@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -10,6 +11,7 @@ import secrets
 import shutil
 import threading
 import time
+from collections import deque
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -36,6 +38,8 @@ from chinescan.core.cases import (
     CaseWorkflowError,
 )
 from chinescan.core.config.settings import Settings
+from chinescan.core.dashboard_alerts import AlertStateError, DashboardAlerts
+from chinescan.core.dashboard_intelligence import DashboardIntelligence
 from chinescan.core.diagnostics import build_report, health_report
 from chinescan.core.external_reports import (
     MAX_EXTERNAL_REPORT_BYTES,
@@ -277,6 +281,11 @@ class CaseLinkRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     record_type: str = Field(min_length=1, max_length=80)
     record_id: str = Field(min_length=1, max_length=255)
+
+
+class AlertSnoozeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    until: datetime
 
 
 class CaseStatusRequest(BaseModel):
@@ -561,6 +570,9 @@ def create_app(
     configure_logging()
     active_settings = settings or Settings(_env_file=None)
     repository = SQLiteRepository(database_path)
+    dashboard_alerts = DashboardAlerts(repository)
+    dashboard_intelligence = DashboardIntelligence(repository, dashboard_alerts)
+    auth_failure_windows: dict[str, deque[float]] = {}
     db_lock = threading.RLock()
     absolute_ttl_seconds = (
         session_ttl_seconds
@@ -739,6 +751,8 @@ def create_app(
     application.state.malware_job_manager = malware_jobs
     application.state.project_malware_job_manager = project_malware_jobs
     application.state.github_import_manager = github_imports
+    application.state.dashboard_alerts = dashboard_alerts
+    application.state.dashboard_intelligence = dashboard_intelligence
     application.state.started_at = time.monotonic()
     application.state.diagnostic_errors = []
 
@@ -1032,6 +1046,7 @@ def create_app(
         )
 
     def require_csrf(
+        request: Request,
         session: Session = Depends(current_session),  # noqa: B008
         token: str | None = Cookie(default=None, alias=COOKIE_NAME),
         csrf_header: str | None = Header(default=None, alias="X-CSRF-Token"),
@@ -1039,6 +1054,16 @@ def create_app(
         import secrets
 
         if not csrf_header or not secrets.compare_digest(session.csrf_token, csrf_header):
+            dashboard_intelligence.refresh_alerts(
+                [
+                    {
+                        "key": "csrf-block:" + str(getattr(request.state, "request_id", uuid4())),
+                        "kind": "authorization_block",
+                        "summary": "A same-origin request failed the CSRF authorization check.",
+                        "module": "Security Dashboard",
+                    }
+                ]
+            )
             raise HTTPException(status_code=403, detail="CSRF validation failed.")
         return session
 
@@ -1197,6 +1222,16 @@ def create_app(
             valid = False
         if not valid:
             retry = auth_lockout.fail(keys)
+            now = time.monotonic()
+            scope = hashlib.sha256("|".join(keys).encode("utf-8", errors="replace")).hexdigest()
+            failures = auth_failure_windows.setdefault(scope, deque())
+            while failures and failures[0] <= now - 300:
+                failures.popleft()
+            failures.append(now)
+            if len(failures) >= 5:
+                dashboard_intelligence.refresh_alerts(
+                    [dashboard_intelligence.repeated_auth_signal(scope)]
+                )
             if retry:
                 raise lockout_response(retry)
             raise HTTPException(status_code=401, detail="Invalid email or password.")
@@ -1758,6 +1793,106 @@ def create_app(
     @application.get("/api/modules")
     def list_modules(_session: Session = Depends(current_session)) -> list[dict[str, object]]:  # noqa: B008
         return module_capabilities()
+
+    @application.get("/api/dashboard/scores")
+    def dashboard_scores(_session: Session = Depends(current_session)) -> list[dict[str, Any]]:  # noqa: B008
+        return dashboard_intelligence.score_modules()
+
+    @application.get("/api/alerts")
+    def dashboard_alert_list(
+        limit: int = Query(default=100, ge=1, le=200),
+        include_resolved: bool = False,
+        _session: Session = Depends(current_session),  # noqa: B008
+    ) -> list[dict[str, Any]]:
+        dashboard_intelligence.refresh_alerts()
+        return dashboard_alerts.list_alerts(limit=limit, include_resolved=include_resolved)
+
+    @application.get("/api/alerts/{alert_id}/audit")
+    def dashboard_alert_audit(
+        alert_id: str,
+        _session: Session = Depends(current_session),  # noqa: B008
+    ) -> list[dict[str, Any]]:
+        if dashboard_alerts.get(alert_id) is None:
+            raise HTTPException(status_code=404, detail="Alert not found.")
+        return dashboard_alerts.audit(alert_id)
+
+    @application.post("/api/alerts/{alert_id}/acknowledge")
+    def acknowledge_dashboard_alert(
+        alert_id: str,
+        session: Session = Depends(require_csrf),  # noqa: B008
+    ) -> dict[str, Any]:
+        try:
+            return dashboard_alerts.transition(alert_id, "acknowledge", session.email)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Alert not found.") from exc
+        except AlertStateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @application.post("/api/alerts/{alert_id}/snooze")
+    def snooze_dashboard_alert(
+        alert_id: str,
+        payload: AlertSnoozeRequest,
+        session: Session = Depends(require_csrf),  # noqa: B008
+    ) -> dict[str, Any]:
+        try:
+            return dashboard_alerts.transition(
+                alert_id, "snooze", session.email, snoozed_until=payload.until.isoformat()
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Alert not found.") from exc
+        except AlertStateError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @application.post("/api/alerts/{alert_id}/resolve")
+    def resolve_dashboard_alert(
+        alert_id: str,
+        session: Session = Depends(require_csrf),  # noqa: B008
+    ) -> dict[str, Any]:
+        try:
+            return dashboard_alerts.transition(alert_id, "resolve", session.email)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Alert not found.") from exc
+        except AlertStateError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @application.get("/api/alerts/events")
+    def dashboard_alert_events(
+        request: Request,
+        last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
+        after: int = Query(default=0, ge=0),
+        _session: Session = Depends(current_session),  # noqa: B008
+        token: str | None = Cookie(default=None, alias=COOKIE_NAME),
+    ) -> StreamingResponse:
+        try:
+            cursor = max(after, int(last_event_id or "0"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid event cursor.") from None
+
+        async def stream() -> AsyncIterator[str]:
+            nonlocal cursor
+            last_refresh = 0.0
+            while not await request.is_disconnected():
+                if sessions.get(token) is None:
+                    yield "event: session-expired\ndata: {}\n\n"
+                    return
+                now_mono = time.monotonic()
+                if now_mono - last_refresh >= 15:
+                    dashboard_intelligence.refresh_alerts()
+                    last_refresh = now_mono
+                items = dashboard_alerts.events_after(cursor)
+                for item in items:
+                    cursor = int(item["audit_id"])
+                    payload = json.dumps(item, separators=(",", ":"))
+                    yield f"id: {cursor}\nevent: alert\ndata: {payload}\n\n"
+                if not items:
+                    yield ": keep-alive\n\n"
+                await asyncio.sleep(5)
+
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "private, no-store", "X-Accel-Buffering": "no"},
+        )
 
     @application.get("/api/malware/samples", response_model=list[MalwareSampleResponse])
     def malware_samples(_session: Session = Depends(current_session)) -> list[dict[str, Any]]:  # noqa: B008

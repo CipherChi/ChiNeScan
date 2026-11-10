@@ -18,6 +18,7 @@ from chinescan.core.logging.redaction import redact
 from chinescan.core.models.common import Severity
 from chinescan.core.models.finding import Finding
 from chinescan.core.models.investigation import Alert, CoverageReport, Scan
+from chinescan.core.native_reporting import render_native_report
 from chinescan.core.storage.repository import Repository
 from chinescan.core.verdict import VERDICT_CAVEAT
 from chinescan.malware_analysis.managed import safe_display_name
@@ -176,6 +177,45 @@ def render_report(scan: Scan, findings: list[Finding], output_format: str) -> st
         raise ReportingError("Unsupported report format.")
     chain_scan = "chain" in scan.project_types or scan.scanner == "chain_trace"
     safe_findings = [_redact_finding(item, chain_scan=chain_scan) for item in findings]
+    if (
+        output_format in {"json", "csv", "markdown", "html", "sarif"}
+        and scan.code_assessment is None
+    ):
+        from chinescan.core.capabilities import module_capabilities
+
+        reporter_card = next(
+            item for item in module_capabilities() if item["name"] == "Vulnerability Reporter"
+        )
+        request = {
+            "format": "markdown" if output_format == "detail" else output_format,
+            "metadata": {
+                "scan_id": scan.scan_id,
+                "tool_version": __version__,
+                "rule_version": scan.scanner,
+                "scope": ", ".join(scan.project_types),
+                "methodology": f"Local {scan.scanner} assessment; static evidence only.",
+                "not_assessed": reporter_card["not_assessed"],
+            },
+            "findings": [
+                {
+                    "rule_id": item.get("rule_id", "unknown"),
+                    "title": item.get("title", ""),
+                    "severity": str(item.get("severity", "info")).lower(),
+                    "confidence": 0.5,
+                    "location": item.get("location"),
+                    "evidence": [
+                        {"message": str(item.get("description") or item.get("code_excerpt") or "")}
+                    ],
+                    "remediation": item.get("remediation"),
+                    "cwe_ids": item.get("cwe_ids", []),
+                    "fingerprint": item.get("fingerprint"),
+                }
+                for item in safe_findings
+            ],
+        }
+        native_report = render_native_report(cast(dict[str, object], request))
+        if native_report is not None:
+            return native_report
     caveat = VERDICT_CAVEAT.get(scan.verdict) if scan.verdict is not None else None
     if output_format == "share-summary":
         return _share_summary(scan, findings, caveat)

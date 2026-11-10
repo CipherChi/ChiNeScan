@@ -580,6 +580,9 @@ def test_get_routes_do_not_expose_settings_or_credential_secrets(
         for route in app.routes:
             if not isinstance(route, APIRoute) or not route.path.startswith("/api/"):
                 continue
+            if route.name == "dashboard_alert_events":
+                # Streaming responses do not terminate, so they need dedicated SSE tests.
+                continue
             if "GET" not in (route.methods or set()):
                 continue
             path = re.sub(r"\{[^}:]+(?::path)?\}", "missing-id", route.path)

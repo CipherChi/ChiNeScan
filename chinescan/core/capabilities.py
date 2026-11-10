@@ -52,7 +52,11 @@ def module_capabilities() -> list[dict[str, object]]:
             "name": "Vulnerability Reporter",
             "status": "partial",
             "does_today": "Exports findings and coverage from implemented local assessments.",
-            "not_assessed": ["Complete language coverage and comprehensive vulnerability analysis"],
+            "not_assessed": [
+                "Complete language coverage and comprehensive vulnerability analysis",
+                "Official SARIF schema validation, local CWE/EPSS/KEV catalog import, "
+                "and detached signing",
+            ],
             "authorization_guards": ["Authenticated local operator"],
         },
         {
@@ -62,7 +66,7 @@ def module_capabilities() -> list[dict[str, object]]:
                 "Authenticated local dashboard for scans, findings, cases, jobs, projects, logs, "
                 "malware triage, and on-chain investigations."
             ),
-            "not_assessed": ["Alerts panel", "Per-module scores"],
+            "not_assessed": [],
             "authorization_guards": ["Authenticated local operator"],
         },
         {

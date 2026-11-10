@@ -84,6 +84,11 @@ jobs:
           cache-dependency-glob: uv.lock
 
       - run: uv sync --locked --python 3.12 --extra dev
+      - uses: dtolnay/rust-toolchain@1.99.1
+      - name: Install native engine for full Python suite
+        run: uv pip install --python .venv/bin/python ./engine
+        env:
+          PYO3_PYTHON: ${{ github.workspace }}/.venv/bin/python
       - run: uv run --locked --extra dev ruff check .
       - run: uv run --locked --extra dev ruff format --check .
       - run: uv run --locked --extra dev mypy --strict chinescan
