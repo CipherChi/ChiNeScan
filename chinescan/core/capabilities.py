@@ -66,7 +66,7 @@ def module_capabilities() -> list[dict[str, object]]:
                 "Authenticated local dashboard for scans, findings, cases, jobs, projects, logs, "
                 "malware triage, and on-chain investigations."
             ),
-            "not_assessed": ["Alerts panel", "Per-module scores"],
+            "not_assessed": [],
             "authorization_guards": ["Authenticated local operator"],
         },
         {

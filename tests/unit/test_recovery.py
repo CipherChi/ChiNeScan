@@ -8,6 +8,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from typer.testing import CliRunner
 
 from chinescan.cli.app import app
@@ -84,11 +86,11 @@ def test_backup_verify_and_restore_preserve_a_complete_case_recovery_drill(tmp_p
     }
     assert "path" not in json.dumps(manifest).lower()
     verified = verify_backup(bundle)
-    assert verified.verified and verified.migration_revision == "0003_malware_backend"
+    assert verified.verified and verified.migration_revision == "0004_dashboard_alerts"
 
     restored_path = tmp_path / "restored.sqlite3"
     restored = restore_backup(bundle, restored_path, active_database_path=source)
-    assert restored.original_revision == restored.resulting_revision == "0003_malware_backend"
+    assert restored.original_revision == restored.resulting_revision == "0004_dashboard_alerts"
     restored_repository = SQLiteRepository(restored_path)
     try:
         recovered = CaseWorkflow(restored_repository).get_case(original.case_id)
@@ -296,26 +298,31 @@ def test_restore_upgrades_only_the_copy_and_rejects_existing_or_active_destinati
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "legacy.sqlite3"
-    repo = SQLiteRepository(source)
-    repo.save(
-        "case",
-        "legacy-case",
-        {
-            "schema_version": "1.0",
-            "case_id": "legacy-case",
-            "title": "Legacy retained",
-            "description": "",
-            "status": "open",
-            "created_at": "2025-01-01T00:00:00Z",
-            "updated_at": "2025-01-01T00:00:00Z",
-            "scan_ids": [],
-            "finding_ids": [],
-        },
-    )
-    repo.close()
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{source.as_posix()}")
+    command.upgrade(config, "0001_initial")
     engine = sqlite3.connect(source)
     try:
-        engine.execute("UPDATE alembic_version SET version_num='0001_initial'")
+        engine.execute(
+            "INSERT INTO records(record_type,record_id,payload) VALUES(?,?,?)",
+            (
+                "case",
+                "legacy-case",
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "case_id": "legacy-case",
+                        "title": "Legacy retained",
+                        "description": "",
+                        "status": "open",
+                        "created_at": "2025-01-01T00:00:00Z",
+                        "updated_at": "2025-01-01T00:00:00Z",
+                        "scan_ids": [],
+                        "finding_ids": [],
+                    }
+                ),
+            ),
+        )
         engine.commit()
     finally:
         engine.close()
@@ -325,7 +332,7 @@ def test_restore_upgrades_only_the_copy_and_rejects_existing_or_active_destinati
     destination = tmp_path / "restored-legacy.sqlite3"
     restored = restore_backup(bundle, destination, active_database_path=source)
     assert restored.original_revision == "0001_initial"
-    assert restored.resulting_revision == "0003_malware_backend"
+    assert restored.resulting_revision == "0004_dashboard_alerts"
     repo = SQLiteRepository(destination)
     try:
         assert repo.get("case", "legacy-case")["title"] == "Legacy retained"
@@ -374,7 +381,7 @@ def test_unversioned_supported_schema_verifies_read_only_and_migrates_restored_c
     destination = tmp_path / "unversioned-restored.sqlite3"
     restored = restore_backup(bundle, destination)
     assert restored.original_revision is None
-    assert restored.resulting_revision == "0003_malware_backend"
+    assert restored.resulting_revision == "0004_dashboard_alerts"
     repository = SQLiteRepository(destination)
     try:
         assert repository.get("target", "unversioned-target")["value"] == "retained"
