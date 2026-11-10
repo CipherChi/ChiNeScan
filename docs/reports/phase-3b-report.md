@@ -49,7 +49,7 @@ For rotation, generate a new random seed locally, restrict its ACL before use, d
 
 - Final full Python suite: **671 passed, 5 deselected, 10 failed in 337.04s**; failures exactly match the ten baseline cases above.
 - `tests/unit/test_reporting.py`: **19 passed** including native worker signing, tampered report, wrong key, missing key, and permission rejection.
-- Rust: `cargo fmt --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, and `cargo test --workspace --locked` passed (55 engine tests, 5 reporter tests).
+- Rust: `cargo fmt --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, and `cargo test --workspace --locked` passed (55 engine tests, 6 reporter tests, including hostile SARIF text as JSON data).
 - RustSec `cargo audit` passed on 94 dependencies. `cargo deny --offline check` passed.
 - Project Ruff and mypy passed. Frontend build passed; 12 files and 63 tests passed.
 - Native extension rebuilt from the locked workspace and installed locally without pip network access.
