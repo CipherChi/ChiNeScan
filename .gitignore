@@ -40,3 +40,9 @@ engine/target/
 frontend/dist/
 .worktrees/
 latest scan.json
+target/
+*.whl
+*.pem
+*.key
+*.p12
+.worktrees/
