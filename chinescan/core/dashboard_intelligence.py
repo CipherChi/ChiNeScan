@@ -151,9 +151,7 @@ class DashboardIntelligence:
                 raise WorkerFailure("Scoring worker returned an invalid result.")
             return [dict(result) for result in results if isinstance(result, dict)]
         except (WorkerFailure, ValueError, TypeError):
-            return [
-                self._unavailable_score(item) for item in inputs
-            ]
+            return [self._unavailable_score(item) for item in inputs]
 
     @staticmethod
     def _unavailable_score(item: dict[str, Any]) -> dict[str, Any]:

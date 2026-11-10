@@ -28,8 +28,7 @@ def upgrade() -> None:
         )
     """)
     op.execute(
-        "CREATE INDEX ix_dashboard_alerts_state_created "
-        "ON dashboard_alerts(state, created_at DESC)"
+        "CREATE INDEX ix_dashboard_alerts_state_created ON dashboard_alerts(state, created_at DESC)"
     )
     op.execute("""
         CREATE TABLE dashboard_alert_audit (

@@ -79,8 +79,6 @@ def test_security_dashboard_capability_is_not_assessed_only_after_feature_covera
     scores = client.get("/api/dashboard/scores").json()
     assert len(scores) == len(modules)
     assert all(
-        "why_this_score" in score
-        and "checks_completed" in score
-        and "inputs" in score
+        "why_this_score" in score and "checks_completed" in score and "inputs" in score
         for score in scores
     )
