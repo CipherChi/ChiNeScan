@@ -59,7 +59,7 @@ export function DashboardScoresAlerts({ onNavigate, onUnauthorized }: { onNaviga
   return <div className="dashboard-intelligence">
     <section className="panel score-panel" aria-labelledby="module-scores-heading">
       <div className="panel-heading"><div><h2 id="module-scores-heading">Per-module scores</h2><p>Findings and assessment coverage are included in each explanation.</p></div></div>
-      {scores.length ? <div className="score-grid">{scores.map((item) => <article className="score-tile" key={item.module}>
+      {scores.length ? <div className="score-grid">{scores.map((item) => <article data-glass className="score-tile" key={item.module}>
         <div className="score-tile-heading"><h3>{item.module}</h3><strong aria-label={item.score === null ? 'Not scored' : `Score ${item.score} out of 100`}>{item.score === null ? 'Not scored' : `${item.score}/100`}</strong></div>
         <p className="score-coverage">Based on {item.checks_completed} checks, {item.checks_not_assessed} not assessed</p>
         <p className="score-why">{item.why_this_score}</p>
@@ -75,7 +75,7 @@ export function DashboardScoresAlerts({ onNavigate, onUnauthorized }: { onNaviga
     <section className="panel alert-panel" aria-labelledby="alerts-heading" aria-live="polite">
       <div className="panel-heading"><div><h2 id="alerts-heading">Alerts</h2><p>Rule-based local alerts. State changes are recorded in the local audit trail.</p></div></div>
       {error && <p aria-live="polite" className="alert-load-error">{error} <button type="button" onClick={() => void load()}>Retry</button></p>}
-      {alerts.length ? <ul className="dashboard-alert-list">{alerts.map((alert) => <li className="dashboard-alert" key={alert.alert_id}>
+      {alerts.length ? <ul className="dashboard-alert-list">{alerts.map((alert) => <li data-glass className="dashboard-alert" key={alert.alert_id}>
         <div className="dashboard-alert-copy"><span className={`alert-severity ${alert.severity}`}>{alert.severity}</span><div><h3>{alert.title}</h3><p>{alert.description}</p><small>{alert.module} · {alert.state}{alert.snoozed_until ? ` until ${new Date(alert.snoozed_until).toLocaleString()}` : ''}</small></div></div>
         <div className="alert-actions">{alert.state !== 'resolved' && <>
           {alert.state !== 'acknowledged' && <button type="button" disabled={working === alert.alert_id} onClick={() => void transition(alert, 'acknowledge')}>Acknowledge</button>}
