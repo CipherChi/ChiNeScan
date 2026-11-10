@@ -1,0 +1,203 @@
+{
+  "base_commit": "2ad86b05ca82181da78b3eb6bfee5598d63dc8af",
+  "created_utc_date": "2026-11-06",
+  "entries": [
+    {
+      "path": "README.md",
+      "sha256_working_file": "ee03cc7f89ebc98eeeabce3e6ba355ea26224d920fe30b00edb4a0a0e7366c03",
+      "status": " M"
+    },
+    {
+      "path": "chinescan/__init__.py",
+      "sha256_working_file": "8f5654f9d0906d717acaed614f39a30ac74e1b12e30fce3acd824534c1078f9b",
+      "status": " M"
+    },
+    {
+      "path": "chinescan/__main__.py",
+      "sha256_working_file": "1b1a5b92be61d961231647db322e67eb296cc9b8376c0525fed881a4eed51c93",
+      "status": " M"
+    },
+    {
+      "path": "chinescan/cli/commands.py",
+      "sha256_working_file": "fa8fe468a32bc4ac4faae32716ea3f8726853120731807b59f889889aa729588",
+      "status": " M"
+    },
+    {
+      "path": "chinescan/core/diagnostics.py",
+      "sha256_working_file": "f271ce70cb230e0775df7ff7e5fc8f8877d700fcfd1064b1214fd255472aa8b1",
+      "status": " M"
+    },
+    {
+      "path": "chinescan/core/models/finding.py",
+      "sha256_working_file": "fde329850894864999e9f1045db22641a8878325f92e567e7f29ba0756ba1a9a",
+      "status": " M"
+    },
+    {
+      "path": "chinescan/core/models/investigation.py",
+      "sha256_working_file": "0f0ad8892919ee226fd8c0cbb3655c7dc184c8bf76d8786e630626a8fb73ed3f",
+      "status": " M"
+    },
+    {
+      "path": "chinescan/core/orchestration/code_rules.py",
+      "sha256_working_file": "61a650cfa5399622825b041f3b7983d81640fcfa920e1f48476bc4309a99ed5d",
+      "status": " M"
+    },
+    {
+      "path": "chinescan/core/orchestration/code_scan.py",
+      "sha256_working_file": "eeb64d1311d5a87880289d1bdf69aab99fa2062f1ec39b23c2fea3515605e24a",
+      "status": " M"
+    },
+    {
+      "path": "chinescan/core/reporting.py",
+      "sha256_working_file": "01260ccb73a0e14f9e82320463c583a79fa476f7c689edb25567c359e0f4ba03",
+      "status": " M"
+    },
+    {
+      "path": "chinescan/core/storage/sqlite.py",
+      "sha256_working_file": "83224ee21f1f1807ba960ed70c4818d659775aab69363e866b446ba789318b0a",
+      "status": " M"
+    },
+    {
+      "path": "chinescan/domain_assessment/probe.py",
+      "sha256_working_file": "85432a52a4e7ffb715b490e0bfc7bade07e89700bf88bbdbfd8ec82281b7ad95",
+      "status": " M"
+    },
+    {
+      "path": "chinescan/web/app.py",
+      "sha256_working_file": "3781692ea7d16bc6fe0ae8eb28d4afe60b7c7caebb5a7eddf5919c60089eb931",
+      "status": " M"
+    },
+    {
+      "path": "docs/API.md",
+      "sha256_working_file": "02bb6a678a34d4edfb1f8cff65ed0b50fca2db7a3aeea9912034d8fe5b898d2e",
+      "status": " M"
+    },
+    {
+      "path": "docs/DECISIONS.md",
+      "sha256_working_file": "f75ee195dbd035411c81d3bb36f1697e8ab6d7693f3f66de25876c51a3f0319c",
+      "status": " M"
+    },
+    {
+      "path": "docs/DEPLOYMENT.md",
+      "sha256_working_file": "f2c95a5e1490e4c7727e5fc1635429b618b02d80346db122bd3078c70d2b6a7d",
+      "status": " M"
+    },
+    {
+      "path": "docs/DEVELOPMENT.md",
+      "sha256_working_file": "cb81286be3e86d11f993695c5de9d40004f306e0107b7d52571530186fa58b7c",
+      "status": " M"
+    },
+    {
+      "path": "docs/RECOVERY-RUNBOOK.md",
+      "sha256_working_file": "bea6e929f369a4a17c20cc51f47eaa953b300a83661a82e82e9864c0bea4d648",
+      "status": " M"
+    },
+    {
+      "path": "docs/RESPONSIBLE_USE.md",
+      "sha256_working_file": "90247992a30d523ad9fdff9248f3a89908b47fe01157b31fe5b0a32f3057b114",
+      "status": " M"
+    },
+    {
+      "path": "docs/SCANNING-ANOTHER-PROJECT.md",
+      "sha256_working_file": "68207ccc4bfd709f1ba6afc8ce180e349fdff2244f8986bbd14ba8f15a0c44b4",
+      "status": " M"
+    },
+    {
+      "path": "docs/reports/phase-1-report.md",
+      "sha256_working_file": "a730f2bad96c86697739d96117fddda76f5ff7e6df842a1085b27a330a1098b3",
+      "status": " M"
+    },
+    {
+      "path": "frontend/e2e/dashboard.spec.ts",
+      "sha256_working_file": "f0d34314802883a9b58b55b73741e79b89e833ea05545c0d1b7b826d5aabb232",
+      "status": " M"
+    },
+    {
+      "path": "frontend/index.html",
+      "sha256_working_file": "387328433c9343ec79696c32a0fc98a36580fc832ddb0c6b1cd48f5184425795",
+      "status": " M"
+    },
+    {
+      "path": "frontend/package.json",
+      "sha256_working_file": "41eba47369ca85f27ccdd74d67fc28429bbd651f20f77b15c3939611f0da09d3",
+      "status": " M"
+    },
+    {
+      "path": "frontend/src/types.ts",
+      "sha256_working_file": "8399379a059bebad0a2fed742c2d8474fe5668c97ae124cce1ad5cbbd9169bce",
+      "status": " M"
+    },
+    {
+      "path": "frontend/src/ui/App.test.tsx",
+      "sha256_working_file": "8e7ea4c77d425e021a5b900c6309fb1b5d54dafca08899008d67b464347ae08b",
+      "status": " M"
+    },
+    {
+      "path": "frontend/src/ui/App.tsx",
+      "sha256_working_file": "0af9e0d9feb8b62fa00ca41e045985e642c8c1b239be45699d049f2f60ce1cb4",
+      "status": " M"
+    },
+    {
+      "path": "frontend/src/ui/GitHubImportDialog.tsx",
+      "sha256_working_file": "d7e6caca3a44b92f880b93cbb7944e37abfc801ab40a97ea9fa5b912327e0d10",
+      "status": " M"
+    },
+    {
+      "path": "frontend/src/ui/ProjectsWorkspace.tsx",
+      "sha256_working_file": "1f6465fa11e6c89f37059a3b013f5003f6d73b890b4e76ae3a0661f571241b91",
+      "status": " M"
+    },
+    {
+      "path": "frontend/src/ui/styles.css",
+      "sha256_working_file": "3e7de825096b44d75234d8121fa1a41ea489407347f824e4db990059bd903140",
+      "status": " M"
+    },
+    {
+      "path": "schemas/finding.schema.json",
+      "sha256_working_file": "2038032d2433f2ffdc8731d60066031fd313ddfce8ae133427ddefbcc81761ef",
+      "status": " M"
+    },
+    {
+      "path": "schemas/investigation.schema.json",
+      "sha256_working_file": "f70fd576be9c39b73552d866bb2b7b52db84fed91162531a38bda200a740ae36",
+      "status": " M"
+    },
+    {
+      "path": "tests/unit/test_code_actionability.py",
+      "sha256_working_file": "85bdfb2b92775b52cc0bb41da0bb99439bc9eedf2c56ab1e2b8d72a5a9cf5e20",
+      "status": " M"
+    },
+    {
+      "path": "tests/unit/test_code_rules_behavior.py",
+      "sha256_working_file": "d9cfe3f59522920303cfcfc56efd574b6c2522790fc87112ba167097185a6178",
+      "status": " M"
+    },
+    {
+      "path": "tests/unit/test_reporting.py",
+      "sha256_working_file": "4c9646f45134bd0221980e4a391904078b01619958f5953a84416f45b7cf94e0",
+      "status": " M"
+    },
+    {
+      "path": "tests/unit/test_web_api.py",
+      "sha256_working_file": "37cfb8a300fb0379e3528526149da86b4a120b576cb90af36442a1159ef4e811",
+      "status": " M"
+    },
+    {
+      "path": "docs/ChiNeScan-improvements.md",
+      "sha256_working_file": "b75f30547f7f924901d0010391c491e881dc76479c1f49d41e533e067b99d461",
+      "status": "??"
+    },
+    {
+      "path": "docs/ChiNeScan-security-review.md",
+      "sha256_working_file": "8ad37f07742480a22d283046da4b2b44a3044111402133df957bc453d8322a13",
+      "status": "??"
+    },
+    {
+      "path": "frontend/src/test-fixtures/",
+      "sha256_working_file": null,
+      "status": "??"
+    }
+  ],
+  "product": "ChiNeScan",
+  "scope_note": "Hash manifest of the existing dirty working tree at release validation. This manifest and the later release report are excluded because they are authored as validation artifacts. No source content, credentials, databases, or external artifacts are embedded."
+}
