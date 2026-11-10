@@ -1757,3 +1757,33 @@ Overall: PASS
 ```
 
 The two Python warnings were Pydantic `json_encoders` deprecations. Vite printed a jsdom navigation notice during frontend tests; all tests passed.
+
+## Rust core upgrade check — 2026-11-10
+
+This check records the baseline after adding the requested plan/threat-model documents and a bounded ZIP central-directory parser to the existing Rust engine. The native entry point is not yet wired into the Python analyzer; no database migration, module-status change, or network behavior was added.
+
+| Command | Exit | Exact result |
+| --- | ---: | --- |
+| `py -0` | 0 | `-V:3.13 * Python 3.13 (64-bit); -V:3.12 Python 3.12 (64-bit); -V:3.11 Python 3.11 (64-bit); -V:3.10 Python 3.10 (64-bit)` |
+| `py -3.12 --version` | 0 | `Python 3.12.10` |
+| `cargo fmt --check` (from `engine`) | 0 | No output; formatting clean. |
+| `cargo clippy --all-targets -- -D warnings` (from `engine`) | 0 | `Finished dev profile`; no warnings. |
+| `cargo test --locked` (from `engine`) | 0 | `46 passed; 0 failed`; doc tests `0 passed; 0 failed`. |
+| `cargo deny --version` | 101 | `error: no such command: deny`; cargo-deny is not installed. |
+| `cargo audit --version` | 0 | `cargo-audit-audit 0.22.2` |
+| `py -3.12 -m pytest tests/unit/test_malware_analysis.py tests/unit/test_redaction_parity.py` | 0 | `23 passed, 6 skipped`; 24 warnings (dependency deprecations and Windows pytest temp-cleanup warnings). |
+| `npm test -- --run` (from `frontend`) | 0 | `Test Files 12 passed (12); Tests 63 passed (63)`. |
+| `py -3.12 -m ruff check .` | 1 | `tests\unit\test_chain_trace.py:1:9 invalid-syntax: Simple statements must be separated by newlines or semicolons`; source begins `cimport json`. This file was already modified in the working tree and was not changed during this task. |
+| `py -3.12 -m ruff format --check .` | 1 | Same parse failure in the pre-existing modified `tests\unit\test_chain_trace.py`; `199 files already formatted`. |
+| `py -3.12 -m mypy --strict chinescan` | 1 | `Found 2 errors in 2 files (checked 85 source files)`; missing library stubs for `yaml` in `chinescan/core/orchestration/code_rules.py` and `chinescan/log_analysis/detections.py`, although `types-PyYAML` is declared in project metadata. |
+
+The Rust crate checks validate the existing redaction engine and the new ZIP metadata parser only. They do not validate executable/document parsing, rule scanning, reporting, scoring, alerts, or dashboard features requested in the upgrade prompt. `cargo-deny` is not installed, and fuzz targets are not present. No `Not assessed` entry was removed.
+| `py -3.12 -m pytest -q --basetemp tests/.pytest-tmp` | 1 | Pytest rejected the repository-local temporary directory: `--basetemp must resolve outside the repository; use the OS temp directory`. No tests collected. |
+| `$testTemp = Join-Path $env:TEMP 'chinescan-rust-core-20261110'; py -3.12 -m pytest -q --basetemp $testTemp` | 1 | Collection stopped on the existing modified `tests/unit/test_chain_trace.py:1`: `cimport json` raises `SyntaxError: invalid syntax`; 5 tests deselected and 3 warnings. |
+| `py -3.12 -m ruff check chinescan tests --exclude tests/unit/test_chain_trace.py` | 0 | `All checks passed!` |
+| `npm run build` (from `frontend`) | 0 | `tsc -b` succeeded; Vite built 29 modules; JS 361.00 kB, CSS 33.68 kB. |
+
+The broader Ruff exclusion and frontend build provide a clean source/build check. The full Python test suite is blocked by the same pre-existing test-file syntax error observed by Ruff. `cargo audit` was not run because it updates/queries the external RustSec advisory database (outbound network); the request requires asking before enabling outbound network behavior. `cargo audit --version` only confirmed the local binary. `cargo deny check` and cargo-fuzz remain unavailable/not configured.
+
+The Rust ZIP metadata function was added after the initial report entries above. Final engine rerun: `cargo fmt --check` exit 0; `cargo clippy --all-targets -- -D warnings` exit 0; `cargo test --locked` exit 0 with `49 passed; 0 failed`, doc tests `0 passed; 0 failed`. Three new synthetic tests cover ordinary central-directory metadata, traversal/backslash/absolute names, encrypted flags, truncation, and oversized input. The function is available through the optional PyO3 extension but is not yet used by the production Python analyzer, so it does not close the File Analyzer module gap.
+

@@ -28,6 +28,36 @@ The engine only processes text supplied by the caller. It does not read files,
 execute input, access the network, or redact caller-owned location and line
 number fields specially.
 
+## Static archive and magic-byte analysis
+
+The optional extension exposes `inspect_zip_metadata(data: bytes) -> dict`,
+`inspect_tar_metadata(data: bytes, compressed: bool) -> dict`, and
+`identify_file_type(data: bytes, extension: str) -> dict`. The Python analyzer
+dispatches recognized ZIP, TAR, TAR.GZ, and known magic signatures through a
+short-lived worker when `CHINESCAN_RUST_ARCHIVE` is `auto` (default) or `on`.
+Use `off` to force the existing Python ZIP fallback. If the extension is missing,
+ZIP falls back to that bounded metadata-only parser; TAR/TAR.GZ report a safe
+skip because no existing Python malware-analysis path covered those formats.
+
+The worker accepts at most 64 MiB and emits at most 3 MiB. It runs with a
+5-second deadline. On Windows it is created suspended, assigned to the existing
+verified Job Object (512 MiB process memory, 768 MiB job memory, process count
+limit), then resumed; timeout terminates the Job Object. POSIX uses CPU, address
+space, and core-dump `rlimit`s. Archive entries are never written to disk or
+executed. ZIP/TAR parsers cap entries at 1,000, names at 4 KiB, and declared or
+expanded aggregate size at 64 MiB. TAR.GZ is expanded in memory only to a capped
+buffer before header iteration.
+
+Findings include stable IDs, rule IDs, severity, confidence, entry path, and an
+explanation for traversal/absolute names, duplicate paths, encrypted ZIP
+entries, compression-ratio heuristics, symlink/hardlink entries and escaping
+link targets, nested-archive names, and suspicious double extensions. The magic
+table covers PE, ELF, PDF, ZIP, gzip, PNG, JPEG, and TAR. It classifies signatures
+only; it does not establish authenticity or trust. ZIP64 and multi-disk ZIP are
+unsupported, nested archives are named but not opened, encrypted contents are
+not inspected, and the signature table is intentionally incomplete. The File
+Analyzer remains `partial` with these limits listed on the Modules page.
+
 ## Python selection and fallback
 
 `CHINESCAN_ENGINE` accepts `auto`, `python`, or `rust` (the default is `auto`).

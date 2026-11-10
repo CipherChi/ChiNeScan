@@ -1,0 +1,1499 @@
+{
+  "product": "ChiNeScan",
+  "base_commit": "2ad86b05ca82181da78b3eb6bfee5598d63dc8af",
+  "created_utc_date": "2026-11-06",
+  "scope_note": "Hashes of all tracked and unignored current repository files for full handover snapshot identity, not just worktree changes. Includes product source, tests, controlled fixtures, schemas, documentation, and setup/build files. Excludes this inventory and its companion handover report, ignored local secrets/databases/environments/dependencies/generated artifacts, and other Git-ignored local state. .env.example is included. Combine these hashes with the stated base commit; the base commit alone does not identify the uncommitted changes.",
+  "entry_count": 298,
+  "entries": [
+    {
+      "path": ".dockerignore",
+      "status": "tracked_unchanged",
+      "sha256": "b3a3e8cb81f33a961f2c96fa426521b0dbfaecca8af2f65a82d47bed5c947b29"
+    },
+    {
+      "path": ".env.example",
+      "status": "tracked_unchanged",
+      "sha256": "f62930cf3e7b6a8a308c80e2db8c2e88c0ced69f60305d6077e49c18e04ecf77"
+    },
+    {
+      "path": ".gitattributes",
+      "status": "tracked_unchanged",
+      "sha256": "23302dd90b8bb74b44d365fafef8df20f809b61cb347023951ecf60a88a29651"
+    },
+    {
+      "path": ".github/dependabot.yml",
+      "status": "tracked_unchanged",
+      "sha256": "5b49cee1880e6e7790d95f6e28ab42ab81cde325c351edc1f3e7fe8f93c9acd3"
+    },
+    {
+      "path": ".github/workflows/benchmarks.yml",
+      "status": "tracked_unchanged",
+      "sha256": "f4539ef291d211ab82b7a4a311adf52d7079ab29c1c06669aa04635e1c6a0378"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "status": "tracked_unchanged",
+      "sha256": "d7d76f9a03d4f9ddba949c95ede86c91afe3cda31edb05802217f2c71b18c5b9"
+    },
+    {
+      "path": ".gitignore",
+      "status": "tracked_unchanged",
+      "sha256": "e45917b89b8667c7f16b8e23cb55cc6bfc7072624ccaab5cbeb5b052c0f57774"
+    },
+    {
+      "path": ".gitlab-ci.yml",
+      "status": "tracked_unchanged",
+      "sha256": "8eb01e9ab81286a28c7aee80135b3a71b672cd48908cb0d5380238db30491e5c"
+    },
+    {
+      "path": ".gitleaks.toml",
+      "status": "tracked_unchanged",
+      "sha256": "ddacc1a5634bdd966cafe2de48f2d0b9b44e50f9b03da7be3170459a4fdb67c0"
+    },
+    {
+      "path": ".gitleaksignore",
+      "status": "tracked_unchanged",
+      "sha256": "f7895ef5847f3da83decd89769036ae6196149d0de3869a871285c53a10a3758"
+    },
+    {
+      "path": ".python-version",
+      "status": "tracked_unchanged",
+      "sha256": "7b55f8e67b5623c4bef3fa691288da9437d79d3aba156de48d481db32ac7d16d"
+    },
+    {
+      "path": "AGENTS.md",
+      "status": "tracked_unchanged",
+      "sha256": "e1f2525b8b741153c313723227e980684f31089260590773419eef51e9841fa4"
+    },
+    {
+      "path": "CODE_OF_CONDUCT.md",
+      "status": "tracked_unchanged",
+      "sha256": "1640d193ebedfc0a86071791fb36d1398c7e5dd33cb5f4ecc9a3dc378563272f"
+    },
+    {
+      "path": "LICENSE",
+      "status": "tracked_unchanged",
+      "sha256": "3c5e82199558e1917416d5d6159448fb49825e084105e4cdecafd500b42bdac2"
+    },
+    {
+      "path": "README.md",
+      "status": "modified",
+      "sha256": "0300bd1c77a6befdb54e810975ba7c3ce153b80822540e87e2332c60252dd136"
+    },
+    {
+      "path": "SECURITY.md",
+      "status": "tracked_unchanged",
+      "sha256": "2ea552c32ca935191fa3640dc8de8daec0396e2ab57fd7b0a695c72f2a732bd2"
+    },
+    {
+      "path": "alembic.ini",
+      "status": "tracked_unchanged",
+      "sha256": "c5f44d38da0f0a513fe1ae7771b346b4aa6b4e8505df6fb6ee898fd2f494b6f8"
+    },
+    {
+      "path": "chinescan/__init__.py",
+      "status": "modified",
+      "sha256": "8f5654f9d0906d717acaed614f39a30ac74e1b12e30fce3acd824534c1078f9b"
+    },
+    {
+      "path": "chinescan/__main__.py",
+      "status": "modified",
+      "sha256": "1b1a5b92be61d961231647db322e67eb296cc9b8376c0525fed881a4eed51c93"
+    },
+    {
+      "path": "chinescan/chain_trace/__init__.py",
+      "status": "tracked_unchanged",
+      "sha256": "ca23c5e018df3d591070a27d0d37184a9cb2aac11f56a8a1c6dfb16bd3b5a773"
+    },
+    {
+      "path": "chinescan/chain_trace/detectors.py",
+      "status": "tracked_unchanged",
+      "sha256": "245e5225daba8c556b3d13160efba67560d8e0640e9db5efe9721679ea9cfc13"
+    },
+    {
+      "path": "chinescan/chain_trace/endpoint_policy.py",
+      "status": "tracked_unchanged",
+      "sha256": "97cb6fed9ff6d234eafde71912c4ee8e1d700ee402e33619d4a553257c49c41e"
+    },
+    {
+      "path": "chinescan/chain_trace/export.py",
+      "status": "tracked_unchanged",
+      "sha256": "54ed7795bea95819fdb74d44181fbbebc141bc10f1c8eab5271caebdd95abf54"
+    },
+    {
+      "path": "chinescan/chain_trace/labels.py",
+      "status": "tracked_unchanged",
+      "sha256": "70634c21a7f63947d2a97baed8ee798986764a3b10bd1a6ff4965aa9b725b168"
+    },
+    {
+      "path": "chinescan/chain_trace/models.py",
+      "status": "tracked_unchanged",
+      "sha256": "157ead7d0b0a409695cdb22320f5ed48e83c2acc8e9aa0647cb998c99459da93"
+    },
+    {
+      "path": "chinescan/chain_trace/providers/__init__.py",
+      "status": "tracked_unchanged",
+      "sha256": "41e116baa0674585f903e1115135bdadc78a8460631b914a223baed84d098965"
+    },
+    {
+      "path": "chinescan/chain_trace/providers/base.py",
+      "status": "tracked_unchanged",
+      "sha256": "11349253e3bf467f79bb5bb1d599872d727b57c240949f82910fda81f161bede"
+    },
+    {
+      "path": "chinescan/chain_trace/providers/evm.py",
+      "status": "tracked_unchanged",
+      "sha256": "90435ce7edf62ceddb4ba7e69a424528beed38356614d3e4a16fae0b8b34eaf0"
+    },
+    {
+      "path": "chinescan/chain_trace/providers/offline.py",
+      "status": "tracked_unchanged",
+      "sha256": "5e998765e0182ec0e7c93a72435811c910e49540beeaeb26f6ccfb8b106115d7"
+    },
+    {
+      "path": "chinescan/chain_trace/registry.py",
+      "status": "tracked_unchanged",
+      "sha256": "e6a665ff854f96328344921899128a8cb84644d44de1a611a73ea9e988e5beaf"
+    },
+    {
+      "path": "chinescan/chain_trace/service.py",
+      "status": "tracked_unchanged",
+      "sha256": "484049f6dbcef0bddf2a608eb84febd47b421078336c88d556f1c57aefa39881"
+    },
+    {
+      "path": "chinescan/chain_trace/tracer.py",
+      "status": "tracked_unchanged",
+      "sha256": "de01622eb0c7123a47e8d4bbbd27175e8d35f26f54e769a1911121a889cdb171"
+    },
+    {
+      "path": "chinescan/cli/__init__.py",
+      "status": "tracked_unchanged",
+      "sha256": "bf4c27f7b63726a724ff888e272f4c0ea904e64c9b4b07e6c935c62721948af4"
+    },
+    {
+      "path": "chinescan/cli/app.py",
+      "status": "tracked_unchanged",
+      "sha256": "6741cc4b0c5d8bcaea7f18c525b5c6f4b3914dd9a1199a56e8dfd7142a2c2f80"
+    },
+    {
+      "path": "chinescan/cli/chain_commands.py",
+      "status": "tracked_unchanged",
+      "sha256": "2a9ef334dbb4ad087d32153fedcb0e6464cbddf9e7e3630f0ee8e9c83f7b06fd"
+    },
+    {
+      "path": "chinescan/cli/commands.py",
+      "status": "modified",
+      "sha256": "75bb1388824ffcd4e174424da99d0642ca11ced81b4eebcafaea04b6d68f9180"
+    },
+    {
+      "path": "chinescan/core/__init__.py",
+      "status": "tracked_unchanged",
+      "sha256": "addcb9a08db4584b9ae01e533a5a31e9cd278af37dc51704ca3144ff277722d7"
+    },
+    {
+      "path": "chinescan/core/accounts.py",
+      "status": "tracked_unchanged",
+      "sha256": "c0ba089959b6d4377f0601c05f2d212c8e57f78e15f148855a68574bd76a4a72"
+    },
+    {
+      "path": "chinescan/core/cases.py",
+      "status": "tracked_unchanged",
+      "sha256": "fbbd4f20e42ea99334cb1d6ca87910848db0de514b46d6ae023dc821b0d56ddd"
+    },
+    {
+      "path": "chinescan/core/config/__init__.py",
+      "status": "tracked_unchanged",
+      "sha256": "77220c5a5b7062b735ae129be3de632d531f6c8bf98d10bbd565050d22076866"
+    },
+    {
+      "path": "chinescan/core/config/io.py",
+      "status": "tracked_unchanged",
+      "sha256": "b9db2fb270c0bc7eca667b195fa7445e55d1c77ec986d7e965f8aff294ef5c6d"
+    },
+    {
+      "path": "chinescan/core/config/settings.py",
+      "status": "tracked_unchanged",
+      "sha256": "59a4608474e1e6ff522527242f8baea122d5b298e1592a0661fcd9ec003d2bb8"
+    },
+    {
+      "path": "chinescan/core/data/__init__.py",
+      "status": "tracked_unchanged",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "chinescan/core/data/common_passwords.txt",
+      "status": "tracked_unchanged",
+      "sha256": "79d85defe8163b088af6039fb2b472724ee7c512709f64c7a897d3a0bfe91fcb"
+    },
+    {
+      "path": "chinescan/core/diagnostics.py",
+      "status": "modified",
+      "sha256": "f271ce70cb230e0775df7ff7e5fc8f8877d700fcfd1064b1214fd255472aa8b1"
+    },
+    {
+      "path": "chinescan/core/errors.py",
+      "status": "tracked_unchanged",
+      "sha256": "9a770000ad7505202b017139b861eaeab48795cb0a7f0f21b06e07b53d2c793a"
+    },
+    {
+      "path": "chinescan/core/external_reports.py",
+      "status": "modified",
+      "sha256": "61965c2d7e997a97e4b078b5a2b77bd6ad0b94d645e547bc24bb3ff500b951d2"
+    },
+    {
+      "path": "chinescan/core/fs_policy.py",
+      "status": "tracked_unchanged",
+      "sha256": "29084020c82317f3a8a91c3a49560f8965e7e7f3167d260af2117450ddd93ae3"
+    },
+    {
+      "path": "chinescan/core/github_import.py",
+      "status": "tracked_unchanged",
+      "sha256": "bbda5d0eeb4177d30eec131fdd40d3861a44c1f54f91afb87306d46e936574c1"
+    },
+    {
+      "path": "chinescan/core/log_locations.py",
+      "status": "tracked_unchanged",
+      "sha256": "3bbdad2e0d2f949fe3bc2902e3e962525012953476b2c85c47cf41f01e942ae7"
+    },
+    {
+      "path": "chinescan/core/logging/__init__.py",
+      "status": "tracked_unchanged",
+      "sha256": "ed8ef58231ad582a6d51536e5aafdad5d78cdccd4a8caba384f1f75c7484ef5b"
+    },
+    {
+      "path": "chinescan/core/logging/redaction.py",
+      "status": "modified",
+      "sha256": "1e0ce5874d75cb4d4418545e74ef8c2a205a1aa18486b67d4802fb4cbf20fa3b"
+    },
+    {
+      "path": "chinescan/core/logging/structured.py",
+      "status": "tracked_unchanged",
+      "sha256": "463f94f66a36daf62c3bfa20ee75fc4644d85dfbfab9b1c85c4a79046bb9df10"
+    },
+    {
+      "path": "chinescan/core/malware_ack.py",
+      "status": "tracked_unchanged",
+      "sha256": "1d63d1c7f0d63797e76d80cd3b906f93a6058ac6c776d3045311b39d6e5ed4ac"
+    },
+    {
+      "path": "chinescan/core/malware_project_scan.py",
+      "status": "tracked_unchanged",
+      "sha256": "7ee8c0941b255ba8553a6c0042d38aed68b96b789d6d2701620a3d3f6b7d50fe"
+    },
+    {
+      "path": "chinescan/core/models/__init__.py",
+      "status": "tracked_unchanged",
+      "sha256": "febad54cdbae1d8cdf70ee789669f3fd6ed999729130e4b69cafc5b1539a5c51"
+    },
+    {
+      "path": "chinescan/core/models/common.py",
+      "status": "tracked_unchanged",
+      "sha256": "826168f73f718dda2a35b41fc29a8980611249ec60e1a2a56a267746be628e57"
+    },
+    {
+      "path": "chinescan/core/models/finding.py",
+      "status": "modified",
+      "sha256": "fde329850894864999e9f1045db22641a8878325f92e567e7f29ba0756ba1a9a"
+    },
+    {
+      "path": "chinescan/core/models/investigation.py",
+      "status": "modified",
+      "sha256": "0f0ad8892919ee226fd8c0cbb3655c7dc184c8bf76d8786e630626a8fb73ed3f"
+    },
+    {
+      "path": "chinescan/core/orchestration/__init__.py",
+      "status": "tracked_unchanged",
+      "sha256": "b1b8815598e428786c2d3571dc7eda2667438292d00a8ecfcf0efc721c843a6b"
+    },
+    {
+      "path": "chinescan/core/orchestration/code_rules.py",
+      "status": "modified",
+      "sha256": "61a650cfa5399622825b041f3b7983d81640fcfa920e1f48476bc4309a99ed5d"
+    },
+    {
+      "path": "chinescan/core/orchestration/code_scan.py",
+      "status": "modified",
+      "sha256": "eeb64d1311d5a87880289d1bdf69aab99fa2062f1ec39b23c2fea3515605e24a"
+    },
+    {
+      "path": "chinescan/core/orchestration/protocols.py",
+      "status": "tracked_unchanged",
+      "sha256": "7ede45e5f55346bca19cd8765331fa63309a21a824ca8e4e1af4073a4e754abe"
+    },
+    {
+      "path": "chinescan/core/projects.py",
+      "status": "tracked_unchanged",
+      "sha256": "ec0a397b13c0eb415a634973a6d7128e4d2bfac80ab7639161a5772beaaa4e60"
+    },
+    {
+      "path": "chinescan/core/report_store.py",
+      "status": "tracked_unchanged",
+      "sha256": "40ac85cb9eefe439fd405b377fdb53d39b09157c6181f4e4cd9b49ff7e05eb11"
+    },
+    {
+      "path": "chinescan/core/reporting.py",
+      "status": "modified",
+      "sha256": "8a1d020d69904340b3975cc5a9e05e6b7d06c9c3e5028ead0f57adb6310557c3"
+    },
+    {
+      "path": "chinescan/core/storage/__init__.py",
+      "status": "tracked_unchanged",
+      "sha256": "6c722fc08e1e22ec74fc9a055f02d968e8be17cfb0ff23ff43f777e107dcb560"
+    },
+    {
+      "path": "chinescan/core/storage/recovery.py",
+      "status": "tracked_unchanged",
+      "sha256": "57d5073ab71574c237c993d45d8a44a8e27e1efabac962cc73a66e7f467d5fc8"
+    },
+    {
+      "path": "chinescan/core/storage/repository.py",
+      "status": "modified",
+      "sha256": "03675f8cc34e188b2cabc59289b3a32187fd87c9e0f884e560724d874c841961"
+    },
+    {
+      "path": "chinescan/core/storage/sqlite.py",
+      "status": "modified",
+      "sha256": "83224ee21f1f1807ba960ed70c4818d659775aab69363e866b446ba789318b0a"
+    },
+    {
+      "path": "chinescan/core/trends.py",
+      "status": "tracked_unchanged",
+      "sha256": "361c9bba55a10ea737b5b9c79bc0b24d8d6a375ae7d161b384f3bdda40440e5d"
+    },
+    {
+      "path": "chinescan/core/verdict.py",
+      "status": "tracked_unchanged",
+      "sha256": "6e005eb2d4417f44e12a0021399ae2f64e179f1758445537f39122f99717b3d0"
+    },
+    {
+      "path": "chinescan/data/top-packages.txt",
+      "status": "tracked_unchanged",
+      "sha256": "af86cdbfe742c360a30c7dfb9d9eb48ad12a88740767e77c982b53098826519e"
+    },
+    {
+      "path": "chinescan/domain_assessment/__init__.py",
+      "status": "tracked_unchanged",
+      "sha256": "ab476a4335de2a5176e030e616daf6ad607e1ad6029d5387f55ecc1b7bed92c5"
+    },
+    {
+      "path": "chinescan/domain_assessment/authorization.py",
+      "status": "tracked_unchanged",
+      "sha256": "94e7d9a2e0782403f92c4f631e369988b3aeee06fe6a9d21ecfa49bb241ef2ec"
+    },
+    {
+      "path": "chinescan/domain_assessment/probe.py",
+      "status": "modified",
+      "sha256": "85432a52a4e7ffb715b490e0bfc7bade07e89700bf88bbdbfd8ec82281b7ad95"
+    },
+    {
+      "path": "chinescan/domain_assessment/service.py",
+      "status": "tracked_unchanged",
+      "sha256": "126f5868bf4a185c7a24f9e5251b54f72efd58533964a04f72fc706078e880be"
+    },
+    {
+      "path": "chinescan/log_analysis/__init__.py",
+      "status": "tracked_unchanged",
+      "sha256": "a5ec1f10134f345685911014b60659c54d5512a86c75a0fb5a8a66de694da1f8"
+    },
+    {
+      "path": "chinescan/log_analysis/detections.py",
+      "status": "tracked_unchanged",
+      "sha256": "96f81edf313f812cd1240c12e371931074843b5d7c58c815e588ce43e18adc5d"
+    },
+    {
+      "path": "chinescan/log_analysis/ingest.py",
+      "status": "tracked_unchanged",
+      "sha256": "346eccab57ce1ce8b11e782e3a1e9d11ca6bcc609854c6c07c475e87b8cb6fa6"
+    },
+    {
+      "path": "chinescan/log_analysis/ioc_matching.py",
+      "status": "tracked_unchanged",
+      "sha256": "cd8a231564977cf70e9681ca726cf9c6c90530a39413a1609122d32524ffd3d0"
+    },
+    {
+      "path": "chinescan/log_analysis/normalization.py",
+      "status": "tracked_unchanged",
+      "sha256": "910a295bc024fc3912ecc12bc67c6a315fb295ac87e57bdc2c3b1b944e6e9e93"
+    },
+    {
+      "path": "chinescan/log_analysis/parsers.py",
+      "status": "tracked_unchanged",
+      "sha256": "a4f0209eb2d121a3eed560323dad41f57f61cf4f574e507185b627b9545ca46e"
+    },
+    {
+      "path": "chinescan/log_analysis/service.py",
+      "status": "tracked_unchanged",
+      "sha256": "faed7726ff20bb3f1bfce0fa19e1b6211e00a0229bbb8f356f77e46e8ade1431"
+    },
+    {
+      "path": "chinescan/malware_analysis/__init__.py",
+      "status": "tracked_unchanged",
+      "sha256": "351ea6f8c474e7f4bfee9f0ab144a547d85daa6e0d51db3313d60003e6647410"
+    },
+    {
+      "path": "chinescan/malware_analysis/analyzer.py",
+      "status": "tracked_unchanged",
+      "sha256": "32bd7d7ea61f62a67cdcf0a4e8bd490fd9700a35afdf2dfb861c88589aab2aac"
+    },
+    {
+      "path": "chinescan/malware_analysis/engines.py",
+      "status": "tracked_unchanged",
+      "sha256": "2a600969bc5821530481357da8812abfa3f921fe4e1ec23efb42eba415d1233e"
+    },
+    {
+      "path": "chinescan/malware_analysis/managed.py",
+      "status": "tracked_unchanged",
+      "sha256": "897ad6fd9478ab4cdd9b443749b7b4dd295229241ab989dd3498d7f19c70cfda"
+    },
+    {
+      "path": "chinescan/malware_analysis/process.py",
+      "status": "tracked_unchanged",
+      "sha256": "0de70c289e179470910b2544c6645eed038ace9eefb98ca5d738f1e30c0e2ac1"
+    },
+    {
+      "path": "chinescan/malware_analysis/worker.py",
+      "status": "tracked_unchanged",
+      "sha256": "7cda74b9c7a36f43c49bcf7647556af12ca9fa70eacb18ce30dfbfc976664d4a"
+    },
+    {
+      "path": "chinescan/scanners/__init__.py",
+      "status": "tracked_unchanged",
+      "sha256": "3cd767ba1815744ef347dae006c0b1fe43f536d676ea06815c5fcb4f404b02ac"
+    },
+    {
+      "path": "chinescan/scanners/external.py",
+      "status": "tracked_unchanged",
+      "sha256": "8e141b33f8d8a6af9939de5c973664d515eb90748e67e99abe4e88222c025760"
+    },
+    {
+      "path": "chinescan/scanners/fake.py",
+      "status": "tracked_unchanged",
+      "sha256": "e382976860405930cb23850addb210f7bd4ea99b827cb459b55218d77dc5c4ec"
+    },
+    {
+      "path": "chinescan/scanners/indicators.py",
+      "status": "tracked_unchanged",
+      "sha256": "4e86d756fe090586fe166ece29116fa77d39ed3c2e9d62cd1f610dd14711e14d"
+    },
+    {
+      "path": "chinescan/web/__init__.py",
+      "status": "tracked_unchanged",
+      "sha256": "d7d9681402f6b036151c04f937ecf98bca587e4ec2691c08d02905a557cb6360"
+    },
+    {
+      "path": "chinescan/web/app.py",
+      "status": "modified",
+      "sha256": "d3dfa5404acf64c77063659da0a18c64997c0bc502087b3913d6472986e398be"
+    },
+    {
+      "path": "chinescan/web/auth.py",
+      "status": "tracked_unchanged",
+      "sha256": "571cc0e9b0836ce2d9f54a507608708298cccd73d398ae61ad10aeeed7d859f8"
+    },
+    {
+      "path": "chinescan/web/chain_trace_jobs.py",
+      "status": "tracked_unchanged",
+      "sha256": "8850092cfcd55eb6e9d8a07ce8e107bff52e7cf8dbb34d143de6dc3639f10428"
+    },
+    {
+      "path": "chinescan/web/code_jobs.py",
+      "status": "tracked_unchanged",
+      "sha256": "9637dd62e02fa661ef354b17436511be0f883ce04fca379a9b6cde70d2ff6f6b"
+    },
+    {
+      "path": "chinescan/web/fs_browser.py",
+      "status": "tracked_unchanged",
+      "sha256": "35a2df7d4ab79c43f47a72dee4b97750d11ca474a9e4e7a6a395d2691d225d97"
+    },
+    {
+      "path": "chinescan/web/log_jobs.py",
+      "status": "tracked_unchanged",
+      "sha256": "25582bd254cdd380361230745014a7e41893ecb29cc677b4b3db72f761a2ee52"
+    },
+    {
+      "path": "chinescan/web/malware_jobs.py",
+      "status": "tracked_unchanged",
+      "sha256": "186cdc2d6c2338f645805595c7153a1fc456d32c518439998d917036238d4bf2"
+    },
+    {
+      "path": "chinescan/web/rate_limit.py",
+      "status": "tracked_unchanged",
+      "sha256": "e9d34ff1db6f91eb7c9b29e51064b19b07a1a5cf52ebdcc551d93c96f801aaf1"
+    },
+    {
+      "path": "configs/chinescan.example.toml",
+      "status": "tracked_unchanged",
+      "sha256": "d48722862400e97f265e4c17c497af5ef75eeb2180f1e151dca39ded026d9de5"
+    },
+    {
+      "path": "docker-compose.yml",
+      "status": "tracked_unchanged",
+      "sha256": "b453dffa8dde0271a978e7cfd7c4dd37b30613e32c623204e1a617ff5fbf877f"
+    },
+    {
+      "path": "docker/Dockerfile",
+      "status": "tracked_unchanged",
+      "sha256": "c5ce2aee6dd9f7eeff294568231abbc024ab47368e16a2a4ca095fb908b7347a"
+    },
+    {
+      "path": "docs/API.md",
+      "status": "modified",
+      "sha256": "4e4cbcb240c74f0b90e5922d6fcfd7ae3fcb763db44809948b1b1e162f8d9146"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "status": "tracked_unchanged",
+      "sha256": "74c790ea5376a8aafeda0310586f4d295c7ff9f62e5b7addf1d5bb3f5c2dfab8"
+    },
+    {
+      "path": "docs/ChiNeScan-improvements.md",
+      "status": "untracked",
+      "sha256": "b75f30547f7f924901d0010391c491e881dc76479c1f49d41e533e067b99d461"
+    },
+    {
+      "path": "docs/ChiNeScan-security-review.md",
+      "status": "untracked",
+      "sha256": "8ad37f07742480a22d283046da4b2b44a3044111402133df957bc453d8322a13"
+    },
+    {
+      "path": "docs/DECISIONS.md",
+      "status": "modified",
+      "sha256": "f75ee195dbd035411c81d3bb36f1697e8ab6d7693f3f66de25876c51a3f0319c"
+    },
+    {
+      "path": "docs/DEDUPLICATION.md",
+      "status": "tracked_unchanged",
+      "sha256": "a109e56db46a30251a3b75fcf7fc220cf25e918d98db42c53e6ec624bf300c77"
+    },
+    {
+      "path": "docs/DEPLOYMENT.md",
+      "status": "modified",
+      "sha256": "f2c95a5e1490e4c7727e5fc1635429b618b02d80346db122bd3078c70d2b6a7d"
+    },
+    {
+      "path": "docs/DEVELOPMENT.md",
+      "status": "modified",
+      "sha256": "e8585c765bca82dc964ff6e0615ad9c28d7fec167891d380c3dfb61b7906ffba"
+    },
+    {
+      "path": "docs/ENVIRONMENT.md",
+      "status": "tracked_unchanged",
+      "sha256": "012aba46eaf419c00e78558fd07e54b4dd028d3a2cb198f53a17102638dfee23"
+    },
+    {
+      "path": "docs/LOG-SOURCES.md",
+      "status": "tracked_unchanged",
+      "sha256": "226dabf68f1f7405a6e53b82a155c556542c3bbda174eee09d656ab4c0b2482d"
+    },
+    {
+      "path": "docs/MALWARE-BACKEND.md",
+      "status": "tracked_unchanged",
+      "sha256": "0bdcc8a81e0a0dddcdc77ed0c585bbe44f2af3ca9b0ee4113cad2a4a4a5cffa7"
+    },
+    {
+      "path": "docs/PROJECTS.md",
+      "status": "tracked_unchanged",
+      "sha256": "54096b9dbd1b3963bdd2c0f579a62f6b9d548179494c3c01b977b60a94dc2663"
+    },
+    {
+      "path": "docs/RECOVERY-RUNBOOK.md",
+      "status": "modified",
+      "sha256": "bea6e929f369a4a17c20cc51f47eaa953b300a83661a82e82e9864c0bea4d648"
+    },
+    {
+      "path": "docs/RESPONSIBLE_USE.md",
+      "status": "modified",
+      "sha256": "90247992a30d523ad9fdff9248f3a89908b47fe01157b31fe5b0a32f3057b114"
+    },
+    {
+      "path": "docs/ROADMAP.md",
+      "status": "tracked_unchanged",
+      "sha256": "d04b17a89cc2d0b46da8cfcf12e296fbc65f9da2e445f740fdeadee2987ca0cb"
+    },
+    {
+      "path": "docs/SCANNING-ANOTHER-PROJECT.md",
+      "status": "modified",
+      "sha256": "68207ccc4bfd709f1ba6afc8ce180e349fdff2244f8986bbd14ba8f15a0c44b4"
+    },
+    {
+      "path": "docs/plans/phase-1.md",
+      "status": "tracked_unchanged",
+      "sha256": "8d29e0dfcebbc2dfff10571303089c01f2a82e76a0fc89e83712a8c8d44a1498"
+    },
+    {
+      "path": "docs/plans/phase-2.md",
+      "status": "tracked_unchanged",
+      "sha256": "645c38232957027c487671e820e9a80164bf2e5e2973d64e4e9540ef43712cc1"
+    },
+    {
+      "path": "docs/plans/phase-3.md",
+      "status": "tracked_unchanged",
+      "sha256": "0590deea0eec3c402930578e4432b828e1b2d97234850e9c53cc330f89acad5a"
+    },
+    {
+      "path": "docs/plans/phase-4.md",
+      "status": "tracked_unchanged",
+      "sha256": "8b9a1e3cd3be6067429fc04ee5bd6882bd6cad75db8c9d1383e0d3f57cb9d4ff"
+    },
+    {
+      "path": "docs/plans/phase-5.md",
+      "status": "tracked_unchanged",
+      "sha256": "86d8d81b8bb6e0fc650631b0e3a83a7f4bce3717809fe3977af8f665f47b8d27"
+    },
+    {
+      "path": "docs/plans/phase-6.md",
+      "status": "tracked_unchanged",
+      "sha256": "47ccbd572384ea7ca2aedfa38b79868415a6bec7b7babdb5182ceb800008d69a"
+    },
+    {
+      "path": "docs/plans/phase-7.md",
+      "status": "tracked_unchanged",
+      "sha256": "c6f3b986ed45b2eb53630b4df0c0d1bc34fe8265273313b495861a79072c187c"
+    },
+    {
+      "path": "docs/plans/phase-8.md",
+      "status": "tracked_unchanged",
+      "sha256": "be66e5f7ea8df100e61616c23b37ff3f6c23c2793f9ae4e4af684d68f7b7180f"
+    },
+    {
+      "path": "docs/reports/api-security-report.md",
+      "status": "tracked_unchanged",
+      "sha256": "14655d3a224a87be9ae34c7712e1d30f7b36729ff75cee1cf782bf03debd7cca"
+    },
+    {
+      "path": "docs/reports/chain-trace-report.md",
+      "status": "tracked_unchanged",
+      "sha256": "49143c9f649ca5f0bf7dfb76a0d93a895bf526c9e57a5295a4908a8f8a51c847"
+    },
+    {
+      "path": "docs/reports/development-status-audit.md",
+      "status": "tracked_unchanged",
+      "sha256": "a8d699ac8c621d608ec11f4dfd83e75aa43813b661dfdcd81e48b4b9f3ca256b"
+    },
+    {
+      "path": "docs/reports/implementation-inventory-2026-11-06.json",
+      "status": "untracked",
+      "sha256": "5f8666f68899dccd5d69958a733bd42bd2a67252fb9cb19288caa127ba6e79eb"
+    },
+    {
+      "path": "docs/reports/implementation-inventory-closure-2026-11-06.json",
+      "status": "untracked",
+      "sha256": "c28332af94f3f6fad83fbb74f55f73e60502372857498283998fad5c4a9b50d5"
+    },
+    {
+      "path": "docs/reports/implementation-inventory-r1-2026-11-06.json",
+      "status": "untracked",
+      "sha256": "6835a89bb13740918eb18cc140b2d566683a9798e538e738f10377c034ecb92a"
+    },
+    {
+      "path": "docs/reports/phase-0-report.md",
+      "status": "tracked_unchanged",
+      "sha256": "7245ea7bce50a7f51b5b41a51570e31ff482e579a48cdfd371993ca052492af5"
+    },
+    {
+      "path": "docs/reports/phase-1-acceptance.md",
+      "status": "tracked_unchanged",
+      "sha256": "7498dd9a30c23ed8b7984f44be46d8d816301963783dbaa72d0517b203795571"
+    },
+    {
+      "path": "docs/reports/phase-1-report.md",
+      "status": "modified",
+      "sha256": "a730f2bad96c86697739d96117fddda76f5ff7e6df842a1085b27a330a1098b3"
+    },
+    {
+      "path": "docs/reports/phase-2-report.md",
+      "status": "tracked_unchanged",
+      "sha256": "e2c1d006f4df77593cd4290558e81015214cc9d8c00a4fdc82ea539e11c9e000"
+    },
+    {
+      "path": "docs/reports/phase-3-report.md",
+      "status": "tracked_unchanged",
+      "sha256": "e4cf23b45c960a78809213616f0c760c90449a4ae2220b88e40e68f8c85197b6"
+    },
+    {
+      "path": "docs/reports/phase-4-report.md",
+      "status": "tracked_unchanged",
+      "sha256": "ba6dfcfb152906f8beace04f7919a25b90e669ccfb89d0cb03e0c8d3fccd570d"
+    },
+    {
+      "path": "docs/reports/phase-4a-report.md",
+      "status": "tracked_unchanged",
+      "sha256": "7083d13584c0f9283624f3a8356eb6fb2e6dcd1cbf8d07962b63fad96767c8b4"
+    },
+    {
+      "path": "docs/reports/phase-5-report.md",
+      "status": "tracked_unchanged",
+      "sha256": "8eb4657ba0cfcf2b0552bbbfef941964bca36a1b5ec3eb3e407b45b605b1684e"
+    },
+    {
+      "path": "docs/reports/phase-5a-report.md",
+      "status": "tracked_unchanged",
+      "sha256": "76863661f0ca517de46adee94e7b8b8387da6f97b4fe76c525b7ade60649c8e3"
+    },
+    {
+      "path": "docs/reports/phase-6-report.md",
+      "status": "tracked_unchanged",
+      "sha256": "95716bc87cc5ecfe9c481364d1240655bab87f4075f99104b7e2fead7c5384cd"
+    },
+    {
+      "path": "docs/reports/phase-7-report.md",
+      "status": "tracked_unchanged",
+      "sha256": "b296254a6a7910b220648a472dcb2566f6d3fb3a873ab3872208ccdd4639545a"
+    },
+    {
+      "path": "docs/reports/phase-8-report.md",
+      "status": "tracked_unchanged",
+      "sha256": "89103570ee3dec648d9ab0029a39490d7de73fce7661535b6cff258543d29a5f"
+    },
+    {
+      "path": "docs/reports/real-scanner-integration-verification.md",
+      "status": "tracked_unchanged",
+      "sha256": "41bfc59bb7808fd4b117d9bd6b6849d5be2f62e70dc8a1d283e94784f0355813"
+    },
+    {
+      "path": "docs/reports/redaction-remediation-2026-11-06.md",
+      "status": "untracked",
+      "sha256": "c24dd152dd20ad944c783e5e5980c75289770d57b26710fc663ddd55163d893b"
+    },
+    {
+      "path": "docs/reports/release-closure-2026-11-06.md",
+      "status": "untracked",
+      "sha256": "e53629ed65ee05c699584333268070fbae7ecb87c9f3d949c58421d7bd706f89"
+    },
+    {
+      "path": "docs/reports/release-validation-2026-11-06.md",
+      "status": "untracked",
+      "sha256": "c33c95984f4ee9a2ef0c1674ccc485b7c81cb86161b5b69a651d7fa4e5e8dda1"
+    },
+    {
+      "path": "docs/reports/security-hardening-validation.md",
+      "status": "tracked_unchanged",
+      "sha256": "67bb252496fbfcfdd727e757063f92daad452be49dc623bf739aa80916f54d17"
+    },
+    {
+      "path": "docs/reports/security-review.md",
+      "status": "tracked_unchanged",
+      "sha256": "9462beed1f3160e8d7e8e7ba19975a4b43a9dabef6f1c8a8251bcf9840141aff"
+    },
+    {
+      "path": "fixtures/real-scanners/clamav-clean.txt",
+      "status": "tracked_unchanged",
+      "sha256": "af867100228c20fde03a6140622ccbb3d683dd598f0c22543b1455369e550025"
+    },
+    {
+      "path": "fixtures/real-scanners/gitleaks-clean/credential.txt",
+      "status": "tracked_unchanged",
+      "sha256": "9a02e40b4e5ff5e007095a525f7139cfb80c07357883c30581747249950a78a5"
+    },
+    {
+      "path": "fixtures/real-scanners/gitleaks-positive/credential.txt",
+      "status": "tracked_unchanged",
+      "sha256": "c2fbda1e64d0c882414c4cdac1bce1e0197539d9b43e152c60b45107c86e8090"
+    },
+    {
+      "path": "fixtures/real-scanners/semgrep-clean/app.py",
+      "status": "tracked_unchanged",
+      "sha256": "c895da066f75cea544b26c7a02c26c04dd9f9a90e651f722dad873e6549bce57"
+    },
+    {
+      "path": "fixtures/real-scanners/semgrep-local.yml",
+      "status": "tracked_unchanged",
+      "sha256": "97172239ebb23c53194b56bd456d624993285aa20cee4bb1a5bb42adf2fb832a"
+    },
+    {
+      "path": "fixtures/real-scanners/semgrep-positive/app.py",
+      "status": "tracked_unchanged",
+      "sha256": "9a1f98237bdcbf32dcdb220731b83489c4f4f7906dc28bfb00704b991de094d9"
+    },
+    {
+      "path": "fixtures/real-scanners/trivy-clean-config/Dockerfile",
+      "status": "tracked_unchanged",
+      "sha256": "a1f5251a6add63e3b8373a624cb59d43778e5a747494fdea61e8d402764e801a"
+    },
+    {
+      "path": "fixtures/real-scanners/trivy-local-config/Dockerfile",
+      "status": "tracked_unchanged",
+      "sha256": "811ac075dcd83382c843b5660d62f141341db48ee94f484a4412e79b2176cc54"
+    },
+    {
+      "path": "fixtures/real-scanners/yara-clean.txt",
+      "status": "tracked_unchanged",
+      "sha256": "1f936e6a82e6e1b03bbdb0a9dd82ad9e8a4481094037fc93e87dd7661755c13c"
+    },
+    {
+      "path": "fixtures/real-scanners/yara-local.yar",
+      "status": "tracked_unchanged",
+      "sha256": "a88cb109485120bced96acd9d1898da9b104412dde0a7dfab5a796540cf43774"
+    },
+    {
+      "path": "fixtures/real-scanners/yara-positive.txt",
+      "status": "tracked_unchanged",
+      "sha256": "18b077b9458960297a17d9c42ee1ae760d1afc165f61975b36bf7dfc1416bf28"
+    },
+    {
+      "path": "fixtures/sample-iocs.txt",
+      "status": "tracked_unchanged",
+      "sha256": "68ae7381a3d4b33794789b366aec1995c96058fade7eb5d2c02be4638ea4cf89"
+    },
+    {
+      "path": "fixtures/sample-logs/auth.log",
+      "status": "tracked_unchanged",
+      "sha256": "2c1556d15faa4a1692b6cec4ba737e7c81d43903ee925a5aa7da03bbbddae6e4"
+    },
+    {
+      "path": "fixtures/sample-logs/cloudtrail.json",
+      "status": "tracked_unchanged",
+      "sha256": "f6cd28dd26818897e9c9fa61363f846c247cc87edee8361b4f15cb439fa7df47"
+    },
+    {
+      "path": "fixtures/sample-logs/events.jsonl",
+      "status": "tracked_unchanged",
+      "sha256": "af22c4008f54ad2a0feb02f3dce139b3fdca17b4714c454cbd1870a2d92b6eff"
+    },
+    {
+      "path": "fixtures/sample-logs/firewall.cef",
+      "status": "tracked_unchanged",
+      "sha256": "f3573d7b5c3f3e40d6948c94a23e1cd41d8f2246f7bab0e1c37be475eac4a442"
+    },
+    {
+      "path": "fixtures/sample-logs/firewall.leef",
+      "status": "tracked_unchanged",
+      "sha256": "e89f5f4bbeb8ee962a60966705fe99b214153a0f7a6abb207ab111d21ad67a66"
+    },
+    {
+      "path": "fixtures/sample-logs/iis-access.log",
+      "status": "tracked_unchanged",
+      "sha256": "7cef53264d1417ed43d4c17c6052ba47a6de92a159ccf819410710c379eaa776"
+    },
+    {
+      "path": "fixtures/sample-logs/nginx-access.log",
+      "status": "tracked_unchanged",
+      "sha256": "0c6dabb8d5b5b46b5ce7bce029bc1311275ff0b73fed6c91b0f45949ae9a64b4"
+    },
+    {
+      "path": "fixtures/sample-logs/syslog.log",
+      "status": "tracked_unchanged",
+      "sha256": "b0a6436e3e19ba198dd3ac18ddc4875d6d527971ed0c88bdae8bb61f3637f2e2"
+    },
+    {
+      "path": "fixtures/sample-logs/windows-events.csv",
+      "status": "tracked_unchanged",
+      "sha256": "735be3e7278458d69c62037b7ac8e11ab11e8386e90d74c3eca6439289204261"
+    },
+    {
+      "path": "fixtures/sample-logs/windows-failed-login.yml",
+      "status": "tracked_unchanged",
+      "sha256": "22a47dcf95a2c60cb12f3ee600c6d309f7eca753100a25e4709a04bbfd8b0a61"
+    },
+    {
+      "path": "fixtures/sample-malware/marker.yar",
+      "status": "tracked_unchanged",
+      "sha256": "45a9a21bd12d7a7ed0b9014c179dc2a514e5e2eb3c9a4131dd852efb0d1ddc8f"
+    },
+    {
+      "path": "fixtures/sample-malware/synthetic-indicators.txt",
+      "status": "tracked_unchanged",
+      "sha256": "71dee0761a731a0646316e680d1f710e4145b0f407c443ff63aa7920bcb5d12a"
+    },
+    {
+      "path": "fixtures/sample-node-project/app.js",
+      "status": "tracked_unchanged",
+      "sha256": "76bcbc56216f936e5abc606e53ffafde6266b70e167ddfdcb5458815310efe14"
+    },
+    {
+      "path": "fixtures/sample-node-project/package.json",
+      "status": "tracked_unchanged",
+      "sha256": "cf9d8769bd6b4c88580b866a39510db54c4b8de06dd97f6c68d44d40fdd71cc3"
+    },
+    {
+      "path": "fixtures/sample-python-project/app.py",
+      "status": "tracked_unchanged",
+      "sha256": "e54464d3e423aa2fa44d2a2dba5fe517adef74f10b2d01ecb9ea34a3daf83f5e"
+    },
+    {
+      "path": "fixtures/sample-python-project/pyproject.toml",
+      "status": "tracked_unchanged",
+      "sha256": "de2fb9ac77250a95a98dde0e3702a3cac62d7c66a20672ee3400080b8d73ea01"
+    },
+    {
+      "path": "frontend/e2e/dashboard.spec.ts",
+      "status": "modified",
+      "sha256": "bf7e3f5f6a49692cee86524c3448c8aa1fdce720c35bc8cfd955f46927dee60d"
+    },
+    {
+      "path": "frontend/e2e/github-import.spec.ts",
+      "status": "tracked_unchanged",
+      "sha256": "46931da5505541d0c826a949a48e277feb7fe445537755dfdbf5b6c5d2555129"
+    },
+    {
+      "path": "frontend/e2e/global-setup.ts",
+      "status": "tracked_unchanged",
+      "sha256": "7ef0d04166020b44ef61022401fc029285aed8978694709d4aa10e2ecdc8cbcc"
+    },
+    {
+      "path": "frontend/e2e/operator-recovery.spec.ts",
+      "status": "tracked_unchanged",
+      "sha256": "3313784b230f05c0ce66eaba9bb456c058bbcb179ca96aebaf9198ecb004cfd5"
+    },
+    {
+      "path": "frontend/e2e/projects.spec.ts",
+      "status": "tracked_unchanged",
+      "sha256": "0875bc4c29cd55fe180c1a5fd2e155ff4760de6f0ea7ad3a5c4d419508c26cb4"
+    },
+    {
+      "path": "frontend/e2e/session-expiry.spec.ts",
+      "status": "tracked_unchanged",
+      "sha256": "266d456af15d19ba4038dc5953d9cdcde0c8f0ddb9198fcb20a61b49e1c754a6"
+    },
+    {
+      "path": "frontend/e2e/system-status.spec.ts",
+      "status": "tracked_unchanged",
+      "sha256": "f83bdfc6bebb7ac6f0064644e1f0293195bdeb1539f2c4c3b9244dd590ff004e"
+    },
+    {
+      "path": "frontend/index.html",
+      "status": "modified",
+      "sha256": "387328433c9343ec79696c32a0fc98a36580fc832ddb0c6b1cd48f5184425795"
+    },
+    {
+      "path": "frontend/package-lock.json",
+      "status": "tracked_unchanged",
+      "sha256": "4ac97df35c19ca723a42cccb66df208d8de796ee7116aef3f5cff5eeece38647"
+    },
+    {
+      "path": "frontend/package.json",
+      "status": "modified",
+      "sha256": "41eba47369ca85f27ccdd74d67fc28429bbd651f20f77b15c3939611f0da09d3"
+    },
+    {
+      "path": "frontend/playwright.config.ts",
+      "status": "tracked_unchanged",
+      "sha256": "0e0ecf75121030870d9866ff2f7dd71120494f0d7e44d3bb7246e9da3e661995"
+    },
+    {
+      "path": "frontend/src/api.test.ts",
+      "status": "tracked_unchanged",
+      "sha256": "27876377652b6ab4db03c5701ee2c61fd0a695c1c1eb876ed3387ba359f2fbb2"
+    },
+    {
+      "path": "frontend/src/api.ts",
+      "status": "tracked_unchanged",
+      "sha256": "99e391f3fbb9ba595c99c6832fcf4b71672d6674b99269882d06ca69cc6df268"
+    },
+    {
+      "path": "frontend/src/main.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "d96e3d058bc97dc9db31d0ac7d0357006dc34e0d9bb5e81258e238961f0c00a6"
+    },
+    {
+      "path": "frontend/src/test-fixtures/report-parity.json",
+      "status": "untracked",
+      "sha256": "cd41c3f39e1cb9e0ec7c5224f45497b1ddea5821b40e194187fce79d07237f8c"
+    },
+    {
+      "path": "frontend/src/test-setup.ts",
+      "status": "tracked_unchanged",
+      "sha256": "268e7200d092daa3225eb06790ed72842e5d3234a53980c90ff463d7b81528d3"
+    },
+    {
+      "path": "frontend/src/types.ts",
+      "status": "modified",
+      "sha256": "ee7e8212a58b92c119ee4a9e284ece3fef3bd477de3ac89832765cf299f823c4"
+    },
+    {
+      "path": "frontend/src/ui/App.test.tsx",
+      "status": "modified",
+      "sha256": "b6a596cf3db5bea5d3ac915618dc590f9fcba1e8f80256864b92654a9756613a"
+    },
+    {
+      "path": "frontend/src/ui/App.tsx",
+      "status": "modified",
+      "sha256": "87602712ae107df5a2eacc631290e1f3c5e2ceb05d5aefcbcd1921775f7cf020"
+    },
+    {
+      "path": "frontend/src/ui/CasesWorkspace.test.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "1bd86e33ff505ce1a86f4819506a0332db62696ed14ad672290dabf4be0da0eb"
+    },
+    {
+      "path": "frontend/src/ui/CasesWorkspace.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "abe0682c2a713f0b8a7cbdd3cc57665104740b6fc36490e340c1c6448d659e40"
+    },
+    {
+      "path": "frontend/src/ui/ChainTraceGraph.test.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "19f792142ae0a37f241dd31706d36062d95db572285aee76922ac4f112a8cfee"
+    },
+    {
+      "path": "frontend/src/ui/ChainTraceGraph.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "b4373a2173f0f3ef2992f7f07f16e09623ec92fc4b26ed9af0f13e8efb7f48ab"
+    },
+    {
+      "path": "frontend/src/ui/ChainTraceWorkspace.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "40cee8b76c8b31a7ef539e0fcc9aab2ab9b53b873d14da363597edbaa3b8c75f"
+    },
+    {
+      "path": "frontend/src/ui/CodeJobsWorkspace.test.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "f7d4add8a824d2d838bf3f693a5a1373ba495249afe0372de72e29efcf4edd7e"
+    },
+    {
+      "path": "frontend/src/ui/CodeJobsWorkspace.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "21757bb4587bff6843da8eafd65ec31fbff5c3a78a4d07a4ee51b6f1a8d2fda5"
+    },
+    {
+      "path": "frontend/src/ui/FolderApprovalPicker.test.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "4f8ed56b979bbb65ebca0822a8795d6b5fde48773fbe6f3effdeb457b9632bed"
+    },
+    {
+      "path": "frontend/src/ui/FolderApprovalPicker.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "21a2b7e6c409043d32e0a2c661ca572ab4f178efd9560531d1d6a7b2948aeba0"
+    },
+    {
+      "path": "frontend/src/ui/GitHubImportDialog.test.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "36f39ebb10e789282702fc36862279d0a893817729540780fc3b16cc885dded9"
+    },
+    {
+      "path": "frontend/src/ui/GitHubImportDialog.tsx",
+      "status": "modified",
+      "sha256": "d7e6caca3a44b92f880b93cbb7944e37abfc801ab40a97ea9fa5b912327e0d10"
+    },
+    {
+      "path": "frontend/src/ui/LogJobsWorkspace.test.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "3f6d82b36a63aa816c725df223f97619cfa6188ccdb6ffd396fae3054def4aa1"
+    },
+    {
+      "path": "frontend/src/ui/LogJobsWorkspace.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "c5454cbd6de29ef4ddfbc3a8b7c168be7d4989b54e00fca0eec4937abff655b8"
+    },
+    {
+      "path": "frontend/src/ui/MalwareWorkspace.test.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "e1e592de4390b036ca4952559e36d5d758e8e86a060f7c1cde807306c1d8a33e"
+    },
+    {
+      "path": "frontend/src/ui/MalwareWorkspace.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "1af49c1b58a85b302fe848c38744e182828ce2d969b5153c6067301bbc0e9e2b"
+    },
+    {
+      "path": "frontend/src/ui/ProjectMalware.test.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "5e2f867f2bf36dd53e4b8cd8d7bc614c3acd7031f216b1ae4641638e7ed88475"
+    },
+    {
+      "path": "frontend/src/ui/ProjectMalware.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "70779f0ab33d5cc10b044a440784eb3ca0b08a5a3c24112604a13d8a7ca4cdac"
+    },
+    {
+      "path": "frontend/src/ui/ProjectsWorkspace.test.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "77b5ec0e25fc913db12803048a8f4a57fcaca05d307fd6b9aab712246fa37079"
+    },
+    {
+      "path": "frontend/src/ui/ProjectsWorkspace.tsx",
+      "status": "modified",
+      "sha256": "1f6465fa11e6c89f37059a3b013f5003f6d73b890b4e76ae3a0661f571241b91"
+    },
+    {
+      "path": "frontend/src/ui/ScanityReportImport.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "af91477c3c9608c47c1cacb694443548b71c888a048af39d2a75f7b76ad7bfb1"
+    },
+    {
+      "path": "frontend/src/ui/SystemStatus.test.tsx",
+      "status": "modified",
+      "sha256": "40616aece2b765288f58c62eca54d9a8bb232a8bd55d3b03878c7f2b69f16501"
+    },
+    {
+      "path": "frontend/src/ui/SystemStatus.tsx",
+      "status": "modified",
+      "sha256": "af891179ed3e0b07bd63c930634be50a56adfb2a1e2f9095fa79de7c17201ce9"
+    },
+    {
+      "path": "frontend/src/ui/styles.css",
+      "status": "modified",
+      "sha256": "3e7de825096b44d75234d8121fa1a41ea489407347f824e4db990059bd903140"
+    },
+    {
+      "path": "frontend/src/vite-env.d.ts",
+      "status": "tracked_unchanged",
+      "sha256": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5"
+    },
+    {
+      "path": "frontend/tsconfig.app.json",
+      "status": "tracked_unchanged",
+      "sha256": "cbdfaf97b7b710e6b84606628ea929d44e9c48eba61c2690a76d723180257b4a"
+    },
+    {
+      "path": "frontend/tsconfig.json",
+      "status": "tracked_unchanged",
+      "sha256": "e8d6f7b50828db3953e21c7e92584f9206b3cd2551b4012507372afbb7fe9ce3"
+    },
+    {
+      "path": "frontend/tsconfig.node.json",
+      "status": "tracked_unchanged",
+      "sha256": "adb3d10e23876c431a4a28a4ed127e965dd8e4f171eef065820feedc8fe132c1"
+    },
+    {
+      "path": "frontend/vite.config.ts",
+      "status": "tracked_unchanged",
+      "sha256": "4067e14845026bb039d8af5fcba5d6718b9a247b1187c00224fccddc37573e64"
+    },
+    {
+      "path": "migrations/env.py",
+      "status": "tracked_unchanged",
+      "sha256": "8ea00f5ecf197f7c8766bc0ef3ce28abc60ee755278bf4071938234c6de99ff0"
+    },
+    {
+      "path": "migrations/script.py.mako",
+      "status": "tracked_unchanged",
+      "sha256": "114d2c8daf1106848ce42d0c5f13a4d0056ec4205dfc568999d988c131bb8c54"
+    },
+    {
+      "path": "migrations/versions/0001_initial.py",
+      "status": "tracked_unchanged",
+      "sha256": "51a4226c6c600e35060046bfdba1826592563e51cf51b854df793dab7daa3f58"
+    },
+    {
+      "path": "migrations/versions/0002_case_workflow.py",
+      "status": "tracked_unchanged",
+      "sha256": "5aac7fa68762c967696c1a8d1cb2944353b9e59f384d1a480e7c4061e44788d4"
+    },
+    {
+      "path": "migrations/versions/0003_malware_backend.py",
+      "status": "tracked_unchanged",
+      "sha256": "6057eda9f742a5e732062c14f1362c367b87f8ccea628b470c5cf068ff3facdf"
+    },
+    {
+      "path": "pyproject.toml",
+      "status": "tracked_unchanged",
+      "sha256": "cbdee7880c69983aab4fbdf85405da71b718a3fba0adc9375679f67165d307d9"
+    },
+    {
+      "path": "schemas/finding.schema.json",
+      "status": "modified",
+      "sha256": "2038032d2433f2ffdc8731d60066031fd313ddfce8ae133427ddefbcc81761ef"
+    },
+    {
+      "path": "schemas/investigation.schema.json",
+      "status": "modified",
+      "sha256": "f70fd576be9c39b73552d866bb2b7b52db84fed91162531a38bda200a740ae36"
+    },
+    {
+      "path": "scripts/benchmark_local.py",
+      "status": "tracked_unchanged",
+      "sha256": "af46f5350bce91d074b4c594821eba5847e64977977b045954a053f056026cd8"
+    },
+    {
+      "path": "scripts/export_schemas.py",
+      "status": "tracked_unchanged",
+      "sha256": "edd5794d5378e2027fadf7391969535fc8cca08e97ccfc1592f478d7ddaff5d0"
+    },
+    {
+      "path": "scripts/recovery_acceptance.py",
+      "status": "tracked_unchanged",
+      "sha256": "e4403562e234a72478aebc6e9337f5a1c7bf0e08cc6a16117f70edee1521dd5b"
+    },
+    {
+      "path": "scripts/start-dashboard.ps1",
+      "status": "tracked_unchanged",
+      "sha256": "9bb248a87627d31e1d0190800b60a6c2671e1e02739142558ce83ed695db4dd5"
+    },
+    {
+      "path": "tests/browser/serve.py",
+      "status": "tracked_unchanged",
+      "sha256": "c9a5461151961fa54f0d10973b69e3a60e51bb1736b74e313039153b23af6145"
+    },
+    {
+      "path": "tests/conftest.py",
+      "status": "tracked_unchanged",
+      "sha256": "bc771db783a9eb8e8551e55a18b32031b2799faef6b34c3cdfc5dc42cb26b9b4"
+    },
+    {
+      "path": "tests/fixtures/code-assessment-nextjs/.gitignore",
+      "status": "tracked_unchanged",
+      "sha256": "a33d39926aadc3eb74debcb76439fc090875628a5249ed382b8dd4983ac3a71b"
+    },
+    {
+      "path": "tests/fixtures/code-assessment-nextjs/.next/static/chunks/main.js",
+      "status": "tracked_unchanged",
+      "sha256": "6db7df0d55484b22a0d87b3d76b98db7f5f7ad52c21931fda170ddcc6b6abba3"
+    },
+    {
+      "path": "tests/fixtures/code-assessment-nextjs/next.config.js",
+      "status": "tracked_unchanged",
+      "sha256": "f2f43c2ba1da4183671d6f6f7cf466da6573285829f65d29036ebd5e9d400d5e"
+    },
+    {
+      "path": "tests/fixtures/code-assessment-nextjs/package.json",
+      "status": "tracked_unchanged",
+      "sha256": "012495760ac95511103a282ba2a4d90bf0f255162fd29f109ce255466a8b72d4"
+    },
+    {
+      "path": "tests/fixtures/code-assessment-nextjs/src/app/api/route.ts",
+      "status": "tracked_unchanged",
+      "sha256": "03819ead853e5626a2f2c4c59eb6ea7afa885fa1fb25ceeedeca7658fa19ff22"
+    },
+    {
+      "path": "tests/fixtures/code-assessment-nextjs/src/components/Preview.tsx",
+      "status": "tracked_unchanged",
+      "sha256": "9b48727a95c74de8542099c78a194cc1093175f6ea1344c95b926320827163ff"
+    },
+    {
+      "path": "tests/fixtures/code-assessment-nextjs/tests/auth.test.ts",
+      "status": "tracked_unchanged",
+      "sha256": "54e164fbbbc099ac4c145dfc8ee5b678d396d1e5e87afcd02ae922b083c49949"
+    },
+    {
+      "path": "tests/integration/test_real_scanners.py",
+      "status": "tracked_unchanged",
+      "sha256": "cf15056b9a5abd75b41dd0fb2f788fa3077d0fa9d205259a3cf35b48d8cd4098"
+    },
+    {
+      "path": "tests/unit/test_accounts_hardening.py",
+      "status": "tracked_unchanged",
+      "sha256": "9b2a7b0aeae0d49ecd46084d60e75af224b91edb5f80aeb29dfe9e11707e98e1"
+    },
+    {
+      "path": "tests/unit/test_accounts_parity.py",
+      "status": "tracked_unchanged",
+      "sha256": "9afb347b3ddc301c683693544d6dc19c144a90395a3dea837a9b2db92daa298c"
+    },
+    {
+      "path": "tests/unit/test_accounts_service.py",
+      "status": "tracked_unchanged",
+      "sha256": "3d87944ceb1b15817abe443276afb833ffb2698f2f61dff478aa63916f0bf53e"
+    },
+    {
+      "path": "tests/unit/test_benchmark_local.py",
+      "status": "tracked_unchanged",
+      "sha256": "5babb7a6189be4313d7f80aec71b13cb5e7c766c7d9ecff148609ad18acd6391"
+    },
+    {
+      "path": "tests/unit/test_cases.py",
+      "status": "tracked_unchanged",
+      "sha256": "81ac91d899282fc592f8a9afb27f8e4176bf779ead54a114d4669de8307ec407"
+    },
+    {
+      "path": "tests/unit/test_chain_trace.py",
+      "status": "tracked_unchanged",
+      "sha256": "312f921ba0fb9e0dd5807d8c7d18be8b9dd64ae631c17d0ef484db411a312125"
+    },
+    {
+      "path": "tests/unit/test_cli.py",
+      "status": "tracked_unchanged",
+      "sha256": "711440b1f9ae6f2b9063220160b41234d2e7bc5cee05533ba50f6ee22d998586"
+    },
+    {
+      "path": "tests/unit/test_code_actionability.py",
+      "status": "modified",
+      "sha256": "6d03985d6135e5985259348c3135ab38a595a2177536fa6756821dc3a75772a1"
+    },
+    {
+      "path": "tests/unit/test_code_jobs.py",
+      "status": "tracked_unchanged",
+      "sha256": "bb81baab63e89716751984f91ea02fe7ed5bd26a2f788a3ff226b75be71f8683"
+    },
+    {
+      "path": "tests/unit/test_code_rules_behavior.py",
+      "status": "modified",
+      "sha256": "d9cfe3f59522920303cfcfc56efd574b6c2522790fc87112ba167097185a6178"
+    },
+    {
+      "path": "tests/unit/test_code_scan.py",
+      "status": "tracked_unchanged",
+      "sha256": "c47d769db3cb63440a186b5a9cd8aeefea6dce575e80dab3a49610f678e894ff"
+    },
+    {
+      "path": "tests/unit/test_config.py",
+      "status": "tracked_unchanged",
+      "sha256": "011536a79bd88a295c108385830401660f06586c03e0805b8ee3a23f465670da"
+    },
+    {
+      "path": "tests/unit/test_diagnostics.py",
+      "status": "tracked_unchanged",
+      "sha256": "5ee93fdfe1861fb4eea552e44c280a3cb5fdc52605dd77386a6f46e9e5bb9c51"
+    },
+    {
+      "path": "tests/unit/test_domain_assessment.py",
+      "status": "tracked_unchanged",
+      "sha256": "19939b9f40b980e71337ab21043feac5c59612141059ccca050a3a52f608d1da"
+    },
+    {
+      "path": "tests/unit/test_external_scanners.py",
+      "status": "tracked_unchanged",
+      "sha256": "02c019e845d0cafb71d35303e2c23132d581b25b8c8c9cd1ffdecf8e65476a1f"
+    },
+    {
+      "path": "tests/unit/test_fake_scanner.py",
+      "status": "tracked_unchanged",
+      "sha256": "c720ec69351acc0bda539114049c75c34dcfc47e5c2b84e0cc1e1fa4c22da9db"
+    },
+    {
+      "path": "tests/unit/test_fs_api.py",
+      "status": "tracked_unchanged",
+      "sha256": "976727f05e52f1fac3a9d8d3668674af7351907a73b3eefb67500eb9a2f5c36d"
+    },
+    {
+      "path": "tests/unit/test_fs_cli.py",
+      "status": "tracked_unchanged",
+      "sha256": "c9d7556ca27e59f23e55ecb5fbb96ddc02ef8cd08dfd3e3d913d6cbac314c9ec"
+    },
+    {
+      "path": "tests/unit/test_fs_policy.py",
+      "status": "tracked_unchanged",
+      "sha256": "c01cfcf95ddb703a38112e41d0162d6448e6de45581312e83a9953583197ecf5"
+    },
+    {
+      "path": "tests/unit/test_github_import.py",
+      "status": "tracked_unchanged",
+      "sha256": "01b214c9153f7cb5bad1d04a8cc0559cb9d9d6ff95ed4ac58061f38fe7eac9e7"
+    },
+    {
+      "path": "tests/unit/test_github_projects.py",
+      "status": "tracked_unchanged",
+      "sha256": "75100a5f599fb3cfe010f908fdab4400182b71610fd7a8fff93464b0c36dd57f"
+    },
+    {
+      "path": "tests/unit/test_indicators.py",
+      "status": "tracked_unchanged",
+      "sha256": "ecd887e1adbfa6e1be7d71831a25cb562f770be10e49f13cae42776f235d5591"
+    },
+    {
+      "path": "tests/unit/test_log_analysis.py",
+      "status": "tracked_unchanged",
+      "sha256": "32db5c454bd2922d8c920587338ad63b3b7f1e4e124544bcb3349f7fc1b994bd"
+    },
+    {
+      "path": "tests/unit/test_log_jobs.py",
+      "status": "tracked_unchanged",
+      "sha256": "a8d68bfe645092b3c49c780233f0bcd5092a196e9afcce4ee1e1009b8bcf3f31"
+    },
+    {
+      "path": "tests/unit/test_log_source_status.py",
+      "status": "tracked_unchanged",
+      "sha256": "3563d1a77ca53067e565bf06964f03060185c096f7da11e634d3b2671f5700c0"
+    },
+    {
+      "path": "tests/unit/test_logging.py",
+      "status": "tracked_unchanged",
+      "sha256": "d6dcf17f6fdacb725f83a611851b8b2142cb02895f0055a773b97f228d2f10a8"
+    },
+    {
+      "path": "tests/unit/test_malware_analysis.py",
+      "status": "tracked_unchanged",
+      "sha256": "39fe3a406bfcf87a0dd94315fc911890ee9d50cc1f2039033e6eddfad66de37f"
+    },
+    {
+      "path": "tests/unit/test_malware_project_scan.py",
+      "status": "tracked_unchanged",
+      "sha256": "1540a488a8e74ba58ef788057f9e531b5fb4b46d9a8fbc367410b7bb62929c3c"
+    },
+    {
+      "path": "tests/unit/test_managed_malware.py",
+      "status": "tracked_unchanged",
+      "sha256": "3fc1e42706c337773bef0d300dc6e945b6a52fde2ec2f6d3af5da7a323e5f0c9"
+    },
+    {
+      "path": "tests/unit/test_migration.py",
+      "status": "tracked_unchanged",
+      "sha256": "e28bdf29e16ab4abddf705104eea5add63803219ba25704e2a5261c771586b2d"
+    },
+    {
+      "path": "tests/unit/test_models.py",
+      "status": "tracked_unchanged",
+      "sha256": "d811cdc63e4d0a30041318c3c539ca4cc10f1dbfe0f8f86a40861167d61040ab"
+    },
+    {
+      "path": "tests/unit/test_parser_hardening.py",
+      "status": "tracked_unchanged",
+      "sha256": "d21d83ba8c73eabb1008c84c62ab45a2b21cf82441ef2933587805ca3c4cd70d"
+    },
+    {
+      "path": "tests/unit/test_projects.py",
+      "status": "tracked_unchanged",
+      "sha256": "55816bd510f8454d6c684331288c96d950f6a56efd19818d32121303f595b214"
+    },
+    {
+      "path": "tests/unit/test_projects_cli.py",
+      "status": "tracked_unchanged",
+      "sha256": "665b609457f0a24a7308e2905ad492dd5c731be7bdb08de93935ea38e00fb468"
+    },
+    {
+      "path": "tests/unit/test_rate_limit.py",
+      "status": "tracked_unchanged",
+      "sha256": "20307f0b07d61aeabf73c6ab2b7851571a16eb8432f7f2c5e863b0abcdfd0d97"
+    },
+    {
+      "path": "tests/unit/test_recovery.py",
+      "status": "tracked_unchanged",
+      "sha256": "14e8b09ed98a18950b3e2dddd4c411cc549340b7873941c09d52e85488bcff58"
+    },
+    {
+      "path": "tests/unit/test_redaction.py",
+      "status": "modified",
+      "sha256": "35549adba45ca846e074d30e310c7f294f72ca60204616bba6af13eef8180086"
+    },
+    {
+      "path": "tests/unit/test_redaction_canaries.py",
+      "status": "tracked_unchanged",
+      "sha256": "fa8201b67beaa7519d48c6a5029355079d59aef510e33c4582582feba1f35ae0"
+    },
+    {
+      "path": "tests/unit/test_reporting.py",
+      "status": "modified",
+      "sha256": "09e3aac0df86fa8fc8bb319b495e272ac373f763b17b282cccbe52d828b367b1"
+    },
+    {
+      "path": "tests/unit/test_route_security_inventory.py",
+      "status": "tracked_unchanged",
+      "sha256": "139012a382f272dcb509a5465fb2d22209dc3f51d559c2a70a02db5353599fd3"
+    },
+    {
+      "path": "tests/unit/test_schema_exports.py",
+      "status": "tracked_unchanged",
+      "sha256": "92ca19983710d49b3dc44fbde360606840ee1accf5ea1de08f2ec64b3c997c7a"
+    },
+    {
+      "path": "tests/unit/test_storage.py",
+      "status": "tracked_unchanged",
+      "sha256": "9b6786af1ded66715e435db0278159857f94e2c4b6cb7f859e904e3886db07e0"
+    },
+    {
+      "path": "tests/unit/test_totp.py",
+      "status": "tracked_unchanged",
+      "sha256": "3892bdbb6e3e5944d89ba7488f97cfc5cdcc9494f3977e0947f66b423c9d87ae"
+    },
+    {
+      "path": "tests/unit/test_trends.py",
+      "status": "tracked_unchanged",
+      "sha256": "f28ecb1f3154c21583af4b91b8eadba93f59dfcc82392007a4fd64f7983ac4df"
+    },
+    {
+      "path": "tests/unit/test_verdict_and_reports_store.py",
+      "status": "tracked_unchanged",
+      "sha256": "acee41e81bfe507663aa46226721fcdd0688717022b9197f8d2693fd2aeae5cc"
+    },
+    {
+      "path": "tests/unit/test_web_api.py",
+      "status": "modified",
+      "sha256": "0fb7e5d0be70471ff6160ff1b3f8f1747286ebe4799bcfa4ff00fdc33bc7f208"
+    },
+    {
+      "path": "uv.lock",
+      "status": "tracked_unchanged",
+      "sha256": "88c93711d0b788374a0e0947c7fa2af8dd309c92c9f32a74de0197edd85bdfaf"
+    }
+  ]
+}

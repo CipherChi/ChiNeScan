@@ -137,10 +137,7 @@ def _ingest_file(path: Path, result: IngestResult) -> None:
             _parse_member(data, path.name, str(path), result)
             result.bytes_processed += read_size - len(data)
             if truncated:
-                result.errors.append(
-                    f"{path}: truncated at the per-file limit after reading {read_size} bytes; "
-                    "remaining log data was not analyzed."
-                )
+                result.errors.append(_truncation_error(path.name, read_size))
     except _ExpansionLimitReached:
         result.errors.append(f"{path}: total expanded-byte limit reached")
     except Exception as exc:  # isolate malformed/untrusted input with an explicit diagnostic
@@ -162,10 +159,17 @@ def _ingest_gzip(path: Path, result: IngestResult) -> None:
     _parse_member(data, member_name, f"{path}::{member_name}", result)
     result.bytes_processed += read_size - len(data)
     if truncated:
-        result.errors.append(
-            f"{path}: decompressed log truncated at the per-file limit after reading "
-            f"{read_size} bytes; remaining log data was not analyzed."
-        )
+        result.errors.append(_truncation_error(path.name, read_size, decompressed=True))
+
+
+def _truncation_error(name: str, read_size: int, *, decompressed: bool = False) -> str:
+    """Describe bounded input truncation without exposing an unbounded absolute path."""
+    safe_name = name[:80]
+    source = "decompressed log" if decompressed else "log"
+    return (
+        f"{safe_name}: {source} truncated at the per-file limit after reading {read_size} bytes; "
+        "remaining log data was not analyzed."
+    )
 
 
 def _read_log_prefix(path: Path, limit: int) -> tuple[bytes, bool]:

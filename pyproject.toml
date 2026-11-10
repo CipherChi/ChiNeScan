@@ -70,4 +70,7 @@ package = true
 dev = [
     "bandit>=1.9,<2",
     "httpx2>=2.16.0",
+    "types-PyYAML>=6.0.12,<7",
 ]
+
+

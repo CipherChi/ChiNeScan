@@ -9,6 +9,12 @@ __pycache__/
 .ruff_cache/
 dist/
 build/
+target/
+*.whl
+*.pem
+*.key
+*.p12
+*signing-key*
 *.egg-info/
 *.db
 *.sqlite*
@@ -32,4 +38,5 @@ frontend/.playwright-browsers/
 # User-local outputs that must never enter commits
 engine/target/
 frontend/dist/
+.worktrees/
 latest scan.json

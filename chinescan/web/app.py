@@ -418,6 +418,7 @@ class MalwareAnalysisResponse(BaseModel):
     indicator_count: int
     indicators: list[dict[str, str]]
     warnings: list[str]
+    archive_findings: list[dict[str, Any]] = Field(default_factory=list)
     engines: dict[str, dict[str, Any]]
     entropy_bits_per_byte: float | None = None
     section_entropy: list[dict[str, Any]] = Field(default_factory=list)
