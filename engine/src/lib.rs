@@ -67,6 +67,27 @@ fn identify_file_type(py: Python<'_>, data: &[u8], extension: &str) -> PyResult<
     Ok(output.unbind())
 }
 
+#[pyfunction]
+fn render_report_json(request: &str) -> PyResult<String> {
+    if request.len() > 16 * 1024 * 1024 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "report request limit exceeded",
+        ));
+    }
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let request: chinescan_reporter::ReportRequest = serde_json::from_str(request)
+            .map_err(|_| pyo3::exceptions::PyValueError::new_err("invalid report request"))?;
+        let response = chinescan_reporter::render(&request)
+            .map_err(|_| pyo3::exceptions::PyValueError::new_err("report rendering failed"))?;
+        Ok(response.content)
+    }))
+    .unwrap_or_else(|_| {
+        Err(pyo3::exceptions::PyRuntimeError::new_err(
+            "report worker panic contained",
+        ))
+    })
+}
+
 fn inspection_to_py(py: Python<'_>, result: zipmeta::Inspection) -> PyResult<Py<PyDict>> {
     let output = PyDict::new(py);
     let parse_failed = result.member_count.is_none();
@@ -105,5 +126,6 @@ fn chinescan_engine(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(inspect_zip_metadata, module)?)?;
     module.add_function(wrap_pyfunction!(inspect_tar_metadata, module)?)?;
     module.add_function(wrap_pyfunction!(identify_file_type, module)?)?;
+    module.add_function(wrap_pyfunction!(render_report_json, module)?)?;
     Ok(())
 }
