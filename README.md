@@ -1,5 +1,8 @@
 # ChiNeScan
 
+<p align="center"><img src="docs/assets/chinescan-cover.png" alt="ChiNeScan: a local security workstation" width="100%"></p>
+<p align="center"><sub>Illustrative artwork. Terminal text in the image is decorative, not real output.</sub></p>
+
 **Local-first security assessment workstation for code, logs, malware triage, investigations, and reports.**
 
 **Core technologies:** Python (backend, analysis engine, CLI) · Rust (optional PyO3 redaction extension with automatic Python fallback) · TypeScript/React (web dashboard)
