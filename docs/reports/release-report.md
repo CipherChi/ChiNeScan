@@ -1,6 +1,8 @@
 # Release report
 
-## Merged changes`r`n`r`n- This release report is tracked by [PR #27](https://github.com/CipherChi/ChiNeScan/pull/27); its CI results are listed on the [PR checks page](https://github.com/CipherChi/ChiNeScan/pull/27/checks).
+## Merged changes
+
+- This release report is tracked by [PR #27](https://github.com/CipherChi/ChiNeScan/pull/27); its CI results are listed on the [PR checks page](https://github.com/CipherChi/ChiNeScan/pull/27/checks).
 
 - [PR #25](https://github.com/CipherChi/ChiNeScan/pull/25) merged the Rust core, reporter, dashboard scoring and alerts, and terminal glass UI stack. Merge commit: `896b556e61abbd85470a77a7d265828a99dc4166`.
 - [PR #26](https://github.com/CipherChi/ChiNeScan/pull/26) added the supplied README artwork unchanged. Merge commit: `a0b7682`.
@@ -40,7 +42,7 @@ The dashboard scoring branch was rebuilt to retain Phase 4 scoring/alerts/dashbo
 - `npm audit` accessed the npm registry.
 - Dependency resolution used the configured package registries.
 - Git pushes: `codex/ui-terminal-glass` and `docs/readme-cover`; GitHub PR, CI, review-state and merge operations were used for PRs #25 and #26. Their CI logs are linked above.
-- The release-report branch was pushed to GitHub; PR #27 and its CI run are linked above. GitHub also handled the required review-state and merge operations.
+- The release-report branch was pushed to GitHub; PR #27 and its CI run are linked above. GitHub also handled the required review-state and merge operations.`r`n- Disclosure: an accidental `git push --force-with-lease` rewrote the report branch once while correcting its text. No other branch was force-pushed. Subsequent updates use ordinary fast-forward pushes.
 
 ## Manual follow-ups
 
